@@ -45,7 +45,7 @@ $stmt->close();
     <div class="container">
         <!-- Logotipo -->
         <a class="navbar-brand" href="redirect_page.php">
-            <img src="images/logo.png" alt="Logotipo" style="height: 40px;"> Sistema CMMS
+            <img src="images/logo1.png" alt="Logotipo" style="height: 40px;"> Sistema CMMS
         </a>        
         <!-- Nome do usuário clicável para abrir o modal -->
         <span class="navbar-text user-name">

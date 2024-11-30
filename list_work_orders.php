@@ -110,41 +110,59 @@ if ($statusFilter) {
     $stmt->bind_param("sss", $priorityFilter, $search_param, $search_param);
 } else {
     // Consulta sem filtro e pesquisa
+    $work_orders = [];
+    $current_date = new DateTime();
+
     $stmt = $conn->prepare("
-        SELECT w.id, a.name AS asset_name, w.description, w.status, w.priority, u.first_name AS assigned_user, w.created_at, w.accept_by, w.accept_at, w.closed_at, acceptor.first_name AS acceptor_name 
+        SELECT w.id, a.name AS asset_name, w.description, w.status, w.priority, u.first_name AS assigned_user, 
+            w.created_at, w.accept_by, w.accept_at, w.closed_at, w.due_date, acceptor.first_name AS acceptor_name 
         FROM work_orders w 
         JOIN assets a ON w.asset_id = a.id 
         JOIN users u ON w.assigned_user = u.id
         LEFT JOIN users acceptor ON w.accept_by = acceptor.id
         WHERE w.description LIKE ? OR a.name LIKE ?
     ");
+    $search_param = '%' . $search_query . '%';
     $stmt->bind_param("ss", $search_param, $search_param);
-}
 
-if ($stmt) {
-    $stmt->execute();
-    
-    // Ajustar o bind_result para corresponder ao número correto de colunas
-    $stmt->bind_result($work_order_id, $asset_name, $description, $status, $priority, $assigned_to, $created_at, $accept_by, $accept_at, $closed_at, $acceptor_name);
-    
-    while ($stmt->fetch()) {
-        $work_orders[] = [
-            'id' => $work_order_id,
-            'asset_name' => $asset_name,
-            'description' => $description,
-            'status' => $status,
-            'priority' => $priority,
-            'assigned_to' => $assigned_to,
-            'created_at' => $created_at,
-            'accept_by' => $accept_by,
-            'accept_at' => $accept_at,
-            'closed_at' => $closed_at,
-            'acceptor_name' => isset($acceptor_name) ? $acceptor_name : null
-        ];
+    if ($stmt) {
+        $stmt->execute();
+        $stmt->bind_result($work_order_id, $asset_name, $description, $status, $priority, $assigned_to, $created_at, $accept_by, $accept_at, $closed_at, $due_date, $acceptor_name);
+
+        while ($stmt->fetch()) {
+            // Calcula a proximidade do vencimento
+            $due_date_obj = new DateTime($due_date);
+            $interval = $current_date->diff($due_date_obj)->days;
+            $highlight_class = '';
+
+            if ($interval <= 1 && $interval >= 0 && $status !== 'Fechada') {
+                $highlight_class = 'table-danger'; // Vencimento em 1 dia
+            } elseif ($interval <= 3 && $interval > 1 && $status !== 'Fechada') {
+                $highlight_class = 'table-warning'; // Vencimento em 1-3 dias
+            } elseif ($interval <= 5 && $interval > 3 && $status !== 'Fechada') {
+                $highlight_class = 'table-success'; // Vencimento em 3-5 dias
+            }
+
+            $work_orders[] = [
+                'id' => $work_order_id,
+                'asset_name' => $asset_name,
+                'description' => $description,
+                'status' => $status,
+                'priority' => $priority,
+                'assigned_to' => $assigned_to,
+                'created_at' => $created_at,
+                'accept_by' => $accept_by,
+                'accept_at' => $accept_at,
+                'closed_at' => $closed_at,
+                'due_date' => $due_date,
+                'acceptor_name' => isset($acceptor_name) ? $acceptor_name : null,
+                'highlight_class' => $highlight_class
+            ];
+        }
+        $stmt->close();
+    } else {
+        die("Erro na consulta de ordens de trabalho: " . $conn->error);
     }
-    $stmt->close();
-} else {
-    die("Erro na consulta de ordens de trabalho: " . $conn->error);
 }
 ?>
 
@@ -156,6 +174,15 @@ if ($stmt) {
     <title>Listar Ordens de Trabalho</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <style>
+        .table-danger {
+            background-color: #f8d7da !important;
+            color: #842029 !important;
+        }
+
+        .table-warning {
+            background-color: #fff3cd !important;
+            color: #856404 !important;
+        }
         .row-buttons {
             height: auto; /* Ajuste a altura para auto */
             margin-bottom: 20px; /* Adicione uma margem inferior para espaçamento */
@@ -244,8 +271,9 @@ if ($stmt) {
                         <th>Descrição</th>
                         <th>Status</th>
                         <th>Prioridade</th>
-                        <th>Usuário</th>
+                        <th>Atribuído a</th>
                         <th>Data de Criação</th>
+                        <th>Data de Vencimento</th>
                         <th>Aceite Por</th>
                         <th>Aceite em</th>
                         <th>Fechado em</th>
@@ -253,7 +281,7 @@ if ($stmt) {
                 </thead>
                 <tbody>
                     <?php foreach ($work_orders as $work_order): ?>
-                        <tr class="<?= is_null($work_order['accept_by']) ? 'not-accepted' : '' ?>" onclick="location.href='view_work_order.php?id=<?= $work_order['id']; ?>'" style="cursor: pointer;">
+                        <tr class="<?= $work_order['highlight_class']; ?>" onclick="location.href='view_work_order.php?id=<?= $work_order['id']; ?>'" style="cursor: pointer;">
                             <td><?= $work_order['id'] ?></td>
                             <td><?= $work_order['asset_name'] ?></td>
                             <td><?= $work_order['description'] ?></td>
@@ -261,6 +289,7 @@ if ($stmt) {
                             <td><?= $work_order['priority'] ?></td>
                             <td><?= $work_order['assigned_to'] ?></td>
                             <td><?= $work_order['created_at'] ?></td>
+                            <td><?= $work_order['due_date'] ?></td>
                             <td><?= $work_order['acceptor_name'] ?></td>
                             <td><?= $work_order['accept_at'] ?></td>
                             <td><?= $work_order['closed_at'] ?></td>
@@ -269,6 +298,7 @@ if ($stmt) {
                 </tbody>
             </table>
         </div>
+
     <?php else: ?>
         <p>Nenhuma ordem de trabalho encontrada.</p>
     <?php endif; ?>

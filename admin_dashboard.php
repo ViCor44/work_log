@@ -39,12 +39,59 @@ $stmt_ot->close();
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Sistema CMMS - Página Inicial</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
     <style>
-        .card {
-            margin: 10px;
+        body {
+            background-color: #f8f9fa;
         }
-        .badge {
-            float: right; /* Para alinhar à direita */
+
+        .card {
+            transition: transform 0.3s, box-shadow 0.3s;
+            border: none;
+            border-radius: 10px;
+        }
+
+        .card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
+        }
+
+        .card-title {
+            font-size: 1.25rem;
+            font-weight: 600;
+        }
+
+        .card .badge {
+            float: right;
+            font-size: 0.85rem;
+            padding: 0.4em 0.6em;
+        }
+
+        .container {
+            margin-top: 50px;
+        }
+
+        h1 {
+            font-weight: bold;
+            color: #343a40;
+        }
+
+        .navbar-brand {
+            font-size: 1.5rem;
+            font-weight: 700;
+        }
+
+        .btn-primary {
+            background-color: #007bff;
+            border: none;
+        }
+
+        .btn-secondary {
+            background-color: #6c757d;
+            border: none;
+        }
+        .card-top {
+            margin-bottom: 20px; /* Adiciona espaço entre os cards superiores e os inferiores */
         }
     </style>
 </head>
@@ -53,83 +100,92 @@ $stmt_ot->close();
 <?php include 'navbar.php'; ?>
 
 <div class="container mt-4">
-    <h1 class="text-center">Bem-vindo ao Sistema CMMS</h1>
-    <div class="row">
-    <div class="col-md-4">
-            <div class="card">
+    <h1 class="text-center mb-5">Bem-vindo ao Sistema CMMS</h1>
+    <div class="row justify-content-center">
+        <!-- Card de Ativos -->
+        <div class="col-md-4">
+            <div class="card card-top text-center">
                 <div class="card-body">
-                    <h5 class="card-title">Ativos</h5>
-                    <p class="card-text">Registre novos ativos para o gerenciamento eficaz.</p>
+                    <h5 class="card-title">
+                        <i class="fas fa-box"></i> Ativos
+                    </h5>
+                    <p class="card-text">Registe novos ativos para uma gestão eficaz.</p>
                     <a href="list_assets.php" class="btn btn-primary">Listar Ativos</a>
                     <a href="create_asset.php" class="btn btn-secondary">Novo Ativo</a>
                 </div>
             </div>
         </div> 
+
+        <!-- Card de Gerir Utilizadores -->
         <div class="col-md-4">
-            <div class="card">
+            <div class="card text-center">
                 <div class="card-body">
-                    <h5 class="card-title">Gerir Utilizadores</h5>
+                    <h5 class="card-title">
+                        <i class="fas fa-users"></i> Gerir Utilizadores
+                    </h5>
                     <p class="card-text">Administre os utilizadores do sistema.</p>
                     <a href="manage_users.php" class="btn btn-primary">Gerir</a>
                 </div>
             </div>
         </div>
-        <!-- Novo Card para Sistema de Mensagens -->
+
+        <!-- Card para Sistema de Mensagens -->
         <div class="col-md-4">
-            <div class="card">
+            <div class="card text-center">
                 <div class="card-body">
-                    <h5 class="card-title">Sistema de Mensagens 
+                    <h5 class="card-title">
+                        <i class="fas fa-envelope"></i> Sistema de Mensagens 
                         <?php if ($unread_count > 0): ?>
                             <span class="badge bg-danger"><?= $unread_count; ?></span>
                         <?php endif; ?>
                     </h5>
                     <p class="card-text">Ver e enviar mensagens para outros utilizadores.</p>
-                    <div class="d-grid gap-2 d-md-flex justify-content-md-start">
-                        <a href="inbox.php" class="btn btn-primary me-md-2">Ver Mensagens</a>
-                        <a href="send_message.php" class="btn btn-secondary">Nova Mensagem</a>
-                    </div>
+                    <a href="inbox.php" class="btn btn-primary">Ver Mensagens</a>
+                    <a href="send_message.php" class="btn btn-secondary">Nova Mensagem</a>
                 </div>
             </div>
         </div>
-        <!-- Novo Card para Sistema de Relatórios -->
+
+        <!-- Card para Sistema de Relatórios -->
         <div class="col-md-4">
-            <div class="card">
+            <div class="card text-center">
                 <div class="card-body">
-                    <h5 class="card-title">Sistema de Relatórios</h5>
+                    <h5 class="card-title">
+                        <i class="fas fa-file-alt"></i> Sistema de Relatórios
+                    </h5>
                     <p class="card-text">Ver e redigir relatórios.</p>
-                    <div class="d-grid gap-2 d-md-flex justify-content-md-start">
-                        <a href="list_reports.php" class="btn btn-primary me-md-2">Listar Relatórios</a>
-                        <a href="create_report.php" class="btn btn-secondary">Novo Relatório</a>
-                    </div>
+                    <a href="list_reports.php" class="btn btn-primary">Listar Relatórios</a>
+                    <a href="create_report.php" class="btn btn-secondary">Novo Relatório</a>
                 </div>
             </div>
         </div>
-        <!-- Novo Card para Sistema de Relatórios -->
+
+        <!-- Card para Estatísticas -->
         <div class="col-md-4">
-            <div class="card">
+            <div class="card text-center">
                 <div class="card-body">
-                    <h5 class="card-title">Estatísticas</h5>
+                    <h5 class="card-title">
+                        <i class="fas fa-chart-pie"></i> Estatísticas
+                    </h5>
                     <p class="card-text">Ver estatísticas várias.</p>
-                    <div class="d-grid gap-2 d-md-flex justify-content-md-start">
-                        <a href="statistics.php" class="btn btn-primary me-md-2">Ver</a>                        
-                    </div>
+                    <a href="statistics.php" class="btn btn-primary">Ver</a>
                 </div>
             </div>
         </div>
-        <!-- Novo Card para Ordens de Trabalho -->
+
+        <!-- Card para Ordens de Trabalho -->
         <div class="col-md-4">
-            <div class="card">
+            <div class="card text-center">
                 <div class="card-body">
-                    <h5 class="card-title">Ordens de Trabalho 
+                    <h5 class="card-title">
+                        <i class="fas fa-tasks"></i> Ordens de Trabalho 
                         <?php if ($unaccepted_ot_count > 0): ?>
                             <span class="badge bg-warning"><?= $unaccepted_ot_count; ?></span>
                         <?php endif; ?>
                     </h5>
-                    <p class="card-text">Gerencie as ordens de trabalho dos ativos.</p>
-                    <div class="d-grid gap-2 d-md-flex justify-content-md-start">
-                        <a href="list_work_orders.php" class="btn btn-primary me-md-2">Ver Ordens</a>
-                        <a href="create_work_order.php" class="btn btn-secondary">Nova Ordem</a>
-                    </div>
+                    <p class="card-text">Gerir as ordens de trabalho dos ativos.</p>
+                    <a href="list_work_orders.php" class="btn btn-primary">Ver Ordens</a>
+                    <a href="create_work_order.php" class="btn btn-secondary">Nova Ordem</a>
                 </div>
             </div>
         </div>
@@ -140,3 +196,4 @@ $stmt_ot->close();
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.min.js"></script>
 </body>
 </html>
+

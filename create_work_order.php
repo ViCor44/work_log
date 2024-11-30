@@ -17,14 +17,31 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
     $priority = $_POST['priority']; // Captura a prioridade da ordem de trabalho
     $work_type = $_POST['work_type']; // Captura o tipo da ordem de trabalho
 
+    // Define a data e hora de vencimento (due_date) com base na prioridade
+    $due_date = null;
+    switch ($priority) {
+        case 'Crítica':
+            $due_date = date('Y-m-d 23:59:00'); // Hoje, com a hora atual
+            break;
+        case 'Alta':
+            $due_date = date('Y-m-d 18:00:00', strtotime('+2 days'));
+            break;
+        case 'Média':
+            $due_date = date('Y-m-d 18:00:00', strtotime('+5 days'));
+            break;
+        case 'Baixa':
+            $due_date = date('Y-m-d 18:00:00', strtotime('+10 days'));
+            break;
+    }
+
     // Prepara a consulta para inserir a nova ordem de trabalho
-    $stmt = $conn->prepare("INSERT INTO work_orders (asset_id, description, status, assigned_user, created_at, priority, type) VALUES (?, ?, 'pendente', ?, NOW(), ?, ?)");
+    $stmt = $conn->prepare("INSERT INTO work_orders (asset_id, description, status, assigned_user, created_at, priority, type, due_date) VALUES (?, ?, 'pendente', ?, NOW(), ?, ?, ?)");
     if (!$stmt) {
         die("Erro na preparação da consulta: " . $conn->error);
     }
 
     // Bind dos parâmetros
-    $stmt->bind_param("issss", $asset_id, $description, $assigned_to, $priority, $work_type);
+    $stmt->bind_param("isssss", $asset_id, $description, $assigned_to, $priority, $work_type, $due_date);
 
     if ($stmt->execute()) {
         // Redireciona após a inserção bem-sucedida

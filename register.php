@@ -53,7 +53,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
 <div class="container mt-5">
     <div class="text-center mb-4">
-        <img src="images/logo.png" alt="Logotipo" style="height: 80px;">
+        <img src="images/logo1.png" alt="Logotipo" style="height: 80px;">
         <h1>Sistema CMMS</h1>
     </div>
     <div class="card mx-auto" style="width: 25rem;">

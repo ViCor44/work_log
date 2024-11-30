@@ -63,6 +63,7 @@ if (isset($_GET['id'])) {
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Detalhes do Ativo</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css" rel="stylesheet">
 </head>
 <body>
 
@@ -80,7 +81,7 @@ if (isset($_GET['id'])) {
                 <div class="col-md-12 mb-3">
                     <div class="card">
                         <div class="card-body">
-                            <h5 class="card-title">Categoria</h5>
+                            <h5 class="card-title"><i class="fas fa-sitemap"></i> Categoria</h5>
                             <p class="card-text">
                                 <?php foreach ($categories as $category): ?>
                                     <?= htmlspecialchars($category['name']); ?><?php if (end($categories) !== $category): ?> > <?php endif; ?>
@@ -94,7 +95,7 @@ if (isset($_GET['id'])) {
             <div class="col-md-6 mb-3">
                 <div class="card">
                     <div class="card-body">
-                        <h5 class="card-title">Nome do Ativo</h5>
+                        <h5 class="card-title"><i class="fas fa-pen-to-square"></i> Nome do Ativo</h5>
                         <p class="card-text"><?= htmlspecialchars($asset['name']); ?></p>
                     </div>
                 </div>
@@ -103,8 +104,12 @@ if (isset($_GET['id'])) {
                 <div class="col-md-6 mb-3">
                     <div class="card">
                         <div class="card-body">
-                            <h5 class="card-title">Manual</h5>
-                            <a href="uploads/<?= htmlspecialchars($asset['manual']); ?>" target="_blank" class="btn btn-primary">Ver Manual</a>
+                            <h5 class="card-title"><i class="fas fa-book"></i> Manual</h5>
+                            <?php if ($asset['manual']): ?>
+                                <a href="uploads/<?= htmlspecialchars($asset['manual']); ?>" target="_blank" class="btn btn-primary">Ver Manual</a>
+                            <?php else: ?>
+                                <button class="btn btn-primary" disabled data-bs-toggle="tooltip" title="Manual indisponível">Ver Manual</button>
+                            <?php endif; ?>
                         </div>
                     </div>
                 </div>
@@ -113,8 +118,12 @@ if (isset($_GET['id'])) {
                 <div class="col-md-12 mb-3">
                     <div class="card">
                         <div class="card-body">
-                            <h5 class="card-title">Características</h5>
-                            <p class="card-text"><?= htmlspecialchars($asset['features']); ?></p>
+                            <h5 class="card-title"><i class="fas fa-list-ol"></i> Características</h5>
+                            <ul>
+                                <?php foreach (explode(',', $asset['features']) as $feature): ?>
+                                    <li><?= htmlspecialchars($feature); ?></li>
+                                <?php endforeach; ?>
+                            </ul>
                         </div>
                     </div>
                 </div>
@@ -122,7 +131,7 @@ if (isset($_GET['id'])) {
             <div class="col-md-12 mb-3">
                 <div class="card">
                     <div class="card-body">
-                        <h5 class="card-title">Descrição</h5>
+                        <h5 class="card-title"><i class="fas fa-pencil"></i> Descrição</h5>
                         <p class="card-text"><?= htmlspecialchars($asset['description']); ?></p>
                     </div>
                 </div>
@@ -130,27 +139,54 @@ if (isset($_GET['id'])) {
             <?php if ($asset['photo']): ?>
                 <div class="col-md-6 mb-3">
                     <div class="card">
-                        <div class="card-body">
-                            <h5 class="card-title">Foto do Ativo</h5>
-                            <img src="uploads/<?= htmlspecialchars($asset['photo']); ?>" alt="Foto do Ativo" class="img-fluid rounded">
+                        <div class="card-body text-center">
+                            <h5 class="card-title"><i class="fas fa-camera-retro"></i> Foto do Ativo</h5>
+                            <img src="uploads/<?= htmlspecialchars($asset['photo']); ?>" alt="Foto do Ativo" class="img-fluid rounded" style="cursor: pointer;" data-bs-toggle="modal" data-bs-target="#photoModal">
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Modal para ampliar a imagem -->
+                <div class="modal fade" id="photoModal" tabindex="-1" aria-labelledby="photoModalLabel" aria-hidden="true">
+                    <div class="modal-dialog modal-lg">
+                        <div class="modal-content">
+                            <div class="modal-body text-center">
+                                <img src="uploads/<?= htmlspecialchars($asset['photo']); ?>" alt="Foto do Ativo" class="img-fluid rounded">
+                            </div>
                         </div>
                     </div>
                 </div>
             <?php endif; ?>               
             <div class="col-md-6 mb-3">
-                <div class="card">
+                <div class="card text-center">
                     <div class="card-body">
-                        <h5 class="card-title">QR Code</h5>
-                        <img src="uploads/qrcode_<?= htmlspecialchars($asset['id']); ?>.png" alt="QR Code" class="img-fluid rounded">
+                        <h5 class="card-title"><i class="fas fa-qrcode"></i> QR Code</h5>
+                        <img src="uploads/qrcode_<?= htmlspecialchars($asset['id']); ?>.png" alt="QR Code" class="img-fluid rounded mb-3">
+                        <p class="card-text">Escaneie para acessar informações adicionais.</p>
                     </div>
                 </div>
-            </div>            
+            </div>
+            <?php if ($asset['updated_at']): ?>
+                <div class="col-md-12 mb-3">
+                    <div class="card">
+                        <div class="card-body">
+                            <h5 class="card-title"><i class="fas fa-recycle"></i> Última Atualização</h5>
+                            <p class="card-text"><?= htmlspecialchars(date('d/m/Y H:i', strtotime($asset['updated_at']))); ?></p>
+                        </div>
+                    </div>
+                </div>
+            <?php endif; ?>            
         </div>        
     <?php else: ?>
         <div class="alert alert-danger">Ativo não encontrado!</div>
     <?php endif; ?>
 </div>
-
+<script>
+    var tooltipTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="tooltip"]'))
+    var tooltipList = tooltipTriggerList.map(function (tooltipTriggerEl) {
+        return new bootstrap.Tooltip(tooltipTriggerEl)
+    })
+</script>
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
 </body>
 </html>
