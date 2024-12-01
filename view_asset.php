@@ -106,7 +106,7 @@ if (isset($_GET['id'])) {
                         <div class="card-body">
                             <h5 class="card-title"><i class="fas fa-book"></i> Manual</h5>
                             <?php if ($asset['manual']): ?>
-                                <a href="uploads/<?= htmlspecialchars($asset['manual']); ?>" target="_blank" class="btn btn-primary">Ver Manual</a>
+                                <a href="<?= htmlspecialchars($asset['manual']); ?>" target="_blank" class="btn btn-primary">Ver Manual</a>
                             <?php else: ?>
                                 <button class="btn btn-primary" disabled data-bs-toggle="tooltip" title="Manual indisponível">Ver Manual</button>
                             <?php endif; ?>
@@ -141,7 +141,7 @@ if (isset($_GET['id'])) {
                     <div class="card">
                         <div class="card-body text-center">
                             <h5 class="card-title"><i class="fas fa-camera-retro"></i> Foto do Ativo</h5>
-                            <img src="uploads/<?= htmlspecialchars($asset['photo']); ?>" alt="Foto do Ativo" class="img-fluid rounded" style="cursor: pointer;" data-bs-toggle="modal" data-bs-target="#photoModal">
+                            <img src="<?= htmlspecialchars($asset['photo']); ?>" alt="Foto do Ativo" class="img-fluid rounded" style="cursor: pointer;" data-bs-toggle="modal" data-bs-target="#photoModal">
                         </div>
                     </div>
                 </div>
@@ -151,7 +151,7 @@ if (isset($_GET['id'])) {
                     <div class="modal-dialog modal-lg">
                         <div class="modal-content">
                             <div class="modal-body text-center">
-                                <img src="uploads/<?= htmlspecialchars($asset['photo']); ?>" alt="Foto do Ativo" class="img-fluid rounded">
+                                <img src="<?= htmlspecialchars($asset['photo']); ?>" alt="Foto do Ativo" class="img-fluid rounded">
                             </div>
                         </div>
                     </div>
@@ -161,11 +161,21 @@ if (isset($_GET['id'])) {
                 <div class="card text-center">
                     <div class="card-body">
                         <h5 class="card-title"><i class="fas fa-qrcode"></i> QR Code</h5>
-                        <img src="uploads/qrcode_<?= htmlspecialchars($asset['id']); ?>.png" alt="QR Code" class="img-fluid rounded mb-3">
+                        <img src="<?= htmlspecialchars($asset['qrcode']); ?>" alt="QR Code" class="img-fluid rounded" style="cursor: pointer;" data-bs-toggle="modal" data-bs-target="#qrModal">
                         <p class="card-text">Escaneie para acessar informações adicionais.</p>
                     </div>
                 </div>
             </div>
+            <!-- Modal para ampliar a imagem -->
+            <div class="modal fade" id="qrModal" tabindex="-1" aria-labelledby="qrModalLabel" aria-hidden="true">
+                    <div class="modal-dialog modal-lg">
+                        <div class="modal-content">
+                            <div class="modal-body text-center">
+                                <img src="<?= htmlspecialchars($asset['qrcode']); ?>" alt="QR Code do Ativo" class="img-fluid rounded">
+                            </div>
+                        </div>
+                    </div>
+                </div>
             <?php if ($asset['updated_at']): ?>
                 <div class="col-md-12 mb-3">
                     <div class="card">

@@ -23,10 +23,10 @@ $stmt->close();
 
 if ($_SERVER["REQUEST_METHOD"] == "POST") {
     // Captura os dados do formulário
-    $name = $_POST['name'];
-    $description = $_POST['description'];
-    $features = $_POST['features']; // Novo campo: características
-    $category_id = $_POST['category_id']; // Novo campo: categoria
+    $name = htmlspecialchars(trim($_POST['name']));
+    $description = htmlspecialchars(trim($_POST['description']));
+    $features = htmlspecialchars(trim($_POST['features']));
+    $category_id = filter_var($_POST['category_id'], FILTER_VALIDATE_INT);
     $photo = $_FILES['photo']['name'];
     $manual = $_FILES['manual']['name'];
 
@@ -36,13 +36,23 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
     $manual_target = basename($manual);
 
     // Move os arquivos para o diretório de uploads, se fornecidos
-    if (!empty($photo)) {
-        move_uploaded_file($_FILES['photo']['tmp_name'], $photo_target);
+    if ($_FILES['photo']['error'] === UPLOAD_ERR_OK) {
+        $photo_target = $target_dir . basename($photo);
+        if (!move_uploaded_file($_FILES['photo']['tmp_name'], $photo_target)) {
+            $message = "Erro ao fazer upload da foto.";
+        }
+    } else {
+        $photo_target = null;
     }
-    if (!empty($manual)) {
-        move_uploaded_file($_FILES['manual']['tmp_name'], $manual_target);
+    
+    if ($_FILES['manual']['error'] === UPLOAD_ERR_OK) {
+        $manual_target = $target_dir . basename($manual);
+        if (!move_uploaded_file($_FILES['manual']['tmp_name'], $manual_target)) {
+            $message = "Erro ao fazer upload do manual.";
+        }
+    } else {
+        $manual_target = null;
     }
-
     // Insere os dados na tabela assets
     $stmt = $conn->prepare("INSERT INTO assets (name, description, features, category_id, photo, manual) VALUES (?, ?, ?, ?, ?, ?)");
     $stmt->bind_param("sssiss", $name, $description, $features, $category_id, $photo_target, $manual_target);
@@ -75,6 +85,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Criar Ativo</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
 </head>
 <body>
 
@@ -86,10 +97,10 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
         <div class="alert alert-info"><?= htmlspecialchars($message); ?></div>
     <?php endif; ?>
     <form method="POST" enctype="multipart/form-data">
-        <div class="mb-3">
-            <label for="name" class="form-label">Nome do Ativo</label>
-            <input type="text" class="form-control" id="name" name="name" required>
-        </div>
+    <div class="mb-3">
+        <label for="name" class="form-label">Nome do Ativo</label>
+        <input type="text" class="form-control" id="name" name="name" placeholder="Ex: Compressor de Ar" required>
+    </div>
         <div class="mb-3">
             <label for="category_id" class="form-label">Categoria</label> <!-- Novo campo: Categoria -->
             <select class="form-control" id="category_id" name="category_id" required>
@@ -101,7 +112,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
         </div>
         <div class="mb-3">
             <label for="description" class="form-label">Descrição</label>
-            <textarea class="form-control" id="description" name="description" required></textarea>
+            <textarea class="form-control" id="description" name="description" placeholder="Descreva o ativo" required></textarea>
         </div>
         <div class="mb-3">
             <label for="features" class="form-label">Características</label> <!-- Novo campo: Características -->
@@ -116,11 +127,21 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
             <input type="file" class="form-control" id="manual" name="manual" accept=".pdf,.doc,.docx">
         </div>
         <div class="d-flex">
-            <a href="redirect_page.php" class="btn btn-secondary me-2">Voltar</a> <!-- Botão de Voltar -->
-            <button type="submit" class="btn btn-primary">Criar Ativo</button>
+            <a href="redirect_page.php" class="btn btn-secondary me-2"><i class="fa fa-arrow-left"></i> Voltar</a> <!-- Botão de Voltar -->
+            <button type="submit" class="btn btn-primary"><i class="fa fa-save"></i> Criar Ativo</button>
         </div>
     </form>
 </div>
+<script>
+    document.querySelector('form').addEventListener('submit', function(e) {
+    const name = document.getElementById('name').value;
+    const category = document.getElementById('category_id').value;
+    if (!name || !category) {
+        e.preventDefault();
+        alert('Por favor, preencha todos os campos obrigatórios.');
+    }
+    });
+</script>
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
 </body>
 </html>

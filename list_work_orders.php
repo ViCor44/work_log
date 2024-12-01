@@ -34,11 +34,10 @@ if ($stmt) {
     $stmt->execute();
     $stmt->bind_result($status, $count);
     while ($stmt->fetch()) {
-        // Contagem de OTs abertas
         if (in_array($status, ['Pendente', 'Aceite', 'Em Andamento'])) {
-            $openCount += $count; // Usar += para somar todas as abertas
+            $openCount += $count;
         } elseif ($status === 'Fechada') {
-            $closedCount = $count; // Somente uma contagem para OTs fechadas
+            $closedCount = $count;
         }
     }
     $stmt->close();
@@ -77,92 +76,74 @@ if ($stmt) {
 
 // Verificar se um filtro de prioridade ou status foi aplicado
 $priorityFilter = isset($_GET['priority']) ? $_GET['priority'] : '';
-$statusFilter = isset($_GET['status']) ? $_GET['status'] : ''; // Para filtrar OTs abertas e fechadas
+$statusFilter = isset($_GET['status']) ? $_GET['status'] : '';
 
-// Consulta para obter todas as ordens de trabalho com ativos, usuários e quem aceitou, com ou sem filtro
 $work_orders = [];
+$search_param = '%' . $search_query . '%';
 
-$search_param = '%' . $search_query . '%'; // Para busca por palavras-chave
+$query = "
+    SELECT w.id, a.name AS asset_name, w.description, w.status, w.priority, u.first_name AS assigned_user, 
+           w.created_at, w.accept_by, w.accept_at, w.closed_at, w.due_date, acceptor.first_name AS acceptor_name
+    FROM work_orders w
+    JOIN assets a ON w.asset_id = a.id
+    JOIN users u ON w.assigned_user = u.id
+    LEFT JOIN users acceptor ON w.accept_by = acceptor.id
+    WHERE (w.description LIKE ? OR a.name LIKE ?)
+    ORDER BY w.created_at DESC
+";
+
 if ($statusFilter) {
-    // Definir a condição do status baseado no filtro
     $statusCondition = $statusFilter === 'open' ? "'Pendente', 'Aceite', 'Em Andamento'" : "'Fechada'";
-    
-    // Consulta com filtro de status e pesquisa
-    $stmt = $conn->prepare("
-        SELECT w.id, a.name AS asset_name, w.description, w.status, w.priority, u.first_name AS assigned_user, w.created_at, w.accept_by, w.accept_at, w.closed_at, acceptor.first_name AS acceptor_name 
-        FROM work_orders w 
-        JOIN assets a ON w.asset_id = a.id 
-        JOIN users u ON w.assigned_user = u.id
-        LEFT JOIN users acceptor ON w.accept_by = acceptor.id
-        WHERE w.status IN ($statusCondition) AND (w.description LIKE ? OR a.name LIKE ?)
-    ");
-    $stmt->bind_param("ss", $search_param, $search_param);
+    $query .= " AND w.status IN ($statusCondition)";
 } elseif ($priorityFilter) {
-    // Consulta com filtro de prioridade e pesquisa
-    $stmt = $conn->prepare("
-        SELECT w.id, a.name AS asset_name, w.description, w.status, w.priority, u.first_name AS assigned_user, w.created_at, w.accept_by, w.accept_at, w.closed_at, acceptor.first_name AS acceptor_name 
-        FROM work_orders w 
-        JOIN assets a ON w.asset_id = a.id 
-        JOIN users u ON w.assigned_user = u.id
-        LEFT JOIN users acceptor ON w.accept_by = acceptor.id
-        WHERE w.priority = ? AND (w.description LIKE ? OR a.name LIKE ?)
-    ");
-    $stmt->bind_param("sss", $priorityFilter, $search_param, $search_param);
+    $query .= " AND w.priority = ?";
+}
+
+$stmt = $conn->prepare($query);
+
+if ($priorityFilter) {
+    $stmt->bind_param("sss", $search_param, $search_param, $priorityFilter);
 } else {
-    // Consulta sem filtro e pesquisa
-    $work_orders = [];
-    $current_date = new DateTime();
-
-    $stmt = $conn->prepare("
-        SELECT w.id, a.name AS asset_name, w.description, w.status, w.priority, u.first_name AS assigned_user, 
-            w.created_at, w.accept_by, w.accept_at, w.closed_at, w.due_date, acceptor.first_name AS acceptor_name 
-        FROM work_orders w 
-        JOIN assets a ON w.asset_id = a.id 
-        JOIN users u ON w.assigned_user = u.id
-        LEFT JOIN users acceptor ON w.accept_by = acceptor.id
-        WHERE w.description LIKE ? OR a.name LIKE ?
-    ");
-    $search_param = '%' . $search_query . '%';
     $stmt->bind_param("ss", $search_param, $search_param);
+}
 
-    if ($stmt) {
-        $stmt->execute();
-        $stmt->bind_result($work_order_id, $asset_name, $description, $status, $priority, $assigned_to, $created_at, $accept_by, $accept_at, $closed_at, $due_date, $acceptor_name);
+if ($stmt) {
+    $stmt->execute();
+    $stmt->bind_result($work_order_id, $asset_name, $description, $status, $priority, $assigned_to, $created_at, $accept_by, $accept_at, $closed_at, $due_date, $acceptor_name);
 
-        while ($stmt->fetch()) {
-            // Calcula a proximidade do vencimento
-            $due_date_obj = new DateTime($due_date);
-            $interval = $current_date->diff($due_date_obj)->days;
-            $highlight_class = '';
+    $current_date = new DateTime();
+    while ($stmt->fetch()) {
+        $due_date_obj = new DateTime($due_date);
+        $interval = $current_date->diff($due_date_obj)->days;
+        $highlight_class = '';
 
-            if ($interval <= 1 && $interval >= 0 && $status !== 'Fechada') {
-                $highlight_class = 'table-danger'; // Vencimento em 1 dia
-            } elseif ($interval <= 3 && $interval > 1 && $status !== 'Fechada') {
-                $highlight_class = 'table-warning'; // Vencimento em 1-3 dias
-            } elseif ($interval <= 5 && $interval > 3 && $status !== 'Fechada') {
-                $highlight_class = 'table-success'; // Vencimento em 3-5 dias
-            }
-
-            $work_orders[] = [
-                'id' => $work_order_id,
-                'asset_name' => $asset_name,
-                'description' => $description,
-                'status' => $status,
-                'priority' => $priority,
-                'assigned_to' => $assigned_to,
-                'created_at' => $created_at,
-                'accept_by' => $accept_by,
-                'accept_at' => $accept_at,
-                'closed_at' => $closed_at,
-                'due_date' => $due_date,
-                'acceptor_name' => isset($acceptor_name) ? $acceptor_name : null,
-                'highlight_class' => $highlight_class
-            ];
+        if ($interval <= 1 && $interval >= 0 && $status !== 'Fechada') {
+            $highlight_class = 'table-danger';
+        } elseif ($interval <= 3 && $interval > 1 && $status !== 'Fechada') {
+            $highlight_class = 'table-warning';
+        } elseif ($interval <= 5 && $interval > 3 && $status !== 'Fechada') {
+            $highlight_class = 'table-success';
         }
-        $stmt->close();
-    } else {
-        die("Erro na consulta de ordens de trabalho: " . $conn->error);
+
+        $work_orders[] = [
+            'id' => $work_order_id,
+            'asset_name' => $asset_name,
+            'description' => $description,
+            'status' => $status,
+            'priority' => $priority,
+            'assigned_to' => $assigned_to,
+            'created_at' => $created_at,
+            'accept_by' => $accept_by,
+            'accept_at' => $accept_at,
+            'closed_at' => $closed_at,
+            'due_date' => $due_date,
+            'acceptor_name' => isset($acceptor_name) ? $acceptor_name : null,
+            'highlight_class' => $highlight_class
+        ];
     }
+    $stmt->close();
+} else {
+    die("Erro na consulta de ordens de trabalho: " . $conn->error);
 }
 ?>
 

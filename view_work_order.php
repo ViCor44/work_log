@@ -270,7 +270,10 @@ $user_stmt->close();
                         <div class="mb-3">
                             <button type="submit" class="btn btn-primary" <?= $status === 'Fechada' ? 'disabled' : ''; ?>>Salvar Ações</button>
                             <button type="submit" name="accept" value="accept" class="btn btn-success" <?= ($status !== 'Aceite') ? 'disabled' : ''; ?>>Aceitar OT</button>
-                            <button type="submit" name="close" value="close" class="btn btn-danger"><?= $status === 'Fechada' ? 'Reabrir OT' : 'Fechar OT'; ?></button>
+                            <button type="submit" name="close" value="close" class="btn btn-danger"
+                                <?= ($status === 'Fechada' || ($_SESSION['user_id'] != $accept_by)) ? 'disabled' : ''; ?>>
+                                <?= $status === 'Fechada' ? 'Reabrir OT' : 'Fechar OT'; ?>
+                            </button>
                         </div>                
                     </form>
                 </div> 
