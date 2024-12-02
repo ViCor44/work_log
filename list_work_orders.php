@@ -89,15 +89,18 @@ $query = "
     JOIN users u ON w.assigned_user = u.id
     LEFT JOIN users acceptor ON w.accept_by = acceptor.id
     WHERE (w.description LIKE ? OR a.name LIKE ?)
-    ORDER BY w.created_at DESC
 ";
 
 if ($statusFilter) {
     $statusCondition = $statusFilter === 'open' ? "'Pendente', 'Aceite', 'Em Andamento'" : "'Fechada'";
     $query .= " AND w.status IN ($statusCondition)";
-} elseif ($priorityFilter) {
+}
+
+if ($priorityFilter) {
     $query .= " AND w.priority = ?";
 }
+
+$query .= " ORDER BY w.created_at DESC";
 
 $stmt = $conn->prepare($query);
 
@@ -106,6 +109,7 @@ if ($priorityFilter) {
 } else {
     $stmt->bind_param("ss", $search_param, $search_param);
 }
+
 
 if ($stmt) {
     $stmt->execute();

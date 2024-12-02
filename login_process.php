@@ -14,7 +14,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
     $stmt->execute();
     $result = $stmt->get_result();
 
-    // Verifique se o usuário existe
+    // Verifique se o utilizador existe
     if ($result->num_rows > 0) {
         $user = $result->fetch_assoc();
 
@@ -37,7 +37,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
                 }
                 exit();
             } else {
-                // Usuário não aceito
+                // Utilizador não aceite
                 echo "<script>alert('Aguarde que um administrador aceite o seu registo!'); window.location.href='login.php';</script>";
             }
         } else {
@@ -45,8 +45,8 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
             echo "<script>alert('Senha incorreta!'); window.location.href='login.php';</script>";
         }
     } else {
-        // Usuário não encontrado
-        echo "<script>alert('Usuário não encontrado!'); window.location.href='login.php';</script>";
+        // Utilizador não encontrado
+        echo "<script>alert('Utilizador não encontrado!'); window.location.href='login.php';</script>";
     }
 
     $stmt->close();
