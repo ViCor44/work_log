@@ -42,7 +42,9 @@ $stmt_ot->close();
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
     <style>
         body {
-            background-color: #f8f9fa;
+            background: url('images/c7a9801f-2e42-4a72-8918-8b8bebb0f903.webp') no-repeat center center fixed; /* Substitua pelo caminho da imagem */
+            background-size: cover;
+            color: #ffffff; /* Torna o texto mais visível sobre o fundo */
         }
 
         .card {
@@ -74,12 +76,7 @@ $stmt_ot->close();
         h1 {
             font-weight: bold;
             color: #343a40;
-        }
-
-        .navbar-brand {
-            font-size: 1.5rem;
-            font-weight: 700;
-        }
+        }        
 
         .btn-primary {
             background-color: #007bff;
@@ -100,7 +97,7 @@ $stmt_ot->close();
 <?php include 'navbar.php'; ?>
 
 <div class="container mt-4">
-    <h1 class="text-center mb-5">Bem-vindo ao Sistema CMMS</h1>
+    <h1 class="text-center mb-5">Bem-vindo ao WorkLog CMMS</h1>
     <div class="row justify-content-center">
         <!-- Card de Ativos -->
         <div class="col-md-4">

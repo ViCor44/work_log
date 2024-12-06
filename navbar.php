@@ -45,11 +45,11 @@ $stmt->close();
     <div class="container">
         <!-- Logotipo -->
         <a class="navbar-brand" href="redirect_page.php">
-            <img src="images/logo1.png" alt="Logotipo" style="height: 40px;"> Sistema CMMS
+              WorkLog CMMS
         </a>        
         <!-- Nome do usuário clicável para abrir o modal -->
         <span class="navbar-text user-name">
-            <a href="#" data-bs-toggle="modal" data-bs-target="#editProfileModal">
+            <a href="#" data-bs-toggle="modal" data-bs-target="#editProfileModal" style="font-size: 1.2rem; text-decoration: none; font-weight: bold;">
                 Olá, <?= htmlspecialchars($first_name . ' ' . $last_name); ?>
             </a>
         </span>
@@ -127,4 +127,14 @@ $stmt->close();
     .user-name {
         margin-right: -700px; /* Ajuste o valor conforme necessário */
     }
+    .form-label {
+        color: blue;
+    }
+    .modal-title {
+        color: blue;
+    }
+    .navbar-brand {
+            font-size: 1.5rem;
+            font-weight: 700;
+        }
 </style>

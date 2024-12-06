@@ -7,12 +7,6 @@ if (!isset($_SESSION['user_id'])) {
 
 include 'db.php';
 
-// Verificar se o usuário logado é administrador
-if ($_SESSION['user_type'] !== 'admin') {
-    echo "Acesso negado!";
-    exit;
-}
-
 // Função para contar relatórios por técnico
 function getReportsByTechnician($conn) {
     $sql = "SELECT u.first_name, u.last_name, COUNT(r.id) as total_reports 
@@ -232,7 +226,7 @@ $average_completion_time = getAverageCompletionTime($conn);
 
         <div class="row">
             <div class="col-md-6">
-                <div class="card border-primary">
+                <div class="card">
                     <div class="card-header">
                         <h3 class="mb-0">Execução de Ordens de Trabalho</h3>
                     </div>
@@ -264,11 +258,23 @@ $average_completion_time = getAverageCompletionTime($conn);
             </div>
             <div class="col-md-6">
                 <div class="card">
-                    <div class="card-body">
-                        <h3>Total de OTs Abertas e Fechadas</h3>
-                        <p>Abertas: <?= $total_open_closed_work_orders['total_open'] ?></p>
-                        <p>Fechadas: <?= $total_open_closed_work_orders['total_closed'] ?></p>
+                    <div class="card-header">
+                        <h3 class="mb-0">Total de OTs</h3>
                     </div>
+                    <div class="card-body">                        
+                        <h4>Abertas: </h4>
+                        <p>
+                            <a href="list_work_orders.php?status=open">
+                                <?= $total_open_closed_work_orders['total_open'] ?>
+                            </a>
+                        </p>                        
+                        <h4>Fechadas: </h4>
+                        <p>
+                            <a href="list_work_orders.php?status=closed">
+                                <?= $total_open_closed_work_orders['total_closed'] ?>
+                            </a>
+                        </p>
+                    </div>               
                 </div>  
             </div>
         </div>

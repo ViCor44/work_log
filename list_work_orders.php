@@ -158,34 +158,7 @@ if ($stmt) {
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Listar Ordens de Trabalho</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
-    <style>
-        .table-danger {
-            background-color: #f8d7da !important;
-            color: #842029 !important;
-        }
-
-        .table-warning {
-            background-color: #fff3cd !important;
-            color: #856404 !important;
-        }
-        .row-buttons {
-            height: auto; /* Ajuste a altura para auto */
-            margin-bottom: 20px; /* Adicione uma margem inferior para espaçamento */
-        }
-
-        .priority-btn {
-            font-size: 1.2rem;
-            padding: 1rem;
-            display: flex; /* Adiciona um display flex */
-            align-items: center; /* Centraliza verticalmente o conteúdo */
-            justify-content: center; /* Centraliza horizontalmente o conteúdo */
-            height: 100%; /* Garante que os botões ocupem toda a altura da coluna */
-        }
-
-        .not-accepted {
-            font-weight: bold; /* Define a fonte em negrito */
-        }
-    </style>
+    <link rel="stylesheet" href="css/style.css" type="text/css"/>    
 </head>
 <body>
 

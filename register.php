@@ -5,7 +5,7 @@ include 'db.php'; // Inclui a conexão com o banco de dados
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $first_name = $_POST['first_name'];
     $last_name = $_POST['last_name'];
-    $username = $_POST['username'];
+    $username = $_POST['new_username'];
     $email = $_POST['email'];
     $phone = $_POST['phone'];
     $password = $_POST['password'];
@@ -46,15 +46,22 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Registro - Sistema CMMS</title>
+    <title>Registro - WorkLog CMMS</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+        body {
+            background: url('images/c7a9801f-2e42-4a72-8918-8b8bebb0f903.webp') no-repeat center center fixed;
+            background-size: cover;
+            color: #000000;
+        }
+    </style>
 </head>
 <body>
 
 <div class="container mt-5">
     <div class="text-center mb-4">
-        <img src="images/logo1.png" alt="Logotipo" style="height: 80px;">
-        <h1>Sistema CMMS</h1>
+        
+        <h1>WorkLog CMMS</h1>
     </div>
     <div class="card mx-auto" style="width: 25rem;">
         <div class="card-body">
@@ -70,7 +77,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 </div>
                 <div class="mb-3">
                     <label for="username" class="form-label">Username</label>
-                    <input type="text" class="form-control" id="username" name="username" required>
+                    <input autocomplete="new_username" type="text" class="form-control" id="new_username" name="new_username" required >
                 </div>
                 <div class="mb-3">
                     <label for="email" class="form-label">Email</label>
