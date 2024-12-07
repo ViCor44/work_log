@@ -33,7 +33,7 @@ WorkLog CMMS é um sistema de Gestãoo de Manutenção Computadorizado (CMMS) de
 
 1. Clone o repositório:
     ```bash
-    git clone https://github.com/ViCor44/sistema_cmms.git
+    git clone https://github.com/ViCor44/work_log.git
     
  2. Configure o banco de dados:
   - Crie uma base de dados no MySQL.
