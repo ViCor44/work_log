@@ -40,15 +40,6 @@ CREATE TABLE `assets` (
   `category_id` int(11) DEFAULT NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
---
--- Extraindo dados da tabela `assets`
---
-
-INSERT INTO `assets` (`id`, `name`, `description`, `photo`, `manual`, `qrcode`, `created_at`, `updated_at`, `features`, `category_id`) VALUES
-(6, 'Bomba Elevação Pistas', 'Bomba de elevação das Pistas Foam', 'D_NQ_NP_806680-MLB43541020273_092020-O.webp', '1710146787750.pdf', 'uploads/qrcode_6.png', '2024-10-21 21:52:35', '2024-10-27 10:19:28', '400v\r\n20A\r\n10KW', 3),
-(7, 'PCA1 Pistas Brandas', 'Controlador de cloro livre e pH', 'grundfos_did_500x200px.png', 'Grundfosliterature-6511733.pdf', 'uploads/qrcode_7.png', '2024-10-24 22:32:56', '2024-10-24 22:32:57', 'GRUNDFOS DID', NULL),
-(11, 'Grelhador Frangos', 'Grelhador de frangos', 'grelhador-GV3-vertical.jpg', 'Catalogo-UL-2020.pdf', 'uploads/qrcode_11.png', '2024-10-27 20:18:10', '2024-10-27 20:18:10', '400V\r\n22KW\r\n50A', 4);
-
 -- --------------------------------------------------------
 
 --
@@ -62,18 +53,7 @@ CREATE TABLE `categories` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
 --
--- Extraindo dados da tabela `categories`
---
 
-INSERT INTO `categories` (`id`, `name`, `parent_id`) VALUES
-(1, 'Divertimentos', NULL),
-(2, 'Restauração', NULL),
-(3, 'Casa de Máquinas 1', 1),
-(4, 'Quiosque Grelhados', 2);
-
--- --------------------------------------------------------
-
---
 -- Estrutura da tabela `messages`
 --
 
@@ -87,16 +67,6 @@ CREATE TABLE `messages` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
 --
--- Extraindo dados da tabela `messages`
---
-
-INSERT INTO `messages` (`id`, `sender_id`, `receiver_id`, `message_text`, `timestamp`, `is_read`) VALUES
-(1, 2, 2, 'Teste', '2024-10-22 19:11:28', 1),
-(2, 2, 2, 'Recebido', '2024-10-22 19:33:42', 1),
-(3, 2, 3, 'Olá! Teste', '2024-10-23 22:48:59', 1),
-(4, 2, 3, 'Teste.', '2024-10-24 19:40:09', 0),
-(5, 3, 4, 'Novo Teste!', '2024-10-24 22:23:12', 0),
-(6, 3, 2, 'Novo Teste!', '2024-10-24 22:23:12', 0);
 
 -- --------------------------------------------------------
 
@@ -137,12 +107,6 @@ CREATE TABLE `report_photos` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
 --
--- Extraindo dados da tabela `report_photos`
---
-
-INSERT INTO `report_photos` (`id`, `report_id`, `photo_path`) VALUES
-(2, 2, 'uploads/bad mood.png'),
-(3, 3, 'uploads/img5e9eab2a5a5e40.85674433.jpg');
 
 -- --------------------------------------------------------
 
@@ -171,10 +135,7 @@ CREATE TABLE `users` (
 --
 
 INSERT INTO `users` (`id`, `username`, `first_name`, `last_name`, `email`, `phone`, `password`, `security_question`, `security_answer`, `user_type`, `created_at`, `updated_at`, `accepted`) VALUES
-(2, 'VCorreia', 'Victor', 'Correia', 'victor.a.correia@gmail.com', '967930476', '$2y$10$eygSbJAoWM5IcnXKu1KTTuGNOe8hu/6dtw6oBzqDaDE3b.df7wWXa', 'Gato?', 'Romeo', 'admin', '2024-10-21 20:31:31', '2024-10-26 12:39:20', 1),
-(3, 'JLopes', 'António', 'Lopes', 'jlopes@gmail.com', '961234567', '$2y$10$JaXjXjPHjqrxOSVnZgqfnehG/DCQHTqpzjMH.fpZgOMJKx1T7T4WW', 'Gato?', 'Romeu', 'user', '2024-10-23 21:37:00', '2024-10-27 23:03:09', 1),
-(4, 'JSavimbi', 'Jonas', 'Savimbi', 'js@gmail.com', '917894563', '$2y$10$qPIBQrIWYmos3nSW4q1KQ.ssIVHO1OFNQYGl4/8HQWoX1YIb7bBeK', 'Cão?', 'Piloto', 'user', '2024-10-24 21:22:20', '2024-10-26 22:36:04', 0),
-(5, 'LLOpes', 'Luis', 'Lopes', 'll@gmail.com', '921345678', '$2y$10$.uxAU7iA6KUdHKxAyow/D.P2F.7VOTeXxBCTqSonZnoc31oQy6KtS', 'Cão?', 'Piloto', 'user', '2024-10-26 14:47:33', '2024-10-26 22:37:05', 1);
+(1, 'admin', 'admin', 'admin', 'admin@gmail.com', '000000000', '$2y$10$sx6XT.dllEgbFM.CVIsXHOwSr.nfEQYfQ3i8Wb110mWXjero2qbcu', 'Gato?', 'Romeo', 'admin', '2024-10-21 20:31:31', '2024-10-26 12:39:20', 1),
 
 -- --------------------------------------------------------
 
@@ -197,17 +158,6 @@ CREATE TABLE `work_orders` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
 --
--- Extraindo dados da tabela `work_orders`
---
-
-INSERT INTO `work_orders` (`id`, `asset_id`, `description`, `status`, `created_at`, `closed_at`, `assigned_user`, `type`, `priority`, `accept_at`, `accept_by`) VALUES
-(1, 6, 'reparar a fuga', 'Fechada', '2024-10-22 20:55:19', '2024-10-26 09:09:53', 2, 'Preventiva', 'Crítica', '2024-10-26 09:44:56', 4),
-(3, 6, 'Pintar.', 'Fechada', '2024-10-24 19:28:03', '2024-10-26 09:07:40', 2, 'Preventiva', 'Média', '2024-10-26 10:07:33', 2),
-(4, 6, 'Colocar uma rede', 'Fechada', '2024-10-24 19:40:21', '2024-10-27 21:55:10', 3, 'Corretiva', 'Alta', '2024-10-25 23:26:56', 4),
-(5, 6, 'Colocar uma rede', 'Aceite', '2024-10-24 19:43:29', NULL, 3, 'Corretiva', 'Baixa', '2024-10-26 09:44:17', 4),
-(6, 6, 'Pintar', 'Fechada', '2024-10-24 19:58:40', '2024-10-26 16:17:34', 4, 'Preventiva', 'Baixa', '2024-10-26 12:57:15', 2),
-(12, 7, 'Substituir eletrodo de pH', 'Aceite', '2024-10-26 08:34:41', NULL, 2, 'Corretiva', 'Alta', '2024-10-26 11:39:12', 2),
-(13, 7, 'Substituir eletrólito', 'Fechada', '2024-10-26 10:59:43', '2024-10-28 22:04:48', 4, 'Corretiva', 'Crítica', '2024-10-26 17:16:16', 5);
 
 --
 -- Índices para tabelas despejadas
