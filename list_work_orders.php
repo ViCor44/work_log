@@ -118,7 +118,7 @@ if ($stmt) {
     $current_date = new DateTime();
     while ($stmt->fetch()) {
         $due_date_obj = new DateTime($due_date);
-        $interval = $current_date->diff($due_date_obj)->days;
+        $interval = $current_date->diff($due_date_obj)->days;        
         $highlight_class = '';
 
         if ($interval <= 1 && $interval >= 0 && $status !== 'Fechada') {
@@ -127,7 +127,10 @@ if ($stmt) {
             $highlight_class = 'table-warning';
         } elseif ($interval <= 5 && $interval > 3 && $status !== 'Fechada') {
             $highlight_class = 'table-success';
+        } elseif ($due_date_obj < $current_date && $status !== 'Fechada') {
+            $highlight_class = 'table-danger';
         }
+
 
         $work_orders[] = [
             'id' => $work_order_id,
@@ -204,7 +207,7 @@ if ($stmt) {
         </div>        
 
         <div class="col-md-2 btn-status">
-            <a href="list_work_orders.php?status=open" class="btn btn-primary priority-btn w-200 h-50">
+            <a href="list_work_orders.php?status=open" class="btn btn-primary priority-btn w-200 h-50 mb-1">
                 Abertas (<?= $openCount ?> OTs)
             </a>
             <a href="list_work_orders.php?status=closed" class="btn btn-secondary priority-btn w-200 h-50">

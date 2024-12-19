@@ -66,7 +66,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
 <div class="container mt-5">
     <div class="text-center mb-4">        
-        <h1>WorkLog CMMS</h1>
+        <h1><strong>WorkLog CMMS</strong></h1>
     </div>
     <div class="card mx-auto" style="width: 25rem;">
         <div class="card-body">

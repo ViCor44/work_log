@@ -74,6 +74,8 @@ if ($status !== 'Fechada' && !empty($due_date)) {
 
     } elseif ($status === 'Fechada') {
         $due_date_color_class = 'bg-secondary text-white'; // Fechada
+    } elseif ($due_date_obj < $current_date && $status !== 'Fechada') {
+        $due_date_color_class = 'bg-danger text-white';
     }
 }
 $user_stmt->close();

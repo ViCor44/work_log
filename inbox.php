@@ -143,7 +143,7 @@ $sent_messages = $stmt->get_result();
                             <?php if (!$row['is_read']): ?>
                                 <a href="mark_as_read.php?id=<?= $row['id']; ?>" class="btn btn-success btn-sm me-2">✔️ Marcar como Lida</a>
                             <?php endif; ?>
-                            <a href="send_message.php?reply_to=<?= $row['sender']; ?>" class="btn btn-primary btn-sm">🔁 Responder</a>
+                            <a href="send_message.php?reply_to=<?= $row['sender']; ?>" class="btn btn-primary btn-sm me-2">🔁 Responder</a>
                             <!-- Botão para abrir o modal -->
                             <button class="btn btn-info btn-sm" data-bs-toggle="modal" data-bs-target="#messageModal<?= $row['id']; ?>">🔍 Detalhes</button>
                         </div>
