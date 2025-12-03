@@ -3,7 +3,7 @@ require 'vendor/autoload.php';
 use WebSocket\Client;
 
 $devEUI = '0000000000000001'; // Replace with your device's DevEUI
-$apiToken = 'eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJhdWQiOiJjaGlycHN0YWNrIiwiaXNzIjoiY2hpcnBzdGFjayIsInN1YiI6IjZmM2M1MThmLWVjYjUtNDBjMS05NWI2LWM0NWQ0YjUxYzJmMyIsInR5cCI6ImtleSJ9.1mEGsuab6qMUh7Lco4uwPQN6ryl2Hg4wqiFln2Q-6C0'; // Replace with your API token
+$apiToken = ''; // Replace with your API token
 $url = "ws://172.29.23.173:8080/api/devices/$devEUI/events";
 
 try {
