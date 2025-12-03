@@ -1,0 +1,57 @@
+.table-danger {
+    background-color: #f8d7da !important;
+    color: #842029 !important;
+}
+
+.table-warning {
+    background-color: #fff3cd !important;
+    color: #856404 !important;
+}
+.row-buttons {
+    height: auto; /* Ajuste a altura para auto */
+    margin-bottom: 20px; /* Adicione uma margem inferior para espaçamento */
+}
+
+.priority-btn {
+    font-size: 1.2rem;
+    padding: 1rem;
+    display: flex; /* Adiciona um display flex */
+    align-items: center; /* Centraliza verticalmente o conteúdo */
+    justify-content: center; /* Centraliza horizontalmente o conteúdo */
+    height: 100%; /* Garante que os botões ocupem toda a altura da coluna */
+}
+
+.not-accepted {
+    font-weight: bold; /* Define a fonte em negrito */            
+}
+
+.navbar-brand {
+    font-size: 1.5rem;
+    font-weight: 700;
+}
+
+
+.pid-page { color:#1f2937; }
+.pid-page .container { max-width:1440px; }
+
+/* Cards (Bootstrap 5) */
+.pid-page .card { border:0; border-radius:16px; box-shadow:0 6px 18px rgba(0,0,0,.06); }
+.pid-page .card-header { background:#fff; border-bottom:1px solid #eef2f7; border-top-left-radius:16px; border-top-right-radius:16px; font-weight:600; }
+
+/* Forms */
+.pid-page .form-control, .pid-page .form-select { border-radius:10px; border:1px solid #d1d5db; box-shadow:none; }
+.pid-page .form-control:focus, .pid-page .form-select:focus { border-color:#0d6efd; box-shadow:0 0 0 0.25rem rgba(13,110,253,.15); }
+.pid-page .input-group-text { background:#f3f4f6; border:1px solid #d1d5db; }
+.pid-page label { font-weight:600; }
+
+/* Buttons */
+.pid-page .btn { border-radius:10px; }
+.pid-page .btn-primary { background:#0d6efd; border-color:#0d6efd; }
+.pid-page .btn-primary:hover { background:#0b5ed7; border-color:#0a58ca; }
+.pid-page .help { color:#6b7280; font-size:12px; }
+
+/* Tabelas */
+.pid-page .table thead th { background:#fff; text-transform:uppercase; font-size:12px; letter-spacing:.02em; border-bottom:1px solid #e5e7eb; position:sticky; top:0; z-index:2; }
+.pid-page .table tbody tr:hover { background:#f9fafb; }
+.pid-page .num { text-align:right; font-variant-numeric: tabular-nums; }
+.pid-page .table-responsive { max-height:520px; overflow-y:auto; }
