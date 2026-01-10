@@ -97,7 +97,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 			$log_message = "Tentativa de login falhada. Password incorreta para o utilizador: '" . htmlspecialchars($username) . "'. IP: " . $current_ip;
             log_login_attempt($log_message);
         }
-    } else {		
+    } else {
+        $current_ip = $_SERVER['REMOTE_ADDR'];		
         $error_message = "Utilizador não encontrado.";
 		$log_message = "Tentativa de login falhada. Utilizador não encontrado: '" . htmlspecialchars($username) . "'. IP: " . $current_ip;
         log_login_attempt($log_message);

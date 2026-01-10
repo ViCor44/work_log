@@ -12,7 +12,7 @@ if (!$token) {
 
 // 1️⃣ Validar token
 $stmt = $pdoSuper->prepare("
-    SELECT admin_id, system_id
+    SELECT admin_id, system_key
     FROM admin_tokens
     WHERE token = ?
       AND used = 0
@@ -35,9 +35,9 @@ $pdoSuper->prepare("
 $stmt = $pdoSuper->prepare("
     SELECT user_id
     FROM admin_user_map
-    WHERE admin_id = ? AND system_id = ?
+    WHERE admin_id = ? AND system_key = ?
 ");
-$stmt->execute([$t['admin_id'], $t['system_id']]);
+$stmt->execute([$t['admin_id'], $t['system_key']]);
 $map = $stmt->fetch();
 
 if (!$map) {

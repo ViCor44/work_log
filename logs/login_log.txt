@@ -1542,3 +1542,7 @@
 [2025-11-11 17:36:00] Login bem-sucedido para o utilizador: 'VCorreia'. IP: 191.188.127.2
 [2025-11-11 17:36:24] Tentativa de login bloqueada (sessão ativa noutro IP) para o utilizador: 'admin'. IP: 191.188.127.2
 [2025-11-13 15:18:06] Login bem-sucedido para o utilizador: 'admin'. IP: 191.188.127.2
+[2025-12-28 22:35:49] Tentativa de login falhada. Utilizador não encontrado: 'admin@gmail.com'. IP: 
+[2025-12-28 22:41:00] Tentativa de login falhada. Utilizador não encontrado: 'admin@gmail.com'. IP: 
+[2025-12-28 22:41:15] Tentativa de login falhada. Utilizador não encontrado: 'admin@gmail.com'. IP: 
+[2025-12-28 22:41:58] Tentativa de login falhada. Utilizador não encontrado: 'admin@gmail.com'. IP: ::1
