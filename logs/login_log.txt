@@ -1546,3 +1546,9 @@
 [2025-12-28 22:41:00] Tentativa de login falhada. Utilizador não encontrado: 'admin@gmail.com'. IP: 
 [2025-12-28 22:41:15] Tentativa de login falhada. Utilizador não encontrado: 'admin@gmail.com'. IP: 
 [2025-12-28 22:41:58] Tentativa de login falhada. Utilizador não encontrado: 'admin@gmail.com'. IP: ::1
+[2026-01-11 22:48:34] Tentativa de login falhada. Utilizador não encontrado: 'admin@gmail.com'. IP: ::1
+[2026-01-11 22:49:10] Tentativa de login falhada. Password incorreta para o utilizador: 'admin'. IP: 
+[2026-01-11 22:51:46] Tentativa de login falhada. Utilizador não encontrado: 'admin@gmail.com'. IP: ::1
+[2026-01-11 22:52:34] Tentativa de login bloqueada (sessão ativa noutro IP) para o utilizador: 'admin'. IP: ::1
+[2026-01-11 22:57:42] Login bem-sucedido para o utilizador: 'admin'. IP: ::1
+[2026-01-11 23:04:21] Login bem-sucedido para o utilizador: 'admin'. IP: ::1

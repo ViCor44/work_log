@@ -15,7 +15,7 @@ function log_login_attempt($message) {
     // FILE_APPEND garante que a nova entrada é adicionada no final do ficheiro
     file_put_contents($log_file, $log_entry, FILE_APPEND);
 }
-
+$current_ip = $_SERVER['REMOTE_ADDR'];
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $username = $_POST['username'];
     $password = $_POST['password'];
@@ -143,7 +143,6 @@ function send_security_alert_email($user_email, $user_name, $login_ip) {
 
 }
 ?>
-
 <!DOCTYPE html>
 <html lang="pt">
 <head>
@@ -153,80 +152,239 @@ function send_security_alert_email($user_email, $user_name, $login_ip) {
     <link href="/work_log/css/bootstrap.min.css" rel="stylesheet">
     <link rel="stylesheet" href="/work_log/css/all.min.css">
     <style>
-        body, html {
-            height: 100%;
-        }
         body {
+            background: linear-gradient(to bottom, #2E4057, #1E2A44);
+            height: 100vh;
+            overflow: hidden;
+            font-family: 'Inter', sans-serif;
+            margin: 0;
+        }
+
+        .container {
+            display: flex;
+            flex-direction: row;
+            height: 100vh;
+        }
+
+        .info-section {
+            width: 40%;
+            background: linear-gradient(to bottom, #2E4057, #1E2A44);
+            color: white;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            padding: 4rem;
+            position: relative;
+        }
+
+        .info-section::after {
+            content: '';
+            position: absolute;
+            top: 0;
+            right: -50px;
+            width: 100px;
+            height: 100%;
+            background: linear-gradient(to right, #1E2A44, transparent);
+            z-index: 1;
+        }
+
+        .logo {
+            display: flex;
+            align-items: center;
+            margin-bottom: 2rem;
+        }
+
+        .logo-icon {
+            width: 40px;
+            height: 40px;
+            background: #B794F4;
+            border-radius: 8px;
             display: flex;
             align-items: center;
             justify-content: center;
-            background: url('images/c7a9801f-2e42-4a72-8918-8b8bebb0f903.webp') no-repeat center center fixed;
-            background-size: cover;
+            margin-right: 1rem;
+            font-size: 1.5rem;
+            color: #553C9A;
         }
-        .login-container {
-            max-width: 400px;
-            width: 100%;
+
+        .logo-text {
+            font-size: 1.5rem;
+            font-weight: bold;
         }
-        .login-card {
-            background-color: rgba(255, 255, 255, 0.95);
-            border: none;
-            border-radius: 15px;
-            box-shadow: 0 10px 30px rgba(0,0,0,0.1);
+
+        .logo-subtext {
+            font-size: 0.875rem;
+            opacity: 0.8;
         }
-        .login-header {
-            text-align: center;
-            margin-bottom: 2rem;
-        }
-        .login-header img {
-            max-width: 180px;
+
+        .info-section h1 {
+            font-size: 2rem;
             margin-bottom: 1rem;
         }
-        .login-header h1 {
-            font-weight: 700;
-            color: #343a40;
+
+        .info-section p {
+            font-size: 1rem;
+            margin-bottom: 2rem;
+            opacity: 0.9;
+        }
+
+        .sobre-link {
+            color: #4299E1;
+            text-decoration: none;
+            font-weight: 500;
+        }
+
+        .form-section {
+            width: 60%;
+            background: white;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            border-top-left-radius: 50px;
+            border-bottom-left-radius: 50px;
+            position: relative;
+            z-index: 2;
+        }
+
+        .form-container {
+            max-width: 400px;
+            width: 100%;
+            padding: 2rem;
+        }
+
+        .form-container h2 {
+            font-size: 1.5rem;
+            margin-bottom: 2rem;
+            text-align: left;
+        }
+
+        .input-group {
+            margin-bottom: 1.5rem;
+        }
+
+        .input-group label {
+            display: block;
+            font-size: 0.875rem;
+            margin-bottom: 0.5rem;
+            color: #4A5568;
+        }
+
+        .input-group input {
+            width: 100%;
+            padding: 0.75rem;
+            border: 1px solid #E2E8F0;
+            border-radius: 0.375rem;
+            background: #F7FAFC;
+        }
+
+        button {
+            width: 100%;
+            padding: 0.75rem;
+            background: #4299E1;
+            color: white;
+            border: none;
+            border-radius: 0.375rem;
+            font-weight: 600;
+            cursor: pointer;
+        }
+
+        .links {
+            display: flex;
+            justify-content: space-between;
+            margin-top: 1rem;
+            font-size: 0.875rem;
+        }
+
+        .links a {
+            color: #4299E1;
+            text-decoration: none;
+        }
+
+        @media (max-width: 768px) {
+            .container {
+                flex-direction: column;
+            }
+
+            .info-section {
+                width: 100%;
+                height: 40%;
+                border-bottom-right-radius: 50px;
+                border-bottom-left-radius: 50px;
+                padding: 2rem;
+                text-align: center;
+            }
+
+            .info-section::after {
+                display: none;
+            }
+
+            .form-section {
+                width: 100%;
+                height: 60%;
+                border-top-left-radius: 50px;
+                border-top-right-radius: 50px;
+            }
+
+            .logo {
+                justify-content: center;
+            }
         }
     </style>
 </head>
 <body>
+    <div class="container">
+        <!-- Lado Esquerdo: Informações -->
+        <div class="info-section">
+            <div class="logo">
+                <div class="logo-icon">W
+                <!-- Placeholder para ícone; substitua por SVG ou imagem real se disponível -->
+                </div>
+                <div>
+                    <div class="logo-text">WorkLog</div>
+                    <div class="logo-subtext">CMMS</div>
+                </div>
+            </div>
+            <h1>Bem-vindo ao WorkLog CMMS</h1>
+            <p>Aceda ao dashboard para aceder às funcionalidades do sistema.</p>
+            <a href="about.php" class="sobre-link">Sobre</a>
+        </div>
 
-<div class="login-container">
-    <div class="login-header">
-        
-        <h1>WorkLog CMMS</h1>
-    </div>
-    <div class="card login-card">
-        <div class="card-body p-4">
-            <h5 class="card-title text-center mb-4">Aceda à sua conta</h5>
-            <?php if (isset($error_message)): ?>
-                <div class="alert alert-danger"><?= htmlspecialchars($error_message); ?></div>
-            <?php endif; ?>
-            
-            <form action="login.php" method="POST">
-                <div class="mb-3">
-                    <label for="username" class="form-label">Nome de Utilizador</label>
-                    <input type="text" class="form-control" id="username" name="username" required>
-                </div>
-                <div class="mb-3">
-                    <label for="password" class="form-label">Password</label>
-                    <input type="password" class="form-control" id="password" name="password" required>
-                </div>
-                <div class="d-grid mb-3">
-                    <button type="submit" class="btn btn-primary btn-lg">Login</button>
-                </div>
-				<p class="mt-3 text-center">Ainda não tem conta? <a href="register.php">Registre-se</a></p>
-                <div class="text-center">
-                    <a href="forgot_password.php">Esqueceu-se da password?</a>
-                </div>
-            </form>
+        <!-- Lado Direito: Formulário de Login -->
+        <div class="form-section">
+            <div class="form-container">
+                <h2>Login</h2>
+
+                <?php if (isset($error_message)): ?>
+                    <div class="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded-md relative mb-6" role="alert">
+                        <?= htmlspecialchars($error_message); ?>
+                    </div>
+                <?php endif; ?>
+
+                <form action="login.php" method="POST">
+                    <div class="input-group">
+                        <label for="username">Nome de Utilizador</label>
+                        <input 
+                            type="text" 
+                            id="username" 
+                            name="username" 
+                            required>
+                    </div>
+                    <div class="input-group">
+                        <label for="password">Password</label>
+                        <input 
+                            type="password" 
+                            id="password" 
+                            name="password" 
+                            required>
+                    </div>
+                    <button type="submit">Entrar</button>
+                    <div class="links">
+                        <span>Não tem conta? <a href="register.php">Registe-se</a></span>
+                        <a href="forgot_password.php">Esqueci-me da password</a>
+                    </div>
+                </form>
+            </div>
         </div>
     </div>
-    <div class="text-center mt-4">
-        <a href="about.php" class="btn btn-outline-dark">
-            <i class="fas fa-info-circle me-2"></i> Sobre o WorkLog CMMS
-        </a>
-    </div>
-</div>
-
-<script src="/work_log/js/bootstrap.bundle.min.js"></script>
 </body>
 </html>
