@@ -109,6 +109,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 function send_security_alert_email($user_email, $user_name, $login_ip) {
 
     $mail = new PHPMailer();
+    $mail->CharSet = 'UTF-8';
+    $mail->Encoding = 'base64';
     $mail->SMTPDebug = 0; // Desligue para produção, ou 2 para depurar
     $mail->Debugoutput = 'html';
     $mail->isSMTP();

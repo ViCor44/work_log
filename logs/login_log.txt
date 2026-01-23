@@ -1552,3 +1552,10 @@
 [2026-01-11 22:52:34] Tentativa de login bloqueada (sessão ativa noutro IP) para o utilizador: 'admin'. IP: ::1
 [2026-01-11 22:57:42] Login bem-sucedido para o utilizador: 'admin'. IP: ::1
 [2026-01-11 23:04:21] Login bem-sucedido para o utilizador: 'admin'. IP: ::1
+[2026-01-12 14:21:52] Tentativa de login bloqueada (sessão ativa noutro IP) para o utilizador: 'VCorreia'. IP: ::1
+[2026-01-12 14:47:58] Tentativa de login bloqueada (sessão ativa noutro IP) para o utilizador: 'VCorreia'. IP: 127.0.0.1
+[2026-01-12 14:55:08] Login bem-sucedido para o utilizador: 'VCorreia'. IP: 127.0.0.1
+[2026-01-22 15:32:28] Login bem-sucedido para o utilizador: 'Carlos Santinha'. IP: 191.188.19.20
+[2026-01-23 11:36:57] Tentativa de login falhada. Utilizador não encontrado: 'admin@gmail.com'. IP: 191.188.127.2
+[2026-01-23 11:36:59] Tentativa de login falhada. Utilizador não encontrado: 'admin@gmail.com'. IP: 191.188.127.2
+[2026-01-23 11:37:29] Tentativa de login bloqueada (sessão ativa noutro IP) para o utilizador: 'VCorreia'. IP: 191.188.127.2
