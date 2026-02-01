@@ -1,11 +1,5 @@
 <?php
-session_start();
-if (!isset($_SESSION['user_id'])) {
-    header("Location: login.php");
-    exit;
-}
-
-include 'db.php';
+require_once 'header.php'; // Inclui o header que já trata da sessão e BD
 
 // Apenas administradores podem aceder a certas funcionalidades
 $is_admin = isset($_SESSION['user_type']) && $_SESSION['user_type'] === 'admin';
@@ -136,7 +130,7 @@ $is_admin = isset($_SESSION['user_type']) && $_SESSION['user_type'] === 'admin';
         vertical-align: middle;
     }
 </style>
-<?php include 'navbar.php'; ?>
+
 <div class="container mt-4">
     <div class="d-flex justify-content-between align-items-center mb-4">
         <h1 class="page-title">Gestão de Ativos</h1>
