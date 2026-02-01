@@ -1573,3 +1573,5 @@
 [2026-02-01 20:24:52] Tentativa de login bloqueada (sessão ativa noutro IP) para o utilizador: 'VCorreia'. IP: ::1
 >>>>>>> fca73e5bd4f8898945cdba98d8104cbc9cc68290
 [2026-02-01 22:35:00] Login bem-sucedido para o utilizador: 'VCorreia'. IP: 191.188.127.2
+[2026-02-01 22:56:22] Login bem-sucedido para o utilizador: 'VCorreia'. IP: 191.188.127.2
+[2026-02-01 22:56:51] Login bem-sucedido para o utilizador: 'VCorreia'. IP: 191.188.127.2
