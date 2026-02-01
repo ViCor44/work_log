@@ -1566,3 +1566,4 @@
 [2026-01-30 12:33:47] Login bem-sucedido para o utilizador: 'VCorreia'. IP: 191.188.127.2
 [2026-01-30 12:56:02] Tentativa de login falhada. Utilizador não encontrado: 'admin@gmail.com'. IP: 191.188.127.2
 [2026-01-30 12:56:10] Tentativa de login bloqueada (sessão ativa noutro IP) para o utilizador: 'lab'. IP: 191.188.127.2
+[2026-02-01 22:18:12] Login bem-sucedido para o utilizador: 'VCorreia'. IP: 191.188.127.2
