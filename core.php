@@ -10,7 +10,7 @@ date_default_timezone_set('Europe/Lisbon');
 
 // Agora, inicia a sessão (se ainda não tiver sido iniciada)
 if (session_status() === PHP_SESSION_NONE) {
-    session_name('');
+    
     session_start();
 }
 
