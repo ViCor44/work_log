@@ -1,27 +1,69 @@
 <?php
-$servername = "localhost"; // ou o endereço do seu servidor de banco de dados
-$username = "root"; // substitua pelo seu usuário do MySQL
-$password = ""; // substitua pela sua senha do MySQL
-$dbname = "cmms"; // substitua pelo nome do seu banco de dados
+
+$servername = "localhost";
+$username   = "root";
+$password   = "";
+$dbname     = "cmms";
 $dbnameSuper = "super_login";
 
-// Criando a conexão
-$conn = new mysqli($servername, $username, $password, $dbname);
-$pdo = new PDO("mysql:host=localhost;dbname=cmms;charset=utf8mb4", "root", "");
-$pdo->exec("SET NAMES utf8mb4");
 
-// Verificando a conexão
+/* ============================
+   LIGAÇÃO MYSQLI - CMMS
+============================ */
+
+$conn = new mysqli($servername, $username, $password, $dbname);
+
 if ($conn->connect_error) {
     die("Conexão worklog falhou: " . $conn->connect_error);
 }
 
-$connSuper = new mysqli($servername, $username, $password, $dbname);
-$pdoSuper = new PDO("mysql:host=localhost;dbname=super_login;charset=utf8mb4", "root", "");
-$pdoSuper->exec("SET NAMES utf8mb4");
+$conn->set_charset("utf8mb4");
+$conn->query("SET collation_connection = utf8mb4_unicode_ci");
 
-// Verificando a conexão
+
+/* ============================
+   LIGAÇÃO PDO - CMMS
+============================ */
+
+$pdo = new PDO(
+    "mysql:host=$servername;dbname=$dbname;charset=utf8mb4",
+    $username,
+    $password,
+    [
+        PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
+        PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
+    ]
+);
+
+$pdo->exec("SET NAMES utf8mb4");
+
+
+/* ============================
+   LIGAÇÃO MYSQLI - SUPER LOGIN
+============================ */
+
+$connSuper = new mysqli($servername, $username, $password, $dbnameSuper);
+
 if ($connSuper->connect_error) {
     die("Conexão super_login falhou: " . $connSuper->connect_error);
 }
 
-?>
+$connSuper->set_charset("utf8mb4");
+$connSuper->query("SET collation_connection = utf8mb4_unicode_ci");
+
+
+/* ============================
+   LIGAÇÃO PDO - SUPER LOGIN
+============================ */
+
+$pdoSuper = new PDO(
+    "mysql:host=$servername;dbname=$dbnameSuper;charset=utf8mb4",
+    $username,
+    $password,
+    [
+        PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
+        PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
+    ]
+);
+
+$pdoSuper->exec("SET NAMES utf8mb4");
