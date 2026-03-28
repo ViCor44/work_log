@@ -1,0 +1,2 @@
+[2025-08-10 23:42:40] Login bem-sucedido para o utilizador: 'VCorreia'. IP: 191.188.127.2
+[2025-08-10 23:44:00] Login bem-sucedido para o utilizador: 'VCorreia'. IP: 191.188.127.2

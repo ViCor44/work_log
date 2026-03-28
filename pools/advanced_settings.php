@@ -1,0 +1,505 @@
+<?php
+require_once '../header.php';
+
+// Check if a valid tank ID is provided in the URL
+if (!isset($_GET['id']) || !is_numeric($_GET['id'])) {
+    die("Tanque inválido.");
+}
+$tank_id = $_GET['id'];
+
+// Fetch tank name and controller IP
+$stmt = $conn->prepare("SELECT name, controller_ip FROM tanks WHERE id = ?");
+$stmt->bind_param("i", $tank_id);
+$stmt->execute();
+$result = $stmt->get_result();
+if ($result->num_rows === 0) {
+    die("Tanque não encontrado.");
+}
+$tank_info = $result->fetch_assoc();
+$tank_name = $tank_info['name'];
+$controller_ip = $tank_info['controller_ip'];
+$stmt->close();
+?>
+
+<style>
+.pid-analysis {
+    font-family: 'Courier New', monospace;
+    background-color: #f8f9fa;
+    border: 1px solid #dee2e6;
+    border-radius: .25rem;
+    padding: 1rem;
+    margin-bottom: 1rem;
+}
+.metric-card {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: white;
+    border-radius: 10px;
+    padding: 15px;
+    margin-bottom: 10px;
+    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+}
+.metric-card.warning {
+    background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+}
+.metric-card.success {
+    background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
+}
+.suggestion-item {
+    background: #fff3cd;
+    border: 1px solid #ffeaa7;
+    border-radius: 5px;
+    padding: 10px;
+    margin-bottom: 8px;
+}
+.suggestion-item strong {
+    color: #856404;
+}
+.stats-table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-top: 10px;
+}
+.stats-table th, .stats-table td {
+    border: 1px solid #dee2e6;
+    padding: 8px;
+    text-align: left;
+}
+.stats-table th {
+    background-color: #f8f9fa;
+    font-weight: bold;
+}
+</style>
+
+<div class="container-fluid mt-4">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h1 class="h3 mb-0">Análise Inteligente de Controle PID: <?= htmlspecialchars($tank_name) ?></h1>
+        <div>
+            <a href="view_pool_details.php?id=<?= $tank_id ?>" class="btn btn-secondary">Voltar à Monitorização</a>
+            <a href="dashboard.php" class="btn btn-secondary">Voltar ao Dashboard</a>
+        </div>
+    </div>
+
+    <div class="card mb-4" id="pid-suggestions-card">
+        <div class="card-header bg-warning text-dark d-flex justify-content-between align-items-center">
+            <h5 class="mb-0"><i class="fas fa-brain"></i> Sugestões de Ajuste PID (últimos 3 dias)</h5>
+            <small class="text-muted">Análise baseada em dados históricos</small>
+        </div>
+        <div class="card-body" id="pid-suggestions-body">
+            <div class="text-center">
+                <div class="spinner-border text-warning" role="status">
+                    <span class="visually-hidden">Carregando análise de PID...</span>
+                </div>
+                <p class="mt-2 text-muted">Analisando dados históricos e calculando recomendações...</p>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Modal para aceitar sugestão de PID -->
+<div class="modal fade" id="acceptSuggestionModal" tabindex="-1" aria-labelledby="acceptSuggestionLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header bg-warning text-dark">
+                <h5 class="modal-title" id="acceptSuggestionLabel">
+                    <i class="fas fa-check-circle"></i> Aceitar Sugestão de Ajuste PID
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body" id="suggestionModalBody">
+                <div class="row mb-3">
+                    <div class="col-md-4">
+                        <label class="form-label"><strong>P (Kp) Atual</strong></label>
+                        <input type="text" id="currentP" class="form-control" readonly>
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label"><strong>P (Kp) Sugerido</strong></label>
+                        <input type="number" id="suggestedP" class="form-control" step="0.000001">
+                    </div>
+                    <div class="col-md-4 d-flex align-items-end">
+                        <span id="pChange" class="badge bg-info w-100 text-center"></span>
+                    </div>
+                </div>
+                <div class="row mb-3">
+                    <div class="col-md-4">
+                        <label class="form-label"><strong>Ti (Tempo Integral) Atual</strong></label>
+                        <input type="text" id="currentI" class="form-control" readonly>
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label"><strong>Ti Sugerido</strong></label>
+                        <input type="number" id="suggestedI" class="form-control" step="0.01">
+                    </div>
+                    <div class="col-md-4 d-flex align-items-end">
+                        <span id="iChange" class="badge bg-info w-100 text-center"></span>
+                    </div>
+                </div>
+                <div class="row mb-3">
+                    <div class="col-md-4">
+                        <label class="form-label"><strong>Td (Tempo Derivativo) Atual</strong></label>
+                        <input type="text" id="currentD" class="form-control" readonly>
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label"><strong>Td Sugerido</strong></label>
+                        <input type="number" id="suggestedD" class="form-control" step="0.01">
+                    </div>
+                    <div class="col-md-4 d-flex align-items-end">
+                        <span id="dChange" class="badge bg-info w-100 text-center"></span>
+                    </div>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label"><strong>Motivo da Alteração</strong></label>
+                    <textarea id="suggestionReason" class="form-control" rows="3" placeholder="Motivo gerado automaticamente..."></textarea>
+                </div>
+                <div class="alert alert-warning mb-0">
+                    <i class="fas fa-exclamation-triangle"></i>
+                    <strong>Importante:</strong> Após aceitar, monitore o sistema por 24-48 horas para validar o comportamento.
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                <button type="button" class="btn btn-warning" id="confirmAcceptBtn" onclick="confirmAcceptSuggestion()">
+                    <i class="fas fa-check"></i> Aceitar e Gravar
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    let currentSuggestionData = null;
+
+    function openAcceptModal(suggestedP, suggestedI, suggestedD, reason, canAccept) {
+        if (!canAccept) {
+            alert('Período de monitorização ativo. Não é possível aceitar nova sugestão neste momento.');
+            return;
+        }
+        currentSuggestionData = { p: suggestedP, i: suggestedI, d: suggestedD };
+        
+        // Valores atuais (se disponível)
+        document.getElementById('currentP').value = suggestedP || 'N/A';
+        document.getElementById('currentI').value = suggestedI || 'N/A';
+        document.getElementById('currentD').value = suggestedD || 'N/A';
+        
+        // Suggestões editáveis
+        document.getElementById('suggestedP').value = suggestedP || '';
+        document.getElementById('suggestedI').value = suggestedI || '';
+        document.getElementById('suggestedD').value = suggestedD || '';
+        
+        // Motivo
+        document.getElementById('suggestionReason').value = reason || 'Sugestão automática - Análise de 3 dias de histórico de controle';
+        
+        // Atualiza badges de mudança quando valores mudam
+        document.getElementById('suggestedP').addEventListener('input', updateChangeIndicators);
+        document.getElementById('suggestedI').addEventListener('input', updateChangeIndicators);
+        document.getElementById('suggestedD').addEventListener('input', updateChangeIndicators);
+        
+        updateChangeIndicators();
+        
+        // Abre modal
+        new bootstrap.Modal(document.getElementById('acceptSuggestionModal')).show();
+    }
+
+    function updateChangeIndicators() {
+        const currentP = parseFloat(document.getElementById('currentP').value) || 0;
+        const currentI = parseFloat(document.getElementById('currentI').value) || 0;
+        const currentD = parseFloat(document.getElementById('currentD').value) || 0;
+        
+        const suggestedP = parseFloat(document.getElementById('suggestedP').value) || currentP;
+        const suggestedI = parseFloat(document.getElementById('suggestedI').value) || currentI;
+        const suggestedD = parseFloat(document.getElementById('suggestedD').value) || currentD;
+        
+        document.getElementById('pChange').textContent = suggestedP !== currentP ? 
+            `${suggestedP > currentP ? '+' : ''}${(suggestedP - currentP).toFixed(3)}` : '=';
+        document.getElementById('iChange').textContent = suggestedI !== currentI ? 
+            `${suggestedI > currentI ? '+' : ''}${(suggestedI - currentI)}` : '=';
+        document.getElementById('dChange').textContent = suggestedD !== currentD ? 
+            `${suggestedD > currentD ? '+' : ''}${(suggestedD - currentD)}` : '=';
+    }
+
+    function confirmAcceptSuggestion() {
+        const tankId = <?= $tank_id ?>;
+        const p = parseFloat(document.getElementById('suggestedP').value);
+        const i = parseInt(document.getElementById('suggestedI').value);
+        const d = parseInt(document.getElementById('suggestedD').value);
+        const reason = document.getElementById('suggestionReason').value;
+
+        if (!reason.trim()) {
+            alert('Por favor, adicione um motivo para a alteração.');
+            return;
+        }
+
+        // Desabilita botão
+        document.getElementById('confirmAcceptBtn').disabled = true;
+        document.getElementById('confirmAcceptBtn').innerHTML = '<i class="fas fa-spinner fa-spin"></i> Gravando...';
+
+        // Envia para API
+        fetch('../api/apply_pid_suggestion.php', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                tank_id: tankId,
+                p: p,
+                i: i,
+                d: d,
+                reason: reason
+            })
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                alert('✅ Sugestão aceita e gravada com sucesso!\n\nNovos valores de PID:\nKp: ' + p + '\nTi: ' + i + '\nTd: ' + d);
+                
+                // Fecha modal
+                bootstrap.Modal.getInstance(document.getElementById('acceptSuggestionModal')).hide();
+                
+                // Recarrega sugestões
+                fetchPidSuggestions(3);
+            } else {
+                alert('❌ Erro: ' + (data.error || 'Falha ao gravar sugestão'));
+            }
+        })
+        .catch(error => {
+            console.error('Erro:', error);
+            alert('❌ Erro ao comunicar com o servidor: ' + error.message);
+        })
+        .finally(() => {
+            document.getElementById('confirmAcceptBtn').disabled = false;
+            document.getElementById('confirmAcceptBtn').innerHTML = '<i class="fas fa-check"></i> Aceitar e Gravar';
+        });
+    }
+
+    const controllerIp = '<?= $controller_ip ?>';
+    let tankId = <?= $tank_id ?>;
+
+    async function fetchPidSuggestions(days = 3) {
+        if (!tankId || tankId <= 0) {
+            console.error('tankId inválido em fetchPidSuggestions:', tankId);
+            return;
+        }
+
+        try {
+            const response = await fetch(`../api/get_pid_suggestions.php?tank_id=${tankId}&days=${days}`);
+            const data = await response.json();
+            const container = document.getElementById('pid-suggestions-body');
+
+            if (data.error) {
+                container.innerHTML = `<div class="alert alert-danger">Erro: ${data.error}</div>`;
+                return;
+            }
+
+            let html = '';
+
+            // Resumo dos dados analisados
+            html += `
+                <div class="row mb-4">
+                    <div class="col-md-12">
+                        <div class="metric-card">
+                            <h6><i class="fas fa-chart-line"></i> Resumo da Análise</h6>
+                            <p class="mb-1"><strong>Tanque:</strong> ${data.tank_name}</p>
+                            <p class="mb-1"><strong>Período analisado:</strong> ${data.days} dias</p>
+                            <p class="mb-0"><strong>Registros processados:</strong> ${data.row_count}</p>
+                        </div>
+                    </div>
+                </div>
+            `;
+
+            if (data.chlorine && data.chlorine.stats) {
+                const stats = data.chlorine.stats;
+                const suggestions = data.chlorine.suggestions;
+
+                // Estatísticas detalhadas
+                html += `
+                    <div class="row mb-4">
+                        <div class="col-md-6">
+                            <h6 class="text-primary"><i class="fas fa-chart-bar"></i> Estatísticas de Controle (Cloro)</h6>
+                            <table class="stats-table">
+                                <tr><th>Métrica</th><th>Valor</th><th>Interpretação</th></tr>
+                                <tr><td>Amostras</td><td>${stats.samples}</td><td>Quantidade de medições analisadas</td></tr>
+                                <tr><td>Erro Médio</td><td>${stats.mean.toFixed(4)}</td><td>Viés sistemático (+ = acima do setpoint)</td></tr>
+                                <tr><td>Erro Médio Absoluto</td><td>${stats.mean_abs.toFixed(4)}</td><td>Precisão média do controle</td></tr>
+                                <tr><td>Desvio Padrão</td><td>${stats.stdev.toFixed(4)}</td><td>Volatilidade das medições</td></tr>
+                                <tr><td>Mínimo/Máximo</td><td>${stats.min.toFixed(4)} / ${stats.max.toFixed(4)}</td><td>Faixa de variação do erro</td></tr>
+                                <tr><td>Mudanças de Sinal</td><td>${stats.sign_changes} (${(stats.sign_change_rate * 100).toFixed(1)}%)</td><td>Frequência de oscilações</td></tr>
+                                <tr><td>Tempo médio de resposta</td><td>${data.chlorine.mean_response_delay_min !== null ? data.chlorine.mean_response_delay_min + ' min' : 'N/A'}</td><td>Delay médio entre dosagem e efeito</td></tr>
+                            </table>
+                        </div>
+                        <div class="col-md-6">
+                            <h6 class="text-success"><i class="fas fa-lightbulb"></i> Diagnóstico de Performance</h6>
+                            <div class="pid-analysis">
+                `;
+
+                // Análise de performance
+                if (stats.mean_abs < 0.1) {
+                    html += '<p class="text-success"><i class="fas fa-check-circle"></i> <strong>EXCELENTE</strong>: Controle muito preciso</p>';
+                } else if (stats.mean_abs < 0.25) {
+                    html += '<p class="text-warning"><i class="fas fa-exclamation-triangle"></i> <strong>BOM</strong>: Controle aceitável</p>';
+                } else {
+                    html += '<p class="text-danger"><i class="fas fa-times-circle"></i> <strong>PREOCUPANTE</strong>: Controle impreciso</p>';
+                }
+
+                if (stats.stdev > 0.3) {
+                    html += '<p class="text-warning"><i class="fas fa-wave-square"></i> <strong>OSCIlações detectadas</strong>: Sistema instável</p>';
+                } else {
+                    html += '<p class="text-success"><i class="fas fa-equals"></i> <strong>Estável</strong>: Poucas variações</p>';
+                }
+
+                if (Math.abs(stats.mean) > 0.15) {
+                    html += '<p class="text-info"><i class="fas fa-balance-scale"></i> <strong>Viés identificado</strong>: Tendência consistente de erro</p>';
+                }
+
+                html += `
+                            </div>
+                        </div>
+                    </div>
+                `;
+
+                // Recomendações detalhadas
+                if (suggestions && suggestions.length > 0) {
+                    html += `
+                        <div class="row mb-4">
+                            <div class="col-md-12">
+                                <h6 class="text-warning"><i class="fas fa-tools"></i> Recomendações de Ajuste PID</h6>
+                    `;
+
+                    suggestions.forEach((suggestion, index) => {
+                        let iconClass = 'fas fa-info-circle';
+                        let alertClass = 'alert-info';
+
+                        if (suggestion.includes('aumentar') || suggestion.includes('reduzir')) {
+                            iconClass = 'fas fa-sliders-h';
+                            alertClass = 'alert-warning';
+                        } else if (suggestion.includes('estável') || suggestion.includes('bom')) {
+                            iconClass = 'fas fa-check-circle';
+                            alertClass = 'alert-success';
+                        } else if (suggestion.includes('oscilações') || suggestion.includes('instável')) {
+                            iconClass = 'fas fa-exclamation-triangle';
+                            alertClass = 'alert-danger';
+                        }
+
+                        html += `
+                            <div class="alert ${alertClass} suggestion-item">
+                                <i class="${iconClass}"></i> <strong>${index + 1}.</strong> ${suggestion}
+                            </div>
+                        `;
+                    });
+
+                    html += `
+                            </div>
+                        </div>
+                    `;
+                }
+
+                // Botão para aceitar sugestão
+                if (data.chlorine.suggested_values) {
+                    if (data.chlorine.can_accept_suggestion) {
+                        html += `
+                            <div class="row mb-4">
+                                <div class="col-md-12">
+                                    <button class="btn btn-success btn-lg w-100" onclick="openAcceptModal(${data.chlorine.suggested_values.p}, ${data.chlorine.suggested_values.i}, ${data.chlorine.suggested_values.d}, 'Sugestão automática aceita - Análise de ${data.days} dias de histórico de controle', ${data.chlorine.can_accept_suggestion})">
+                                        <i class="fas fa-check-circle me-2"></i>Aceitar Sugestão e Gravar
+                                    </button>
+                                </div>
+                            </div>
+                        `;
+                    } else {
+                        html += `
+                            <div class="row mb-4">
+                                <div class="col-md-12">
+                                    <div class="alert alert-warning">
+                                        <i class="fas fa-clock"></i>
+                                        <strong>Período de Monitorização Ativo</strong><br>
+                                        ${data.chlorine.block_reason}<br>
+                                        <small class="text-muted">Última alteração: ${data.chlorine.last_change_time}</small>
+                                    </div>
+                                </div>
+                            </div>
+                        `;
+                    }
+                }
+            } else {
+                html += `
+                    <div class="row">
+                        <div class="col-md-12">
+                            <div class="alert alert-warning">
+                                <i class="fas fa-exclamation-triangle"></i>
+                                <strong>Sem dados suficientes</strong> para análise de cloro nos últimos ${data.days} dias.
+                            </div>
+                        </div>
+                    </div>
+                `;
+            }
+
+            // Histórico de mudanças recentes
+            if (data.pid_change_history && data.pid_change_history.length > 0) {
+                html += `
+                    <div class="row">
+                        <div class="col-md-12">
+                            <h6 class="text-secondary"><i class="fas fa-history"></i> Últimas Modificações de PID</h6>
+                            <div class="table-responsive">
+                                <table class="table table-sm table-striped">
+                                    <thead>
+                                        <tr>
+                                            <th>Data/Hora</th>
+                                            <th>Kp</th>
+                                            <th>Ti</th>
+                                            <th>Td</th>
+                                            <th>Motivo</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                `;
+
+                data.pid_change_history.forEach(entry => {
+                    html += `
+                        <tr>
+                            <td><small>${entry.changed_at}</small></td>
+                            <td>${entry.p}</td>
+                            <td>${entry.i}</td>
+                            <td>${entry.d}</td>
+                            <td><small>${entry.reason || 'Não informado'}</small></td>
+                        </tr>
+                    `;
+                });
+
+                html += `
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                `;
+            }
+
+            // Nota de segurança
+            html += `
+                <div class="row mt-4">
+                    <div class="col-md-12">
+                        <div class="alert alert-light border">
+                            <i class="fas fa-shield-alt text-primary"></i>
+                            <strong>Nota de Segurança:</strong> As recomendações são baseadas em análise histórica.
+                            Sempre faça ajustes incrementais e monitore o comportamento do sistema por pelo menos 24-48 horas antes de novos ajustes.
+                        </div>
+                    </div>
+                </div>
+            `;
+
+            container.innerHTML = html;
+        } catch (error) {
+            console.error('Erro ao obter sugestões de PID:', error);
+            document.getElementById('pid-suggestions-body').innerHTML = `
+                <div class="alert alert-danger">
+                    <i class="fas fa-exclamation-circle"></i>
+                    <strong>Erro na análise:</strong> ${error.message}
+                </div>
+            `;
+        }
+    }
+
+    // Initial load
+    fetchPidSuggestions(3);
+</script>
+
+<?php
+require_once '../footer.php';
+?>
