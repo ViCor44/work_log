@@ -48,7 +48,6 @@ $power_meters = fetch_all_safe($conn, "SELECT id, local, ip_address FROM centrai
         border: 1px solid var(--scada-border-color);
         border-top-width: 4px;
         color: var(--scada-text-primary);
-    }
         transition: transform 0.2s ease-in-out, box-shadow 0.2s ease-in-out;
     }
     .scada-card:hover {
@@ -106,7 +105,12 @@ $power_meters = fetch_all_safe($conn, "SELECT id, local, ip_address FROM centrai
 <div class="container-fluid mt-4">
     <div class="d-flex justify-content-between align-items-center mb-4">
         <h1 class="h2 mb-0">Dashboard de Monitorização</h1>
-        <div><a href="../redirect_page.php" class="btn btn-secondary">Voltar ao Início</a></div>
+        <div class="d-flex gap-2">
+            <a href="gerar_pdf_pid_semanal.php?days=7" class="btn btn-warning" target="_blank" rel="noopener noreferrer">
+                <i class="fas fa-print me-1"></i>Imprimir Sugestões PID (7 dias)
+            </a>
+            <a href="../redirect_page.php" class="btn btn-secondary">Voltar ao Início</a>
+        </div>
     </div>
 
     <ul class="nav nav-tabs" id="dashboardTabs" role="tablist">
