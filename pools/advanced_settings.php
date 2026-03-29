@@ -329,23 +329,37 @@ $stmt->close();
                             <div class="pid-analysis">
                 `;
 
-                // Análise de performance
-                if (stats.mean_abs < 0.1) {
-                    html += '<p class="text-success"><i class="fas fa-check-circle"></i> <strong>EXCELENTE</strong>: Controle muito preciso</p>';
-                } else if (stats.mean_abs < 0.25) {
-                    html += '<p class="text-warning"><i class="fas fa-exclamation-triangle"></i> <strong>BOM</strong>: Controle aceitável</p>';
+                // Análise de performance (separa estado geral das dimensões técnicas)
+                const precisionIssue = stats.mean_abs >= 0.25;
+                const unstable = stats.stdev > 0.3;
+                const hasBias = Math.abs(stats.mean) > 0.15;
+
+                if (precisionIssue || unstable) {
+                    html += '<p class="text-danger"><i class="fas fa-times-circle"></i> <strong>ESTADO GERAL: PREOCUPANTE</strong> - Necessita ajuste de controle</p>';
+                } else if (stats.mean_abs >= 0.1 || hasBias) {
+                    html += '<p class="text-warning"><i class="fas fa-exclamation-triangle"></i> <strong>ESTADO GERAL: ATENCAO</strong> - Controle aceitavel com pontos de melhoria</p>';
                 } else {
-                    html += '<p class="text-danger"><i class="fas fa-times-circle"></i> <strong>PREOCUPANTE</strong>: Controle impreciso</p>';
+                    html += '<p class="text-success"><i class="fas fa-check-circle"></i> <strong>ESTADO GERAL: BOM</strong> - Controle consistente no periodo</p>';
                 }
 
-                if (stats.stdev > 0.3) {
-                    html += '<p class="text-warning"><i class="fas fa-wave-square"></i> <strong>OSCIlações detectadas</strong>: Sistema instável</p>';
+                if (precisionIssue) {
+                    html += '<p class="text-danger"><i class="fas fa-crosshairs"></i> <strong>Precisao</strong>: erro medio absoluto alto (controle impreciso)</p>';
                 } else {
-                    html += '<p class="text-success"><i class="fas fa-equals"></i> <strong>Estável</strong>: Poucas variações</p>';
+                    html += '<p class="text-success"><i class="fas fa-crosshairs"></i> <strong>Precisao</strong>: dentro da faixa esperada</p>';
                 }
 
-                if (Math.abs(stats.mean) > 0.15) {
-                    html += '<p class="text-info"><i class="fas fa-balance-scale"></i> <strong>Viés identificado</strong>: Tendência consistente de erro</p>';
+                if (unstable) {
+                    html += '<p class="text-warning"><i class="fas fa-wave-square"></i> <strong>Estabilidade</strong>: oscilacoes detectadas (variacao elevada)</p>';
+                } else if (precisionIssue) {
+                    html += '<p class="text-warning"><i class="fas fa-equals"></i> <strong>Estabilidade</strong>: variacao baixa, mas com erro persistente</p>';
+                } else {
+                    html += '<p class="text-success"><i class="fas fa-equals"></i> <strong>Estabilidade</strong>: poucas variacoes</p>';
+                }
+
+                if (hasBias) {
+                    html += '<p class="text-info"><i class="fas fa-balance-scale"></i> <strong>Vies</strong>: tendencia consistente de erro em relacao ao setpoint</p>';
+                } else {
+                    html += '<p class="text-muted"><i class="fas fa-balance-scale"></i> <strong>Vies</strong>: sem tendencia relevante de desvio</p>';
                 }
 
                 html += `
