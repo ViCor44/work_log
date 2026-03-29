@@ -106,11 +106,8 @@ $power_meters = fetch_all_safe($conn, "SELECT id, local, ip_address FROM centrai
     <div class="d-flex justify-content-between align-items-center mb-4">
         <h1 class="h2 mb-0">Dashboard de Monitorização</h1>
         <div class="d-flex gap-2">
-            <button type="button" id="accept-pid-bulk-btn" class="btn btn-success">
-                <i class="fas fa-check-circle me-1"></i>Aceitar Sugestões PID (7 dias)
-            </button>
-            <a href="gerar_pdf_pid_semanal.php?days=7" class="btn btn-warning" target="_blank" rel="noopener noreferrer">
-                <i class="fas fa-print me-1"></i>Imprimir Sugestões PID (7 dias)
+            <a href="plano_pid.php?days=7" class="btn btn-warning">
+                <i class="fas fa-file-pdf me-1"></i>Plano PID (ver e aceitar)
             </a>
             <a href="../redirect_page.php" class="btn btn-secondary">Voltar ao Início</a>
         </div>
@@ -213,49 +210,6 @@ $power_meters = fetch_all_safe($conn, "SELECT id, local, ip_address FROM centrai
 
 <script>
 document.addEventListener('DOMContentLoaded', function() {
-
-    const bulkAcceptBtn = document.getElementById('accept-pid-bulk-btn');
-    if (bulkAcceptBtn) {
-        bulkAcceptBtn.addEventListener('click', async function() {
-            const confirmed = confirm('Aplicar em lote as sugestões de PID dos últimos 7 dias para todos os controladores de piscina?\n\nApenas serão aplicadas sugestões fora do bloqueio de 72h e com dados válidos.');
-            if (!confirmed) {
-                return;
-            }
-
-            const originalLabel = bulkAcceptBtn.innerHTML;
-            bulkAcceptBtn.disabled = true;
-            bulkAcceptBtn.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i>A aplicar...';
-
-            try {
-                const response = await fetch('../api/apply_pid_suggestions_bulk.php', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ days: 7 })
-                });
-
-                const data = await response.json();
-                if (!response.ok || data.error) {
-                    throw new Error(data.error || ('Falha HTTP ' + response.status));
-                }
-
-                alert(
-                    'Aplicação concluída.\n\n' +
-                    'Total controladores: ' + data.total_controllers + '\n' +
-                    'Aplicados: ' + data.applied + '\n' +
-                    'Sem dados: ' + data.skipped_no_data + '\n' +
-                    'Bloqueados (72h): ' + data.skipped_blocked + '\n' +
-                    'Sem alteração: ' + data.skipped_unchanged + '\n' +
-                    'Erros: ' + data.errors
-                );
-            } catch (error) {
-                console.error('Erro ao aplicar sugestões PID em lote:', error);
-                alert('Erro ao aplicar sugestões em lote: ' + error.message);
-            } finally {
-                bulkAcceptBtn.disabled = false;
-                bulkAcceptBtn.innerHTML = originalLabel;
-            }
-        });
-    }
 
     // ... (O resto do JavaScript não precisa de alterações)
     function getValueClass(type, value) {
