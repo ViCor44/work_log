@@ -145,10 +145,15 @@ function pid_recommendations($stats, $currentPid, $responseDelaySec) {
         }
     }
 
+    // Classificação em 3 níveis para evitar relatório binário (BOM/PREOCUPANTE)
+    $veryHighError = $stats['mean_abs'] > 0.45;
+    $veryHighOsc = $stats['stdev'] > 0.55;
+    $moderateIssue = $stats['mean_abs'] > 0.20 || $stats['stdev'] > 0.25 || $hasBias;
+
     $severity = 'BOM';
-    if ($hasOscillations || $hasHighError) {
+    if ($veryHighError || $veryHighOsc || ($hasOscillations && $hasHighError)) {
         $severity = 'PREOCUPANTE';
-    } elseif ($hasBias) {
+    } elseif ($moderateIssue) {
         $severity = 'ATENCAO';
     }
 
@@ -357,15 +362,15 @@ class PIDWeeklyPDF extends FPDF {
         $this->SetFont('Arial', 'B', 8);
 
         $this->SetFillColor(230, 230, 230);
-        $this->Cell(38, 6, utf8_decode('Controlador'), 1, 0, 'C', true);
+        $this->Cell(36, 6, utf8_decode('Controlador'), 1, 0, 'C', true);
         $this->Cell(12, 6, utf8_decode('Amost'), 1, 0, 'C', true);
         $this->Cell(18, 6, utf8_decode('Erro abs'), 1, 0, 'C', true);
         $this->Cell(16, 6, utf8_decode('DP'), 1, 0, 'C', true);
         $this->Cell(16, 6, utf8_decode('Delay'), 1, 0, 'C', true);
-        $this->Cell(22, 6, utf8_decode('Kp A->S'), 1, 0, 'C', true);
-        $this->Cell(26, 6, utf8_decode('Ti(s) A->S'), 1, 0, 'C', true);
+        $this->Cell(21, 6, utf8_decode('Kp A->S'), 1, 0, 'C', true);
+        $this->Cell(24, 6, utf8_decode('Ti(s) A->S'), 1, 0, 'C', true);
         $this->Cell(22, 6, utf8_decode('Td A->S'), 1, 0, 'C', true);
-        $this->Cell(20, 6, utf8_decode('Estado'), 1, 1, 'C', true);
+        $this->Cell(25, 6, utf8_decode('Estado'), 1, 1, 'C', true);
     }
 
     function Footer() {
@@ -415,15 +420,15 @@ foreach ($rows as $row) {
         $pdf->SetTextColor(0, 110, 64);
     }
 
-    $pdf->Cell(38, 5, utf8_decode(substr($row['tank_name'], 0, 25)), 1, 0, 'L');
+    $pdf->Cell(36, 5, utf8_decode(substr($row['tank_name'], 0, 23)), 1, 0, 'L');
     $pdf->Cell(12, 5, (string)$row['samples'], 1, 0, 'C');
     $pdf->Cell(18, 5, fmt_value($row['mean_abs'], 3), 1, 0, 'C');
     $pdf->Cell(16, 5, fmt_value($row['stdev'], 3), 1, 0, 'C');
     $pdf->Cell(16, 5, $row['mean_delay_min'] !== null ? number_format($row['mean_delay_min'], 1, '.', '') . 'm' : '-', 1, 0, 'C');
-    $pdf->Cell(22, 5, fmt_pid_pair($row['current']['p'], $row['suggested']['p'], 2), 1, 0, 'C');
-    $pdf->Cell(26, 5, fmt_pid_pair($row['current']['i'], $row['suggested']['i'], 0), 1, 0, 'C');
+    $pdf->Cell(21, 5, fmt_pid_pair($row['current']['p'], $row['suggested']['p'], 2), 1, 0, 'C');
+    $pdf->Cell(24, 5, fmt_pid_pair($row['current']['i'], $row['suggested']['i'], 0), 1, 0, 'C');
     $pdf->Cell(22, 5, fmt_pid_pair($row['current']['d'], $row['suggested']['d'], 2), 1, 0, 'C');
-    $pdf->Cell(20, 5, utf8_decode($severity), 1, 1, 'C');
+    $pdf->Cell(25, 5, utf8_decode($severity), 1, 1, 'C');
 
     $pdf->SetTextColor(0, 0, 0);
 }
