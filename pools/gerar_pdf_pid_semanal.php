@@ -145,16 +145,16 @@ function pid_recommendations($stats, $currentPid, $responseDelaySec) {
         }
     }
 
-    // Classificação em 3 níveis para evitar relatório binário (BOM/PREOCUPANTE)
+    // Classificação em 3 níveis para evitar relatório binário
     $veryHighError = $stats['mean_abs'] > 0.45;
     $veryHighOsc = $stats['stdev'] > 0.55;
     $moderateIssue = $stats['mean_abs'] > 0.20 || $stats['stdev'] > 0.25 || $hasBias;
 
-    $severity = 'BOM';
+    $severity = 'OK';
     if ($veryHighError || $veryHighOsc || ($hasOscillations && $hasHighError)) {
-        $severity = 'PREOCUPANTE';
+        $severity = 'CRITICO';
     } elseif ($moderateIssue) {
-        $severity = 'ATENCAO';
+        $severity = 'VIGIAR';
     }
 
     return [
@@ -213,26 +213,6 @@ function analyze_tank($conn, $tankId, $startDate) {
 
     $history = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
     $stmt->close();
-
-    if (!$history) {
-        $stmtFallback = $conn->prepare("SELECT log_datetime, chlorine_value, chlorine_setpoint, cl_controller_state FROM controller_history WHERE tank_id = ? ORDER BY log_datetime DESC LIMIT 100");
-        if (!$stmtFallback) {
-            return null;
-        }
-        $stmtFallback->bind_param('i', $tankId);
-        if (!$stmtFallback->execute()) {
-            $stmtFallback->close();
-            return null;
-        }
-        $history = $stmtFallback->get_result()->fetch_all(MYSQLI_ASSOC);
-        $stmtFallback->close();
-
-        if ($history) {
-            usort($history, function ($a, $b) {
-                return strtotime($a['log_datetime']) - strtotime($b['log_datetime']);
-            });
-        }
-    }
 
     if (!$history) {
         return null;
@@ -410,9 +390,9 @@ foreach ($rows as $row) {
     }
 
     $severity = $row['severity'];
-    if ($severity === 'PREOCUPANTE') {
+    if ($severity === 'CRITICO') {
         $pdf->SetTextColor(176, 0, 32);
-    } elseif ($severity === 'ATENCAO') {
+    } elseif ($severity === 'VIGIAR') {
         $pdf->SetTextColor(163, 92, 0);
     } elseif ($severity === 'SEM DADOS') {
         $pdf->SetTextColor(90, 90, 90);
