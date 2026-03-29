@@ -43,6 +43,25 @@ function float_or_null($value) {
     return (float)$value;
 }
 
+function clamp_pid_suggestion($current, $suggested, $min, $max, $maxStepFraction) {
+    if ($suggested === null || !is_numeric($suggested)) {
+        return null;
+    }
+
+    $candidate = max($min, min($max, (float)$suggested));
+
+    if ($current === null || !is_numeric($current) || (float)$current <= 0) {
+        return $candidate;
+    }
+
+    $base = (float)$current;
+    $deltaLimit = abs($base) * $maxStepFraction;
+    $lower = max($min, $base - $deltaLimit);
+    $upper = min($max, $base + $deltaLimit);
+
+    return max($lower, min($upper, $candidate));
+}
+
 function calc_stats($errors, $times) {
     $n = count($errors);
     if ($n === 0) {
@@ -163,6 +182,11 @@ function pid_recommendations($stats, $currentPid, $responseDelaySec) {
         }
     }
 
+    // Guard rails: evita saltos excessivos por ciclo e mantém valores em envelopes seguros.
+    $suggestedP = clamp_pid_suggestion($p, $suggestedP, 0.01, 100.0, 0.10);
+    $suggestedI = clamp_pid_suggestion($i, $suggestedI, 0.0, 7200.0, 0.15);
+    $suggestedD = clamp_pid_suggestion($d, $suggestedD, 0.0, 3600.0, 0.20);
+
     return [
         'p' => $suggestedP,
         'i' => $suggestedI,
@@ -230,8 +254,8 @@ function analyze_tank($conn, $tankId, $startDate) {
         $setpoint = float_or_null($row['chlorine_setpoint']);
         if ($value !== null && $setpoint !== null) {
             $errors[] = $value - $setpoint;
+            $times[] = $row['log_datetime'];
         }
-        $times[] = $row['log_datetime'];
     }
 
     $stats = calc_stats($errors, $times);
@@ -336,6 +360,16 @@ foreach ($tanks as $tank) {
             'tank_id' => $tankId,
             'tank_name' => $tankName,
             'status' => 'ERRO_PID_INCOMPLETO'
+        ];
+        continue;
+    }
+
+    if ($suggested['p'] <= 0 || $suggested['i'] < 0 || $suggested['d'] < 0) {
+        $summary['errors']++;
+        $summary['details'][] = [
+            'tank_id' => $tankId,
+            'tank_name' => $tankName,
+            'status' => 'ERRO_PID_INVALIDO'
         ];
         continue;
     }

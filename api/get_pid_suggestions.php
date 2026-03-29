@@ -122,6 +122,25 @@ function floatOrNull($value) {
     return (float)$value;
 }
 
+function clampPidSuggestion($current, $suggested, $min, $max, $maxStepFraction) {
+    if ($suggested === null || !is_numeric($suggested)) {
+        return null;
+    }
+
+    $candidate = max($min, min($max, (float)$suggested));
+
+    if ($current === null || !is_numeric($current) || (float)$current <= 0) {
+        return $candidate;
+    }
+
+    $base = (float)$current;
+    $deltaLimit = abs($base) * $maxStepFraction;
+    $lower = max($min, $base - $deltaLimit);
+    $upper = min($max, $base + $deltaLimit);
+
+    return max($lower, min($upper, $candidate));
+}
+
 function calcStats($errors, $times) {
     $n = count($errors);
     if ($n === 0) return null;
@@ -250,6 +269,11 @@ function pidRecommendations($mode, $stats, $currentPid, $context = []) {
         if (!$hasOscillations && $p !== null) $suggestedP = $p * 0.95; // Reduz ligeiramente Kp
     }
 
+    // Guard rails: limita variação por ciclo e impõe envelopes seguros.
+    $suggestedP = clampPidSuggestion($p, $suggestedP, 0.01, 100.0, 0.10);
+    $suggestedI = clampPidSuggestion($i, $suggestedI, 0.0, 7200.0, 0.15);
+    $suggestedD = clampPidSuggestion($d, $suggestedD, 0.0, 3600.0, 0.20);
+
     if (count($suggestions) === 0) {
         $suggestions[] = 'Controlador parece estável para o período analisado. Ajustes menores podem focar em otimização fina.';
     }
@@ -271,7 +295,7 @@ function pidRecommendations($mode, $stats, $currentPid, $context = []) {
         'suggestedValues' => [
             'p' => $suggestedP,
             'i' => $suggestedI !== null ? (float)$suggestedI : null,
-            'd' => (int)$suggestedD
+            'd' => $suggestedD !== null ? (float)$suggestedD : null
         ]
     ];
 }
@@ -291,8 +315,8 @@ foreach ($history as $row) {
     }
     if ($cl !== null && $cl_sp !== null) {
         $clErrors[] = $cl - $cl_sp;
+        $times[] = $row['log_datetime'];
     }
-    $times[] = $row['log_datetime'];
 }
 
 

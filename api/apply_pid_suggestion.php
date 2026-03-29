@@ -42,7 +42,12 @@ $user_id = (int)$_SESSION['user_id'];
 $ip = isset($_SERVER['REMOTE_ADDR']) ? $_SERVER['REMOTE_ADDR'] : null;
 
 // Validações
-if ($tank_id <= 0 || !is_numeric($p) || !is_numeric($i) || !is_numeric($d) || $i < 0 || $d < 0) {
+if (
+    $tank_id <= 0 ||
+    !is_numeric($p) || !is_numeric($i) || !is_numeric($d) ||
+    $p <= 0 || $i < 0 || $d < 0 ||
+    $p > 100 || $i > 7200 || $d > 3600
+) {
     return_json_response(['error' => 'Valores inválidos'], 400);
 }
 
