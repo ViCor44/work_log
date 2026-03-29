@@ -293,11 +293,11 @@ if ($res = $conn->query("SHOW COLUMNS FROM `tanks`")) {
 }
 
 $hasPidCols = isset($cols['pid_p']) && isset($cols['pid_i']) && isset($cols['pid_d']);
-if (!$hasPidCols) {
-    json_response(['error' => 'Colunas PID não existem na tabela tanks'], 500);
-}
 
-$tanksResult = $conn->query("SELECT id, name, pid_p, pid_i, pid_d FROM tanks WHERE type = 'piscina' AND has_controller = 1 ORDER BY name ASC");
+$tankSql = $hasPidCols
+    ? "SELECT id, name, pid_p, pid_i, pid_d FROM tanks WHERE type = 'piscina' AND has_controller = 1 ORDER BY name ASC"
+    : "SELECT id, name FROM tanks WHERE type = 'piscina' AND has_controller = 1 ORDER BY name ASC";
+$tanksResult = $conn->query($tankSql);
 $tanks = $tanksResult ? $tanksResult->fetch_all(MYSQLI_ASSOC) : [];
 
 $summary = [
@@ -395,15 +395,17 @@ foreach ($tanks as $tank) {
         }
         $stmtInsert->close();
 
-        $stmtUpdate = $conn->prepare("UPDATE tanks SET pid_p = ?, pid_i = ?, pid_d = ? WHERE id = ?");
-        if (!$stmtUpdate) {
-            throw new Exception('Falha ao preparar update: ' . $conn->error);
+        if ($hasPidCols) {
+            $stmtUpdate = $conn->prepare("UPDATE tanks SET pid_p = ?, pid_i = ?, pid_d = ? WHERE id = ?");
+            if (!$stmtUpdate) {
+                throw new Exception('Falha ao preparar update: ' . $conn->error);
+            }
+            $stmtUpdate->bind_param('dddi', $pVal, $iVal, $dVal, $tankId);
+            if (!$stmtUpdate->execute()) {
+                throw new Exception('Falha ao atualizar tanque: ' . $stmtUpdate->error);
+            }
+            $stmtUpdate->close();
         }
-        $stmtUpdate->bind_param('dddi', $pVal, $iVal, $dVal, $tankId);
-        if (!$stmtUpdate->execute()) {
-            throw new Exception('Falha ao atualizar tanque: ' . $stmtUpdate->error);
-        }
-        $stmtUpdate->close();
 
         $conn->commit();
 
