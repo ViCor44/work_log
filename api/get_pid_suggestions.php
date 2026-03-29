@@ -177,11 +177,14 @@ function calcStats($errors, $times) {
     ];
 }
 
-function pidRecommendations($mode, $stats, $currentPid) {
+function pidRecommendations($mode, $stats, $currentPid, $context = []) {
     $suggestions = [];
     $p = isset($currentPid['p']) ? floatOrNull($currentPid['p']) : null;
     $i = isset($currentPid['i']) ? floatOrNull($currentPid['i']) : null;
     $d = isset($currentPid['d']) ? floatOrNull($currentPid['d']) : null;
+    $responseDelaySec = isset($context['mean_response_delay_sec']) && is_numeric($context['mean_response_delay_sec'])
+        ? (float)$context['mean_response_delay_sec']
+        : null;
 
     $targetMap = ['ph' => 0.15, 'chlorine' => 0.25];
     $tightMap = ['ph' => 0.1, 'chlorine' => 0.20];
@@ -199,6 +202,12 @@ function pidRecommendations($mode, $stats, $currentPid) {
     $hasBias = abs($stats['mean']) > ($tightThreshold * 0.75) && $stats['sign_change_rate'] < 0.35;
     $hasRapidReversals = $stats['sign_change_rate'] > 0.45 && isset($stats['derivative_mean']) && $stats['derivative_mean'] > 0.0002;
 
+    // Semente de Ti com base no atraso médio observado do processo.
+    $defaultTiSec = ($mode === 'chlorine') ? 1200.0 : 300.0;
+    $tiSeedSec = ($responseDelaySec !== null && $responseDelaySec > 0)
+        ? max(300.0, min(7200.0, $responseDelaySec))
+        : $defaultTiSec;
+
     // Prioridade: oscilações indicam instabilidade, então reduzir P e aumentar D
     if ($hasOscillations) {
         $suggestions[] = 'Oscilações detectadas (desvio padrão ' . round($stats['stdev'], 3) . '); reduzir Kp e aumentar Kd para estabilizar.';
@@ -212,8 +221,9 @@ function pidRecommendations($mode, $stats, $currentPid) {
 
     if ($hasBias) {
         if ($i === null || $i <= 0) {
-            $suggestions[] = 'Viés persistente (média ' . round($stats['mean'], 3) . ') sugere integral ineficaz (Ti=0 ou não configurado); considere definir Ti > 0 (por exemplo 1-5) para ativar ação integral.';
-            $suggestedI = 2.0; // Valor inicial sugerido para ativar integral
+            $suggestions[] = 'Viés persistente (média ' . round($stats['mean'], 3) . ') sugere integral ineficaz (Ti=0 ou não configurado); considere definir Ti > 0 para ativar ação integral.';
+            $suggestedI = round($hasOscillations ? ($tiSeedSec * 1.5) : $tiSeedSec, 2);
+            $suggestions[] = 'Ti inicial sugerido com base na dinâmica do processo: ' . round($suggestedI, 2) . ' (na unidade do controlador).';
         } elseif ($i >= 500) {
             $suggestions[] = 'Viés persistente (média ' . round($stats['mean'], 3) . ') sugere integral muito fraca (Ti muito alto: ' . round($i, 2) . '); reduzir Ti em 20-30% para fortalecer ação integral.';
             $suggestedI = $i * 0.75; // Reduz Ti 25%
@@ -228,8 +238,8 @@ function pidRecommendations($mode, $stats, $currentPid) {
     if (($i === null || $i <= 0) && $suggestedI === $i) {
         $needsIntegralKickstart = $hasHighError && !$hasRapidReversals;
         if ($needsIntegralKickstart) {
-            $suggestedI = $hasOscillations ? 4.0 : 2.0;
-            $suggestions[] = 'Ti não definido (ou igual a 0) com erro elevado; sugerido Ti inicial de ' . round($suggestedI, 2) . ' para introduzir ação integral de forma gradual.';
+            $suggestedI = round($hasOscillations ? ($tiSeedSec * 1.6) : ($tiSeedSec * 1.2), 2);
+            $suggestions[] = 'Ti não definido (ou igual a 0) com erro elevado; sugerido Ti inicial de ' . round($suggestedI, 2) . ' (na unidade do controlador) para introduzir ação integral de forma gradual.';
         }
     }
 
@@ -354,7 +364,9 @@ if (($tankPid['i'] === null || $tankPid['i'] <= 0) || ($tankPid['d'] === null ||
     }
 }
 
-$recommendationsResult = pidRecommendations('chlorine', $clStats, $tankPid);
+$recommendationsResult = pidRecommendations('chlorine', $clStats, $tankPid, [
+    'mean_response_delay_sec' => $cl_mean_delay
+]);
 $recommendations = [
     'chlorine' => $recommendationsResult['suggestions'],
 ];
