@@ -218,8 +218,8 @@ $stmt->close();
     function confirmAcceptSuggestion() {
         const tankId = <?= $tank_id ?>;
         const p = parseFloat(document.getElementById('suggestedP').value);
-        const i = parseInt(document.getElementById('suggestedI').value);
-        const d = parseInt(document.getElementById('suggestedD').value);
+        const i = parseFloat(document.getElementById('suggestedI').value);
+        const d = parseFloat(document.getElementById('suggestedD').value);
         const reason = document.getElementById('suggestionReason').value;
 
         if (!reason.trim()) {

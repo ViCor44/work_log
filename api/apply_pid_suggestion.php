@@ -35,14 +35,14 @@ if (!isset($data['tank_id'], $data['p'], $data['i'], $data['d'])) {
 
 $tank_id = (int)$data['tank_id'];
 $p = (float)$data['p'];
-$i = (int)$data['i'];
-$d = (int)$data['d'];
+$i = (float)$data['i'];
+$d = (float)$data['d'];
 $reason = isset($data['reason']) ? trim($data['reason']) : 'Sugestão automática aceita';
 $user_id = (int)$_SESSION['user_id'];
 $ip = isset($_SERVER['REMOTE_ADDR']) ? $_SERVER['REMOTE_ADDR'] : null;
 
 // Validações
-if ($tank_id <= 0 || !is_numeric($p) || $i < 0 || $d < 0) {
+if ($tank_id <= 0 || !is_numeric($p) || !is_numeric($i) || !is_numeric($d) || $i < 0 || $d < 0) {
     return_json_response(['error' => 'Valores inválidos'], 400);
 }
 
@@ -86,7 +86,7 @@ try {
     if (!$stmt) {
         throw new Exception('Erro ao preparar inserção: ' . $conn->error);
     }
-    $stmt->bind_param('idiisis', $tank_id, $p, $i, $d, $reason, $user_id, $ip);
+    $stmt->bind_param('idddsis', $tank_id, $p, $i, $d, $reason, $user_id, $ip);
     if (!$stmt->execute()) {
         throw new Exception('Falha ao registar alteração de PID: ' . $stmt->error);
     }
@@ -105,7 +105,7 @@ try {
     if (isset($cols['pid_p']) && isset($cols['pid_i']) && isset($cols['pid_d'])) {
         $stmt = $conn->prepare("UPDATE tanks SET pid_p = ?, pid_i = ?, pid_d = ? WHERE id = ?");
         if ($stmt) {
-            $stmt->bind_param('diii', $p, $i, $d, $tank_id);
+            $stmt->bind_param('dddi', $p, $i, $d, $tank_id);
             if (!$stmt->execute()) {
                 throw new Exception('Falha ao atualizar valores atuais: ' . $stmt->error);
             }

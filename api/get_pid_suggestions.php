@@ -223,6 +223,16 @@ function pidRecommendations($mode, $stats, $currentPid) {
         }
     }
 
+    // Reforço: se Ti estiver ausente/zero e houver erro significativo,
+    // oferece um Ti inicial mesmo quando o viés não foi classificado como persistente.
+    if (($i === null || $i <= 0) && $suggestedI === $i) {
+        $needsIntegralKickstart = $hasHighError && !$hasRapidReversals;
+        if ($needsIntegralKickstart) {
+            $suggestedI = $hasOscillations ? 4.0 : 2.0;
+            $suggestions[] = 'Ti não definido (ou igual a 0) com erro elevado; sugerido Ti inicial de ' . round($suggestedI, 2) . ' para introduzir ação integral de forma gradual.';
+        }
+    }
+
     if ($hasRapidReversals) {
         $suggestions[] = 'Erro com muitas reversões rápidas; aumentar Td para amortecer.';
         if ($d !== null) $suggestedD = $d * 1.25; // Aumenta Td 25%
@@ -237,8 +247,10 @@ function pidRecommendations($mode, $stats, $currentPid) {
     if ($p !== null) {
         $suggestions[] = 'Kp atual: ' . $p . ' → Sugerido: ' . round($suggestedP, 6);
     }
-    if ($i !== null) {
-        $suggestions[] = 'Ti atual: ' . $i . ' → Sugerido: ' . round($suggestedI, 2) . ' (∼ Ki ajustado).';
+    if ($i !== null || $suggestedI !== null) {
+        $currentIText = ($i === null || $i <= 0) ? 'não definido/0' : (string)$i;
+        $suggestedIText = $suggestedI !== null ? round($suggestedI, 2) : 'N/A';
+        $suggestions[] = 'Ti atual: ' . $currentIText . ' → Sugerido: ' . $suggestedIText . ' (∼ Ki ajustado).';
     }
     if ($d !== null) {
         $suggestions[] = 'Td atual: ' . $d . ' → Sugerido: ' . round($suggestedD, 2) . ' (∼ Kd ajustado).';
@@ -248,7 +260,7 @@ function pidRecommendations($mode, $stats, $currentPid) {
         'suggestions' => $suggestions,
         'suggestedValues' => [
             'p' => $suggestedP,
-            'i' => (int)$suggestedI,
+            'i' => $suggestedI !== null ? (float)$suggestedI : null,
             'd' => (int)$suggestedD
         ]
     ];
