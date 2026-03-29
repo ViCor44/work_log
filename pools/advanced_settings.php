@@ -432,12 +432,19 @@ $stmt->close();
                     }
                 }
             } else {
+                const noRecentMsg = data.message
+                    ? data.message
+                    : `Sem dados suficientes para análise de cloro nos últimos ${data.days} dias.`;
+                const lastAvailableInfo = data.last_available_log_datetime
+                    ? `<br><small class="text-muted">Último registo no histórico: ${data.last_available_log_datetime}</small>`
+                    : '';
+
                 html += `
                     <div class="row">
                         <div class="col-md-12">
                             <div class="alert alert-warning">
                                 <i class="fas fa-exclamation-triangle"></i>
-                                <strong>Sem dados suficientes</strong> para análise de cloro nos últimos ${data.days} dias.
+                                <strong>Sem dados recentes.</strong> ${noRecentMsg}${lastAvailableInfo}
                             </div>
                         </div>
                     </div>

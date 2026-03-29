@@ -80,36 +80,35 @@ if (!$stmt->execute()) {
 $history = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
 $stmt->close();
 
-// Se não há dados recentes, busca os últimos 100 registros disponíveis
 if (!$history) {
-    $stmt = $conn->prepare("SELECT log_datetime, ph_value, ph_setpoint, chlorine_value, chlorine_setpoint FROM controller_history WHERE tank_id = ? ORDER BY log_datetime DESC LIMIT 100");
-    if (!$stmt) {
-        return_json_error('Erro ao preparar consulta de fallback: ' . $conn->error, 500);
+    $lastAvailable = null;
+    $stmt_last = $conn->prepare("SELECT MAX(log_datetime) AS last_log_datetime FROM controller_history WHERE tank_id = ?");
+    if ($stmt_last) {
+        $stmt_last->bind_param('i', $tank_id);
+        if ($stmt_last->execute()) {
+            $row_last = $stmt_last->get_result()->fetch_assoc();
+            $lastAvailable = isset($row_last['last_log_datetime']) ? $row_last['last_log_datetime'] : null;
+        }
+        $stmt_last->close();
     }
-    $stmt->bind_param('i', $tank_id);
-    if (!$stmt->execute()) {
-        return_json_error('Erro ao executar consulta de fallback: ' . $stmt->error, 500);
-    }
-    $history = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
-    $stmt->close();
-    // Reordena por data ascendente
-    if ($history) {
-        usort($history, function($a, $b) {
-            return strtotime($a['log_datetime']) - strtotime($b['log_datetime']);
-        });
-    }
-    $days = 'últimos disponíveis';
-}
 
-if (!$history) {
     if (ob_get_length()) {
         ob_end_clean();
     }
+
+    $message = 'Sem dados recentes de controlador no período solicitado (' . (int)$days . ' dias).';
+    if ($lastAvailable) {
+        $message .= ' Último registo disponível: ' . $lastAvailable . '.';
+    }
+
     echo json_encode([
         'tank_id' => $tank_id,
         'tank_name' => $tank['name'],
         'days' => $days,
-        'message' => 'Sem dados de controlador disponíveis.',
+        'row_count' => 0,
+        'no_recent_data' => true,
+        'last_available_log_datetime' => $lastAvailable,
+        'message' => $message,
         'suggestions' => []
     ]);
     exit;
