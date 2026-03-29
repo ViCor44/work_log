@@ -347,25 +347,25 @@ class PIDWeeklyPDF extends FPDF {
     public $days;
 
     function Header() {
-        $this->Image('../images/Logo Registado Red.png', 10, 8, 28);
-        $this->SetFont('Arial', 'B', 14);
+        $this->Image('../images/Logo Registado Red.png', 10, 8, 24);
+        $this->SetFont('Arial', 'B', 12);
         $this->Cell(0, 8, utf8_decode('Plano Semanal de Ajuste PID - Piscinas'), 0, 1, 'R');
-        $this->SetFont('Arial', '', 9);
-        $this->Cell(0, 5, utf8_decode('Período de análise: últimos ' . $this->days . ' dias'), 0, 1, 'R');
-        $this->Cell(0, 5, utf8_decode('Gerado em: ' . $this->generatedAt), 0, 1, 'R');
-        $this->Ln(2);
+        $this->SetFont('Arial', '', 8);
+        $this->Cell(0, 4, utf8_decode('Período de análise: últimos ' . $this->days . ' dias'), 0, 1, 'R');
+        $this->Cell(0, 4, utf8_decode('Gerado em: ' . $this->generatedAt), 0, 1, 'R');
+        $this->Ln(1);
         $this->SetFont('Arial', 'B', 8);
 
         $this->SetFillColor(230, 230, 230);
-        $this->Cell(38, 7, utf8_decode('Controlador'), 1, 0, 'C', true);
-        $this->Cell(12, 7, utf8_decode('Amost'), 1, 0, 'C', true);
-        $this->Cell(18, 7, utf8_decode('Erro abs'), 1, 0, 'C', true);
-        $this->Cell(16, 7, utf8_decode('DP'), 1, 0, 'C', true);
-        $this->Cell(16, 7, utf8_decode('Delay'), 1, 0, 'C', true);
-        $this->Cell(22, 7, utf8_decode('Kp A->S'), 1, 0, 'C', true);
-        $this->Cell(26, 7, utf8_decode('Ti(s) A->S'), 1, 0, 'C', true);
-        $this->Cell(22, 7, utf8_decode('Td A->S'), 1, 0, 'C', true);
-        $this->Cell(20, 7, utf8_decode('Estado'), 1, 1, 'C', true);
+        $this->Cell(38, 6, utf8_decode('Controlador'), 1, 0, 'C', true);
+        $this->Cell(12, 6, utf8_decode('Amost'), 1, 0, 'C', true);
+        $this->Cell(18, 6, utf8_decode('Erro abs'), 1, 0, 'C', true);
+        $this->Cell(16, 6, utf8_decode('DP'), 1, 0, 'C', true);
+        $this->Cell(16, 6, utf8_decode('Delay'), 1, 0, 'C', true);
+        $this->Cell(22, 6, utf8_decode('Kp A->S'), 1, 0, 'C', true);
+        $this->Cell(26, 6, utf8_decode('Ti(s) A->S'), 1, 0, 'C', true);
+        $this->Cell(22, 6, utf8_decode('Td A->S'), 1, 0, 'C', true);
+        $this->Cell(20, 6, utf8_decode('Estado'), 1, 1, 'C', true);
     }
 
     function Footer() {
@@ -390,17 +390,17 @@ function fmt_pid_pair($current, $suggested, $decimals = 2) {
     return $c . '->' . $s;
 }
 
-$pdf = new PIDWeeklyPDF('L', 'mm', 'A4');
+$pdf = new PIDWeeklyPDF('L', 'mm', 'A5');
 $pdf->AliasNbPages();
 $pdf->generatedBy = $generatedBy;
 $pdf->generatedAt = $generatedAt;
 $pdf->days = $days;
 $pdf->AddPage();
-$pdf->SetFont('Arial', '', 8);
+$pdf->SetFont('Arial', '', 7.5);
 
 foreach ($rows as $row) {
     $yStart = $pdf->GetY();
-    if ($yStart > 188) {
+    if ($yStart > 120) {
         $pdf->AddPage();
     }
 
@@ -415,21 +415,21 @@ foreach ($rows as $row) {
         $pdf->SetTextColor(0, 110, 64);
     }
 
-    $pdf->Cell(38, 6, utf8_decode(substr($row['tank_name'], 0, 25)), 1, 0, 'L');
-    $pdf->Cell(12, 6, (string)$row['samples'], 1, 0, 'C');
-    $pdf->Cell(18, 6, fmt_value($row['mean_abs'], 3), 1, 0, 'C');
-    $pdf->Cell(16, 6, fmt_value($row['stdev'], 3), 1, 0, 'C');
-    $pdf->Cell(16, 6, $row['mean_delay_min'] !== null ? number_format($row['mean_delay_min'], 1, '.', '') . 'm' : '-', 1, 0, 'C');
-    $pdf->Cell(22, 6, fmt_pid_pair($row['current']['p'], $row['suggested']['p'], 2), 1, 0, 'C');
-    $pdf->Cell(26, 6, fmt_pid_pair($row['current']['i'], $row['suggested']['i'], 0), 1, 0, 'C');
-    $pdf->Cell(22, 6, fmt_pid_pair($row['current']['d'], $row['suggested']['d'], 2), 1, 0, 'C');
-    $pdf->Cell(20, 6, utf8_decode($severity), 1, 1, 'C');
+    $pdf->Cell(38, 5, utf8_decode(substr($row['tank_name'], 0, 25)), 1, 0, 'L');
+    $pdf->Cell(12, 5, (string)$row['samples'], 1, 0, 'C');
+    $pdf->Cell(18, 5, fmt_value($row['mean_abs'], 3), 1, 0, 'C');
+    $pdf->Cell(16, 5, fmt_value($row['stdev'], 3), 1, 0, 'C');
+    $pdf->Cell(16, 5, $row['mean_delay_min'] !== null ? number_format($row['mean_delay_min'], 1, '.', '') . 'm' : '-', 1, 0, 'C');
+    $pdf->Cell(22, 5, fmt_pid_pair($row['current']['p'], $row['suggested']['p'], 2), 1, 0, 'C');
+    $pdf->Cell(26, 5, fmt_pid_pair($row['current']['i'], $row['suggested']['i'], 0), 1, 0, 'C');
+    $pdf->Cell(22, 5, fmt_pid_pair($row['current']['d'], $row['suggested']['d'], 2), 1, 0, 'C');
+    $pdf->Cell(20, 5, utf8_decode($severity), 1, 1, 'C');
 
     $pdf->SetTextColor(0, 0, 0);
 }
 
 $pdf->Ln(3);
-$pdf->SetFont('Arial', '', 8);
+$pdf->SetFont('Arial', '', 7.5);
 $pdf->MultiCell(0, 5, utf8_decode('Nota: Ti está na unidade do controlador (segundos). Ajustes devem ser aplicados de forma gradual e validados durante a semana.'), 0, 'L');
 
 $pdf->Output('I', 'plano_pid_semanal_' . date('Ymd_His') . '.pdf');
