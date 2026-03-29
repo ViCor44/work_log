@@ -334,7 +334,7 @@ class PIDWeeklyPDF extends FPDF {
     function Header() {
         $this->Image('../images/Logo Registado Red.png', 10, 8, 24);
         $this->SetFont('Arial', 'B', 12);
-        $this->Cell(0, 8, utf8_decode('Plano Semanal de Ajuste PID - Piscinas'), 0, 1, 'R');
+        $this->Cell(0, 8, utf8_decode('Plano de Ajuste PID - Piscinas'), 0, 1, 'R');
         $this->SetFont('Arial', '', 8);
         $this->Cell(0, 4, utf8_decode('Período de análise: últimos ' . $this->days . ' dias'), 0, 1, 'R');
         $this->Cell(0, 4, utf8_decode('Gerado em: ' . $this->generatedAt), 0, 1, 'R');
