@@ -3,6 +3,27 @@
 // Incluímos os ficheiros essenciais.
 require_once dirname(__DIR__) . '/core.php';
 
+/**
+ * Remove registos de histórico mais antigos que 730 dias.
+ */
+function cleanup_old_controller_history(mysqli $conn): void
+{
+    $stmt_delete = $conn->prepare("DELETE FROM controller_history WHERE log_datetime < DATE_SUB(NOW(), INTERVAL 730 DAY)");
+
+    if ($stmt_delete === false) {
+        echo "Erro ao preparar a limpeza de histórico antigo: " . $conn->error . "\n";
+        return;
+    }
+
+    if ($stmt_delete->execute()) {
+        echo "Limpeza concluída: " . $stmt_delete->affected_rows . " registos antigos removidos.\n";
+    } else {
+        echo "Erro ao executar limpeza de histórico antigo: " . $stmt_delete->error . "\n";
+    }
+
+    $stmt_delete->close();
+}
+
 // 1. Buscar todas as piscinas que têm um controlador ativo.
 $tanks_stmt = $conn->query("SELECT id, name, controller_ip FROM tanks WHERE has_controller = 1 AND controller_ip IS NOT NULL");
 $pools_with_controllers = $tanks_stmt->fetch_all(MYSQLI_ASSOC);
@@ -77,6 +98,7 @@ foreach ($pools_with_controllers as $pool) {
 }
 
 $stmt_insert->close();
+cleanup_old_controller_history($conn);
 $conn->close();
 echo "Processo concluído.\n";
 ?>
