@@ -18,6 +18,9 @@ if ($result->num_rows === 0) {
 $tank_info = $result->fetch_assoc();
 $tank_name = $tank_info['name'];
 $controller_ip = $tank_info['controller_ip'];
+$analysis_days = isset($_GET['days']) && is_numeric($_GET['days']) && (int)$_GET['days'] > 0 ? (int)$_GET['days'] : 3;
+$analysis_start_date = isset($_GET['start_date']) && preg_match('/^\d{4}-\d{2}-\d{2}$/', $_GET['start_date']) ? $_GET['start_date'] : '';
+$analysis_end_date = isset($_GET['end_date']) && preg_match('/^\d{4}-\d{2}-\d{2}$/', $_GET['end_date']) ? $_GET['end_date'] : '';
 $stmt->close();
 ?>
 
@@ -81,7 +84,7 @@ $stmt->close();
 
     <div class="card mb-4" id="pid-suggestions-card">
         <div class="card-header bg-warning text-dark d-flex justify-content-between align-items-center">
-            <h5 class="mb-0"><i class="fas fa-brain"></i> Sugestões de Ajuste PID (últimos 3 dias)</h5>
+            <h5 class="mb-0"><i class="fas fa-brain"></i> Sugestões de Ajuste PID (<span id="pid-period-label">carregando...</span>)</h5>
             <small class="text-muted">Análise baseada em dados históricos</small>
         </div>
         <div class="card-body" id="pid-suggestions-body">
@@ -254,7 +257,7 @@ $stmt->close();
                 bootstrap.Modal.getInstance(document.getElementById('acceptSuggestionModal')).hide();
                 
                 // Recarrega sugestões
-                fetchPidSuggestions(3);
+                fetchPidSuggestions(initialPidDays, initialPidStartDate, initialPidEndDate);
             } else {
                 alert('❌ Erro: ' + (data.error || 'Falha ao gravar sugestão'));
             }
@@ -271,17 +274,38 @@ $stmt->close();
 
     const controllerIp = '<?= $controller_ip ?>';
     let tankId = <?= $tank_id ?>;
+    const initialPidDays = <?= (int)$analysis_days ?>;
+    const initialPidStartDate = '<?= htmlspecialchars($analysis_start_date, ENT_QUOTES, 'UTF-8') ?>';
+    const initialPidEndDate = '<?= htmlspecialchars($analysis_end_date, ENT_QUOTES, 'UTF-8') ?>';
+    const pidPeriodLabelEl = document.getElementById('pid-period-label');
 
-    async function fetchPidSuggestions(days = 3) {
+    async function fetchPidSuggestions(days = 3, startDate = '', endDate = '') {
         if (!tankId || tankId <= 0) {
             console.error('tankId inválido em fetchPidSuggestions:', tankId);
             return;
         }
 
         try {
-            const response = await fetch(`../api/get_pid_suggestions.php?tank_id=${tankId}&days=${days}`);
+            const params = new URLSearchParams();
+            params.set('tank_id', tankId);
+            if (startDate && endDate) {
+                params.set('start_date', startDate);
+                params.set('end_date', endDate);
+            } else {
+                params.set('days', days);
+            }
+
+            const response = await fetch(`../api/get_pid_suggestions.php?${params.toString()}`);
             const data = await response.json();
             const container = document.getElementById('pid-suggestions-body');
+
+            if (pidPeriodLabelEl) {
+                if (data.start_date && data.end_date) {
+                    pidPeriodLabelEl.textContent = `${data.start_date} a ${data.end_date}`;
+                } else {
+                    pidPeriodLabelEl.textContent = `últimos ${data.days || days} dias`;
+                }
+            }
 
             if (data.error) {
                 container.innerHTML = `<div class="alert alert-danger">Erro: ${data.error}</div>`;
@@ -297,7 +321,7 @@ $stmt->close();
                         <div class="metric-card">
                             <h6><i class="fas fa-chart-line"></i> Resumo da Análise</h6>
                             <p class="mb-1"><strong>Tanque:</strong> ${data.tank_name}</p>
-                            <p class="mb-1"><strong>Período analisado:</strong> ${data.days} dias</p>
+                            <p class="mb-1"><strong>Período analisado:</strong> ${data.start_date && data.end_date ? `${data.start_date} a ${data.end_date}` : `${data.days} dias`}</p>
                             <p class="mb-0"><strong>Registros processados:</strong> ${data.row_count}</p>
                         </div>
                     </div>
@@ -325,7 +349,8 @@ $stmt->close();
                                 <tr><td>Recuperação pós-queda externa</td><td>${data.chlorine.mean_recovery_min !== null ? data.chlorine.mean_recovery_min + ' min' : 'N/A'}</td><td>Tempo médio para recuperar após quedas não atribuídas ao controlador</td></tr>
                                 <tr><td>Estabilização pós-recuperação</td><td>${data.chlorine.mean_stabilization_min !== null ? data.chlorine.mean_stabilization_min + ' min' : 'N/A'}</td><td>Tempo médio para voltar a estabilizar no setpoint</td></tr>
                                 <tr><td>Perturbações externas</td><td>${data.chlorine.disturbance_count || 0} (sem recuperação: ${data.chlorine.unrecovered_count || 0})</td><td>Eventos de queda súbita sem mudança relevante do controlador</td></tr>
-                                <tr><td>Zeros espontâneos filtrados</td><td>${data.chlorine.zero_glitch_count || 0}</td><td>Leituras isoladas desconsideradas para robustez estatística</td></tr>
+                                <tr><td>Zeros observados</td><td>${data.chlorine.zero_observed_count || 0}</td><td>Total de leituras em zero/quase zero no período</td></tr>
+                                <tr><td>Zeros espontâneos filtrados</td><td>${data.chlorine.zero_glitch_count || 0}</td><td>Apenas sequências curtas (1-2 leituras) desconsideradas na estatística principal</td></tr>
                             </table>
                         </div>
                         <div class="col-md-6">
@@ -545,7 +570,7 @@ $stmt->close();
     }
 
     // Initial load
-    fetchPidSuggestions(3);
+    fetchPidSuggestions(initialPidDays, initialPidStartDate, initialPidEndDate);
 </script>
 
 <?php

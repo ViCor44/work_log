@@ -112,7 +112,7 @@ $stmt->close();
 <div class="d-flex justify-content-between align-items-center mb-4">
     <h1 class="h3 mb-0">Monitorização Detalhada: <?= htmlspecialchars($tank_name) ?></h1>
 	    <div>
-	        <a href="advanced_settings.php?id=<?= $tank_id ?>" class="btn btn-warning">Análise PID Inteligente</a>
+                <a href="advanced_settings.php?id=<?= $tank_id ?>" class="btn btn-warning" id="btn-pid-analysis">Análise PID Inteligente</a>
 	        <a href="dashboard.php" class="btn btn-secondary">Voltar ao Dashboard</a>
 	    </div>
 	</div>
@@ -202,6 +202,20 @@ $stmt->close();
 document.addEventListener('DOMContentLoaded', function() {
     const tankId = <?= $tank_id ?>;
     const controllerIp = '<?= $controller_ip ?>';
+    const pidAnalysisBtn = document.getElementById('btn-pid-analysis');
+    const startDateInput = document.getElementById('start_date');
+    const endDateInput = document.getElementById('end_date');
+
+    if (pidAnalysisBtn) {
+        pidAnalysisBtn.addEventListener('click', function(event) {
+            const startDate = startDateInput ? startDateInput.value : '';
+            const endDate = endDateInput ? endDateInput.value : '';
+            if (startDate && endDate) {
+                event.preventDefault();
+                window.location.href = `advanced_settings.php?id=${tankId}&start_date=${encodeURIComponent(startDate)}&end_date=${encodeURIComponent(endDate)}`;
+            }
+        });
+    }
     let phHistoryChart, cloroHistoryChart;
     let tempGauge, phGauge, cloroGauge;
     let cloroNotes = [];
