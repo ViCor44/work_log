@@ -322,6 +322,10 @@ $stmt->close();
                                 <tr><td>Mínimo/Máximo</td><td>${stats.min.toFixed(4)} / ${stats.max.toFixed(4)}</td><td>Faixa de variação do erro</td></tr>
                                 <tr><td>Mudanças de Sinal</td><td>${stats.sign_changes} (${(stats.sign_change_rate * 100).toFixed(1)}%)</td><td>Frequência de oscilações</td></tr>
                                 <tr><td>Tempo médio de resposta</td><td>${data.chlorine.mean_response_delay_min !== null ? data.chlorine.mean_response_delay_min + ' min' : 'N/A'}</td><td>Delay médio entre dosagem e efeito</td></tr>
+                                <tr><td>Recuperação pós-queda externa</td><td>${data.chlorine.mean_recovery_min !== null ? data.chlorine.mean_recovery_min + ' min' : 'N/A'}</td><td>Tempo médio para recuperar após quedas não atribuídas ao controlador</td></tr>
+                                <tr><td>Estabilização pós-recuperação</td><td>${data.chlorine.mean_stabilization_min !== null ? data.chlorine.mean_stabilization_min + ' min' : 'N/A'}</td><td>Tempo médio para voltar a estabilizar no setpoint</td></tr>
+                                <tr><td>Perturbações externas</td><td>${data.chlorine.disturbance_count || 0} (sem recuperação: ${data.chlorine.unrecovered_count || 0})</td><td>Eventos de queda súbita sem mudança relevante do controlador</td></tr>
+                                <tr><td>Zeros espontâneos filtrados</td><td>${data.chlorine.zero_glitch_count || 0}</td><td>Leituras isoladas desconsideradas para robustez estatística</td></tr>
                             </table>
                         </div>
                         <div class="col-md-6">
@@ -333,6 +337,9 @@ $stmt->close();
                 const precisionIssue = stats.mean_abs >= 0.25;
                 const unstable = stats.stdev > 0.3;
                 const hasBias = Math.abs(stats.mean) > 0.15;
+                const slowRecovery = data.chlorine.mean_recovery_min !== null && data.chlorine.mean_recovery_min > 30;
+                const slowStabilization = data.chlorine.mean_stabilization_min !== null && data.chlorine.mean_stabilization_min > 50;
+                const unrecoveredDisturbances = (data.chlorine.unrecovered_count || 0) > 0;
 
                 if (precisionIssue || unstable) {
                     html += '<p class="text-danger"><i class="fas fa-times-circle"></i> <strong>ESTADO GERAL: PREOCUPANTE</strong> - Necessita ajuste de controle</p>';
@@ -360,6 +367,26 @@ $stmt->close();
                     html += '<p class="text-info"><i class="fas fa-balance-scale"></i> <strong>Vies</strong>: tendencia consistente de erro em relacao ao setpoint</p>';
                 } else {
                     html += '<p class="text-muted"><i class="fas fa-balance-scale"></i> <strong>Vies</strong>: sem tendencia relevante de desvio</p>';
+                }
+
+                if (slowRecovery) {
+                    html += '<p class="text-warning"><i class="fas fa-stopwatch"></i> <strong>Recuperacao</strong>: resposta lenta apos quedas externas</p>';
+                } else {
+                    html += '<p class="text-success"><i class="fas fa-stopwatch"></i> <strong>Recuperacao</strong>: tempo de retorno adequado</p>';
+                }
+
+                if (slowStabilization) {
+                    html += '<p class="text-warning"><i class="fas fa-wave-square"></i> <strong>Estabilizacao</strong>: demora para reentrar na banda do setpoint</p>';
+                } else {
+                    html += '<p class="text-success"><i class="fas fa-wave-square"></i> <strong>Estabilizacao</strong>: retorno consistente apos recuperacao</p>';
+                }
+
+                if (unrecoveredDisturbances) {
+                    html += `<p class="text-danger"><i class="fas fa-exclamation-circle"></i> <strong>Perturbacoes</strong>: ${data.chlorine.unrecovered_count} evento(s) sem recuperacao completa no periodo</p>`;
+                }
+
+                if ((data.chlorine.zero_glitch_count || 0) > 0) {
+                    html += `<p class="text-muted"><i class="fas fa-filter"></i> <strong>Robustez</strong>: ${(data.chlorine.zero_glitch_count || 0)} zero(s) espontaneo(s) foram ignorados na analise</p>`;
                 }
 
                 html += `

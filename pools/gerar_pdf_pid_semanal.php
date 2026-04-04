@@ -87,7 +87,121 @@ function calc_stats($errors, $times) {
     ];
 }
 
-function pid_recommendations($stats, $currentPid, $responseDelaySec) {
+function is_spontaneous_zero($series, $idx) {
+    if (!isset($series[$idx - 1]) || !isset($series[$idx + 1])) {
+        return false;
+    }
+
+    $prev = $series[$idx - 1];
+    $curr = $series[$idx];
+    $next = $series[$idx + 1];
+
+    if ($curr['value'] > 0.02) {
+        return false;
+    }
+    if ($prev['value'] < 0.15 || $next['value'] < 0.15) {
+        return false;
+    }
+    if (abs($prev['value'] - $next['value']) > 0.25) {
+        return false;
+    }
+
+    if ($prev['controller'] !== null && $curr['controller'] !== null && $next['controller'] !== null) {
+        $ctrlJump1 = abs($curr['controller'] - $prev['controller']);
+        $ctrlJump2 = abs($next['controller'] - $curr['controller']);
+        if ($ctrlJump1 > 0.05 || $ctrlJump2 > 0.05) {
+            return false;
+        }
+    }
+
+    return true;
+}
+
+function calc_disturbance_recovery($series) {
+    $n = count($series);
+    if ($n < 4) {
+        return [
+            'disturbance_count' => 0,
+            'unrecovered_count' => 0,
+            'mean_recovery_sec' => null,
+            'mean_stabilization_sec' => null,
+        ];
+    }
+
+    $dropThreshold = 0.18;
+    $controllerStableThreshold = 0.04;
+    $recoveryBand = 0.06;
+    $stabilityBand = 0.05;
+    $recoverySamples = [];
+    $stabilizationSamples = [];
+    $unrecovered = 0;
+    $events = 0;
+
+    for ($i = 1; $i < $n - 1; $i++) {
+        $prev = $series[$i - 1];
+        $curr = $series[$i];
+
+        if ($prev['controller'] === null || $curr['controller'] === null) {
+            continue;
+        }
+
+        $drop = $curr['value'] - $prev['value'];
+        $ctrlDelta = abs($curr['controller'] - $prev['controller']);
+        if ($drop > -$dropThreshold || $ctrlDelta > $controllerStableThreshold) {
+            continue;
+        }
+
+        $events++;
+        $eventTs = $curr['ts'];
+        $target = max($curr['setpoint'] - $recoveryBand, $prev['value'] - ($dropThreshold * 0.35));
+        $recoveryIdx = null;
+
+        for ($j = $i + 1; $j < $n; $j++) {
+            if ($series[$j]['value'] >= $target) {
+                $recoveryIdx = $j;
+                break;
+            }
+        }
+
+        if ($recoveryIdx === null) {
+            $unrecovered++;
+            continue;
+        }
+
+        $recoverySamples[] = max(0, $series[$recoveryIdx]['ts'] - $eventTs);
+
+        $stableIdx = null;
+        for ($k = $recoveryIdx; $k < $n - 2; $k++) {
+            $ok = true;
+            for ($w = 0; $w < 3; $w++) {
+                $e = abs($series[$k + $w]['value'] - $series[$k + $w]['setpoint']);
+                if ($e > $stabilityBand) {
+                    $ok = false;
+                    break;
+                }
+            }
+            if ($ok) {
+                $stableIdx = $k + 2;
+                break;
+            }
+        }
+
+        if ($stableIdx !== null) {
+            $stabilizationSamples[] = max(0, $series[$stableIdx]['ts'] - $eventTs);
+        } else {
+            $unrecovered++;
+        }
+    }
+
+    return [
+        'disturbance_count' => $events,
+        'unrecovered_count' => $unrecovered,
+        'mean_recovery_sec' => $recoverySamples ? (array_sum($recoverySamples) / count($recoverySamples)) : null,
+        'mean_stabilization_sec' => $stabilizationSamples ? (array_sum($stabilizationSamples) / count($stabilizationSamples)) : null,
+    ];
+}
+
+function pid_recommendations($stats, $currentPid, $responseDelaySec, $recovery) {
     $p = isset($currentPid['p']) ? float_or_null($currentPid['p']) : null;
     $i = isset($currentPid['i']) ? float_or_null($currentPid['i']) : null;
     $d = isset($currentPid['d']) ? float_or_null($currentPid['d']) : null;
@@ -103,6 +217,10 @@ function pid_recommendations($stats, $currentPid, $responseDelaySec) {
     $hasHighError = $stats['mean_abs'] > $errThreshold;
     $hasBias = abs($stats['mean']) > ($tightThreshold * 0.75) && $stats['sign_change_rate'] < 0.35;
     $hasRapidReversals = $stats['sign_change_rate'] > 0.45 && isset($stats['derivative_mean']) && $stats['derivative_mean'] > 0.0002;
+    $slowRecovery = isset($recovery['mean_recovery_sec']) && $recovery['mean_recovery_sec'] !== null && $recovery['mean_recovery_sec'] > 1800;
+    $slowStabilization = isset($recovery['mean_stabilization_sec']) && $recovery['mean_stabilization_sec'] !== null && $recovery['mean_stabilization_sec'] > 3000;
+    $hasUnrecovered = isset($recovery['unrecovered_count']) && $recovery['unrecovered_count'] > 0;
+    $disturbanceHeavy = isset($recovery['disturbance_count']) && $recovery['disturbance_count'] >= 2;
 
     $tiSeedSec = ($responseDelaySec !== null && $responseDelaySec > 0)
         ? max(300.0, min(7200.0, (float)$responseDelaySec))
@@ -145,6 +263,19 @@ function pid_recommendations($stats, $currentPid, $responseDelaySec) {
         }
     }
 
+    if (($slowRecovery || $disturbanceHeavy) && !$hasOscillations) {
+        if ($p !== null) {
+            $suggestedP = $p * 1.08;
+        }
+        if ($suggestedI !== null && $suggestedI > 0) {
+            $suggestedI = $suggestedI * 0.90;
+        }
+    }
+
+    if ($slowStabilization && $d !== null) {
+        $suggestedD = $d * 1.10;
+    }
+
     // Classificação em 3 níveis para evitar relatório binário
     $veryHighError = $stats['mean_abs'] > 0.45;
     $veryHighOsc = $stats['stdev'] > 0.55;
@@ -155,6 +286,13 @@ function pid_recommendations($stats, $currentPid, $responseDelaySec) {
         $severity = 'CRITICO';
     } elseif ($moderateIssue) {
         $severity = 'VIGIAR';
+    }
+
+    if ($hasUnrecovered && $severity !== 'CRITICO') {
+        $severity = 'VIGIAR';
+    }
+    if ($hasUnrecovered && isset($recovery['unrecovered_count']) && $recovery['unrecovered_count'] >= 2) {
+        $severity = 'CRITICO';
     }
 
     return [
@@ -218,16 +356,46 @@ function analyze_tank($conn, $tankId, $startDate) {
         return null;
     }
 
-    $errors = [];
-    $times = [];
-
+    $series = [];
     foreach ($history as $row) {
         $value = float_or_null($row['chlorine_value']);
         $setpoint = float_or_null($row['chlorine_setpoint']);
-        if ($value !== null && $setpoint !== null) {
-            $errors[] = $value - $setpoint;
+        if ($value === null || $setpoint === null) {
+            continue;
         }
-        $times[] = $row['log_datetime'];
+
+        $series[] = [
+            'time' => $row['log_datetime'],
+            'ts' => strtotime($row['log_datetime']),
+            'value' => $value,
+            'setpoint' => $setpoint,
+            'controller' => isset($row['cl_controller_state']) ? float_or_null($row['cl_controller_state']) : null,
+            'zero_glitch' => false,
+        ];
+    }
+
+    if (!$series) {
+        return null;
+    }
+
+    $zeroGlitches = 0;
+    for ($i = 1; $i < count($series) - 1; $i++) {
+        if (is_spontaneous_zero($series, $i)) {
+            $series[$i]['zero_glitch'] = true;
+            $zeroGlitches++;
+        }
+    }
+
+    $errors = [];
+    $times = [];
+    $cleanSeries = [];
+    foreach ($series as $point) {
+        if ($point['zero_glitch']) {
+            continue;
+        }
+        $errors[] = $point['value'] - $point['setpoint'];
+        $times[] = $point['time'];
+        $cleanSeries[] = $point;
     }
 
     $stats = calc_stats($errors, $times);
@@ -239,25 +407,25 @@ function analyze_tank($conn, $tankId, $startDate) {
     $doseThreshold = 0.05;
     $effectThreshold = 0.05;
 
-    for ($i = 1; $i < count($history); $i++) {
-        $prevDose = isset($history[$i - 1]['cl_controller_state']) ? float_or_null($history[$i - 1]['cl_controller_state']) : null;
-        $currDose = isset($history[$i]['cl_controller_state']) ? float_or_null($history[$i]['cl_controller_state']) : null;
+    for ($i = 1; $i < count($cleanSeries); $i++) {
+        $prevDose = $cleanSeries[$i - 1]['controller'];
+        $currDose = $cleanSeries[$i]['controller'];
 
         if ($prevDose === null || $currDose === null || abs($currDose - $prevDose) <= $doseThreshold) {
             continue;
         }
 
-        $doseTime = strtotime($history[$i]['log_datetime']);
-        $doseValue = float_or_null($history[$i]['chlorine_value']);
+        $doseTime = $cleanSeries[$i]['ts'];
+        $doseValue = $cleanSeries[$i]['value'];
 
-        for ($j = $i + 1; $j < count($history); $j++) {
-            $effectValue = float_or_null($history[$j]['chlorine_value']);
+        for ($j = $i + 1; $j < count($cleanSeries); $j++) {
+            $effectValue = $cleanSeries[$j]['value'];
             if ($effectValue === null || $doseValue === null) {
                 continue;
             }
 
             if (abs($effectValue - $doseValue) > $effectThreshold) {
-                $effectTime = strtotime($history[$j]['log_datetime']);
+                $effectTime = $cleanSeries[$j]['ts'];
                 $delay = $effectTime - $doseTime;
                 if ($delay > 0 && $delay < 21600) {
                     $delaySamples[] = $delay;
@@ -268,10 +436,13 @@ function analyze_tank($conn, $tankId, $startDate) {
     }
 
     $meanDelaySec = count($delaySamples) > 0 ? array_sum($delaySamples) / count($delaySamples) : null;
+    $recovery = calc_disturbance_recovery($cleanSeries);
 
     return [
         'stats' => $stats,
         'mean_delay_sec' => $meanDelaySec,
+        'zero_glitches' => $zeroGlitches,
+        'recovery' => $recovery,
         'row_count' => count($history),
     ];
 }
@@ -312,7 +483,7 @@ foreach ($tanks as $tank) {
     }
 
     $currentPid = fetch_tank_pid($conn, $tank);
-    $recommendation = pid_recommendations($analysis['stats'], $currentPid, $analysis['mean_delay_sec']);
+    $recommendation = pid_recommendations($analysis['stats'], $currentPid, $analysis['mean_delay_sec'], $analysis['recovery']);
 
     $rows[] = [
         'tank_name' => $tank['name'],
@@ -320,6 +491,15 @@ foreach ($tanks as $tank) {
         'mean_abs' => $analysis['stats']['mean_abs'],
         'stdev' => $analysis['stats']['stdev'],
         'mean_delay_min' => $analysis['mean_delay_sec'] !== null ? round($analysis['mean_delay_sec'] / 60, 1) : null,
+        'mean_recovery_min' => isset($analysis['recovery']['mean_recovery_sec']) && $analysis['recovery']['mean_recovery_sec'] !== null
+            ? round($analysis['recovery']['mean_recovery_sec'] / 60, 1)
+            : null,
+        'mean_stabilization_min' => isset($analysis['recovery']['mean_stabilization_sec']) && $analysis['recovery']['mean_stabilization_sec'] !== null
+            ? round($analysis['recovery']['mean_stabilization_sec'] / 60, 1)
+            : null,
+        'disturbance_count' => isset($analysis['recovery']['disturbance_count']) ? (int)$analysis['recovery']['disturbance_count'] : 0,
+        'unrecovered_count' => isset($analysis['recovery']['unrecovered_count']) ? (int)$analysis['recovery']['unrecovered_count'] : 0,
+        'zero_glitches' => isset($analysis['zero_glitches']) ? (int)$analysis['zero_glitches'] : 0,
         'current' => $currentPid,
         'suggested' => $recommendation['values'],
         'severity' => $recommendation['severity']
@@ -416,6 +596,46 @@ foreach ($rows as $row) {
 $pdf->Ln(3);
 $pdf->SetFont('Arial', '', 7.5);
 $pdf->MultiCell(0, 5, utf8_decode('Nota: Ti está na unidade do controlador (segundos). Ajustes devem ser aplicados de forma gradual e validados durante a semana.'), 0, 'L');
+
+$totalDisturbances = 0;
+$totalUnrecovered = 0;
+$rowsWithRecovery = 0;
+$sumRecoveryMin = 0.0;
+$sumStabilizationMin = 0.0;
+$rowsWithStabilization = 0;
+$totalZeroGlitches = 0;
+
+foreach ($rows as $row) {
+    $totalDisturbances += isset($row['disturbance_count']) ? (int)$row['disturbance_count'] : 0;
+    $totalUnrecovered += isset($row['unrecovered_count']) ? (int)$row['unrecovered_count'] : 0;
+    $totalZeroGlitches += isset($row['zero_glitches']) ? (int)$row['zero_glitches'] : 0;
+
+    if (isset($row['mean_recovery_min']) && $row['mean_recovery_min'] !== null) {
+        $sumRecoveryMin += (float)$row['mean_recovery_min'];
+        $rowsWithRecovery++;
+    }
+    if (isset($row['mean_stabilization_min']) && $row['mean_stabilization_min'] !== null) {
+        $sumStabilizationMin += (float)$row['mean_stabilization_min'];
+        $rowsWithStabilization++;
+    }
+}
+
+$meanRecoveryGlobal = $rowsWithRecovery > 0 ? ($sumRecoveryMin / $rowsWithRecovery) : null;
+$meanStabilizationGlobal = $rowsWithStabilization > 0 ? ($sumStabilizationMin / $rowsWithStabilization) : null;
+
+$lineRecovery = 'Recuperação após quedas externas: sem eventos identificados.';
+if ($totalDisturbances > 0) {
+    $lineRecovery = 'Recuperação média após quedas externas: '
+        . ($meanRecoveryGlobal !== null ? number_format($meanRecoveryGlobal, 1, '.', '') . ' min' : 'n/d')
+        . '; estabilização média: '
+        . ($meanStabilizationGlobal !== null ? number_format($meanStabilizationGlobal, 1, '.', '') . ' min' : 'n/d')
+        . '; eventos sem recuperação completa: ' . $totalUnrecovered . '.';
+}
+$pdf->MultiCell(0, 5, utf8_decode($lineRecovery), 0, 'L');
+
+if ($totalZeroGlitches > 0) {
+    $pdf->MultiCell(0, 5, utf8_decode('Leitura robusta: ' . $totalZeroGlitches . ' zeros espontâneos isolados foram desconsiderados na estatística de erro.'), 0, 'L');
+}
 
 $pdf->Output('I', 'plano_pid_semanal_' . date('Ymd_His') . '.pdf');
 ?>

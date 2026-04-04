@@ -195,6 +195,120 @@ function calcStats($errors, $times) {
     ];
 }
 
+function isSpontaneousZero($series, $idx) {
+    if (!isset($series[$idx - 1]) || !isset($series[$idx + 1])) {
+        return false;
+    }
+
+    $prev = $series[$idx - 1];
+    $curr = $series[$idx];
+    $next = $series[$idx + 1];
+
+    if ($curr['value'] > 0.02) {
+        return false;
+    }
+    if ($prev['value'] < 0.15 || $next['value'] < 0.15) {
+        return false;
+    }
+    if (abs($prev['value'] - $next['value']) > 0.25) {
+        return false;
+    }
+
+    if ($prev['controller'] !== null && $curr['controller'] !== null && $next['controller'] !== null) {
+        $ctrlJump1 = abs($curr['controller'] - $prev['controller']);
+        $ctrlJump2 = abs($next['controller'] - $curr['controller']);
+        if ($ctrlJump1 > 0.05 || $ctrlJump2 > 0.05) {
+            return false;
+        }
+    }
+
+    return true;
+}
+
+function calcDisturbanceRecovery($series) {
+    $n = count($series);
+    if ($n < 4) {
+        return [
+            'disturbance_count' => 0,
+            'unrecovered_count' => 0,
+            'mean_recovery_sec' => null,
+            'mean_stabilization_sec' => null,
+        ];
+    }
+
+    $dropThreshold = 0.18;
+    $controllerStableThreshold = 0.04;
+    $recoveryBand = 0.06;
+    $stabilityBand = 0.05;
+    $recoverySamples = [];
+    $stabilizationSamples = [];
+    $unrecovered = 0;
+    $events = 0;
+
+    for ($i = 1; $i < $n - 1; $i++) {
+        $prev = $series[$i - 1];
+        $curr = $series[$i];
+
+        if ($prev['controller'] === null || $curr['controller'] === null) {
+            continue;
+        }
+
+        $drop = $curr['value'] - $prev['value'];
+        $ctrlDelta = abs($curr['controller'] - $prev['controller']);
+        if ($drop > -$dropThreshold || $ctrlDelta > $controllerStableThreshold) {
+            continue;
+        }
+
+        $events++;
+        $eventTs = $curr['ts'];
+        $target = max($curr['setpoint'] - $recoveryBand, $prev['value'] - ($dropThreshold * 0.35));
+        $recoveryIdx = null;
+
+        for ($j = $i + 1; $j < $n; $j++) {
+            if ($series[$j]['value'] >= $target) {
+                $recoveryIdx = $j;
+                break;
+            }
+        }
+
+        if ($recoveryIdx === null) {
+            $unrecovered++;
+            continue;
+        }
+
+        $recoverySamples[] = max(0, $series[$recoveryIdx]['ts'] - $eventTs);
+
+        $stableIdx = null;
+        for ($k = $recoveryIdx; $k < $n - 2; $k++) {
+            $ok = true;
+            for ($w = 0; $w < 3; $w++) {
+                $e = abs($series[$k + $w]['value'] - $series[$k + $w]['setpoint']);
+                if ($e > $stabilityBand) {
+                    $ok = false;
+                    break;
+                }
+            }
+            if ($ok) {
+                $stableIdx = $k + 2;
+                break;
+            }
+        }
+
+        if ($stableIdx !== null) {
+            $stabilizationSamples[] = max(0, $series[$stableIdx]['ts'] - $eventTs);
+        } else {
+            $unrecovered++;
+        }
+    }
+
+    return [
+        'disturbance_count' => $events,
+        'unrecovered_count' => $unrecovered,
+        'mean_recovery_sec' => $recoverySamples ? (array_sum($recoverySamples) / count($recoverySamples)) : null,
+        'mean_stabilization_sec' => $stabilizationSamples ? (array_sum($stabilizationSamples) / count($stabilizationSamples)) : null,
+    ];
+}
+
 function pidRecommendations($mode, $stats, $currentPid, $context = []) {
     $suggestions = [];
     $p = isset($currentPid['p']) ? floatOrNull($currentPid['p']) : null;
@@ -219,6 +333,12 @@ function pidRecommendations($mode, $stats, $currentPid, $context = []) {
     $hasHighError = $stats['mean_abs'] > $errThreshold;
     $hasBias = abs($stats['mean']) > ($tightThreshold * 0.75) && $stats['sign_change_rate'] < 0.35;
     $hasRapidReversals = $stats['sign_change_rate'] > 0.45 && isset($stats['derivative_mean']) && $stats['derivative_mean'] > 0.0002;
+    $recovery = isset($context['recovery']) && is_array($context['recovery']) ? $context['recovery'] : [];
+    $slowRecovery = isset($recovery['mean_recovery_sec']) && $recovery['mean_recovery_sec'] !== null && $recovery['mean_recovery_sec'] > 1800;
+    $slowStabilization = isset($recovery['mean_stabilization_sec']) && $recovery['mean_stabilization_sec'] !== null && $recovery['mean_stabilization_sec'] > 3000;
+    $hasUnrecovered = isset($recovery['unrecovered_count']) && (int)$recovery['unrecovered_count'] > 0;
+    $disturbanceHeavy = isset($recovery['disturbance_count']) && (int)$recovery['disturbance_count'] >= 2;
+    $zeroGlitches = isset($context['zero_glitch_count']) ? (int)$context['zero_glitch_count'] : 0;
 
     // Semente de Ti com base no atraso médio observado do processo.
     $defaultTiSec = ($mode === 'chlorine') ? 1200.0 : 300.0;
@@ -268,6 +388,25 @@ function pidRecommendations($mode, $stats, $currentPid, $context = []) {
         if (!$hasOscillations && $p !== null) $suggestedP = $p * 0.95; // Reduz ligeiramente Kp
     }
 
+    if (($slowRecovery || $disturbanceHeavy) && !$hasOscillations) {
+        $suggestions[] = 'Quedas externas com recuperação lenta; ajustar Kp/Ti para reduzir tempo de retorno ao setpoint.';
+        if ($p !== null) $suggestedP = $p * 1.08;
+        if ($suggestedI !== null && $suggestedI > 0) $suggestedI = $suggestedI * 0.90;
+    }
+
+    if ($slowStabilization && $d !== null) {
+        $suggestions[] = 'Após recuperar, a estabilização ainda está lenta; aumentar Td de forma moderada.';
+        $suggestedD = $d * 1.10;
+    }
+
+    if ($hasUnrecovered) {
+        $suggestions[] = 'Foram detetadas perturbações sem recuperação completa no período; manter ajustes conservadores e monitorizar.';
+    }
+
+    if ($zeroGlitches > 0) {
+        $suggestions[] = 'Foram ignorados ' . $zeroGlitches . ' zeros espontâneos isolados para evitar enviesamento da análise.';
+    }
+
     // Guard rails: limita variação por ciclo e impõe envelopes seguros.
     $suggestedP = clampPidSuggestion($p, $suggestedP, 0.01, 100.0, 0.10);
     $suggestedI = clampPidSuggestion($i, $suggestedI, 0.0, 7200.0, 0.15);
@@ -300,7 +439,7 @@ function pidRecommendations($mode, $stats, $currentPid, $context = []) {
 }
 
 $phErrors = [];
-$clErrors = [];
+$clSeries = [];
 $times = [];
 
 foreach ($history as $row) {
@@ -313,9 +452,35 @@ foreach ($history as $row) {
         $phErrors[] = $ph - $ph_sp;
     }
     if ($cl !== null && $cl_sp !== null) {
-        $clErrors[] = $cl - $cl_sp;
-        $times[] = $row['log_datetime'];
+        $clSeries[] = [
+            'time' => $row['log_datetime'],
+            'ts' => strtotime($row['log_datetime']),
+            'value' => $cl,
+            'setpoint' => $cl_sp,
+            'controller' => isset($row['cl_controller_state']) ? floatOrNull($row['cl_controller_state']) : null,
+            'zero_glitch' => false,
+        ];
     }
+}
+
+
+$zeroGlitchCount = 0;
+for ($i = 1; $i < count($clSeries) - 1; $i++) {
+    if (isSpontaneousZero($clSeries, $i)) {
+        $clSeries[$i]['zero_glitch'] = true;
+        $zeroGlitchCount++;
+    }
+}
+
+$clErrors = [];
+$cleanSeries = [];
+foreach ($clSeries as $point) {
+    if ($point['zero_glitch']) {
+        continue;
+    }
+    $clErrors[] = $point['value'] - $point['setpoint'];
+    $times[] = $point['time'];
+    $cleanSeries[] = $point;
 }
 
 
@@ -327,27 +492,21 @@ $last_dose_time = null;
 $last_dose_value = null;
 $dose_threshold = 0.05; // Mudança mínima para considerar nova dosagem
 $effect_threshold = 0.05; // Mudança mínima para considerar efeito
-for ($i = 1; $i < count($history); $i++) {
-    $prev = $history[$i-1];
-    $curr = $history[$i];
-    // Detecta alteração relevante na dosagem de cloro
-    if (isset($prev['cl_controller_state'], $curr['cl_controller_state'])) {
-        $prev_dose = floatOrNull($prev['cl_controller_state']);
-        $curr_dose = floatOrNull($curr['cl_controller_state']);
-        if ($prev_dose !== null && $curr_dose !== null && abs($curr_dose - $prev_dose) > $dose_threshold) {
-            $last_dose_time = strtotime($curr['log_datetime']);
-            $last_dose_value = floatOrNull($curr['chlorine_value']);
-            // Agora procura pelo efeito nos próximos pontos
-            for ($j = $i+1; $j < count($history); $j++) {
-                $effect_val = floatOrNull($history[$j]['chlorine_value']);
-                if ($effect_val !== null && $last_dose_value !== null && abs($effect_val - $last_dose_value) > $effect_threshold) {
-                    $effect_time = strtotime($history[$j]['log_datetime']);
-                    $delay = $effect_time - $last_dose_time;
-                    if ($delay > 0 && $delay < 3600*6) { // ignora delays absurdos (>6h)
-                        $cl_delay_samples[] = $delay;
-                    }
-                    break;
+for ($i = 1; $i < count($cleanSeries); $i++) {
+    $prev = $cleanSeries[$i - 1];
+    $curr = $cleanSeries[$i];
+    if ($prev['controller'] !== null && $curr['controller'] !== null && abs($curr['controller'] - $prev['controller']) > $dose_threshold) {
+        $last_dose_time = $curr['ts'];
+        $last_dose_value = $curr['value'];
+        for ($j = $i + 1; $j < count($cleanSeries); $j++) {
+            $effect_val = $cleanSeries[$j]['value'];
+            if ($effect_val !== null && $last_dose_value !== null && abs($effect_val - $last_dose_value) > $effect_threshold) {
+                $effect_time = $cleanSeries[$j]['ts'];
+                $delay = $effect_time - $last_dose_time;
+                if ($delay > 0 && $delay < 3600 * 6) {
+                    $cl_delay_samples[] = $delay;
                 }
+                break;
             }
         }
     }
@@ -356,6 +515,8 @@ $cl_mean_delay = null;
 if (count($cl_delay_samples) > 0) {
     $cl_mean_delay = array_sum($cl_delay_samples) / count($cl_delay_samples);
 }
+
+$clRecovery = calcDisturbanceRecovery($cleanSeries);
 
 // Usa os valores atuais de PID do banco de dados (padrão) e tenta fallback em histórico se Ti inválido
 $tankPid = [
@@ -388,7 +549,9 @@ if (($tankPid['i'] === null || $tankPid['i'] <= 0) || ($tankPid['d'] === null ||
 }
 
 $recommendationsResult = pidRecommendations('chlorine', $clStats, $tankPid, [
-    'mean_response_delay_sec' => $cl_mean_delay
+    'mean_response_delay_sec' => $cl_mean_delay,
+    'recovery' => $clRecovery,
+    'zero_glitch_count' => $zeroGlitchCount,
 ]);
 $recommendations = [
     'chlorine' => $recommendationsResult['suggestions'],
@@ -440,7 +603,14 @@ $response = [
         'block_reason' => $blockReason,
         'last_change_time' => $lastChangeTime ? date('Y-m-d H:i:s', $lastChangeTime) : null,
         'mean_response_delay_sec' => $cl_mean_delay,
-        'mean_response_delay_min' => $cl_mean_delay !== null ? round($cl_mean_delay/60,1) : null
+        'mean_response_delay_min' => $cl_mean_delay !== null ? round($cl_mean_delay/60,1) : null,
+        'mean_recovery_sec' => isset($clRecovery['mean_recovery_sec']) ? $clRecovery['mean_recovery_sec'] : null,
+        'mean_recovery_min' => isset($clRecovery['mean_recovery_sec']) && $clRecovery['mean_recovery_sec'] !== null ? round($clRecovery['mean_recovery_sec'] / 60, 1) : null,
+        'mean_stabilization_sec' => isset($clRecovery['mean_stabilization_sec']) ? $clRecovery['mean_stabilization_sec'] : null,
+        'mean_stabilization_min' => isset($clRecovery['mean_stabilization_sec']) && $clRecovery['mean_stabilization_sec'] !== null ? round($clRecovery['mean_stabilization_sec'] / 60, 1) : null,
+        'disturbance_count' => isset($clRecovery['disturbance_count']) ? (int)$clRecovery['disturbance_count'] : 0,
+        'unrecovered_count' => isset($clRecovery['unrecovered_count']) ? (int)$clRecovery['unrecovered_count'] : 0,
+        'zero_glitch_count' => $zeroGlitchCount
     ],
     'current_pid' => $tankPid,
     'pid_change_history' => $pid_change_history,
