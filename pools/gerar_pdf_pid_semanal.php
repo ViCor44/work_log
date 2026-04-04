@@ -87,34 +87,81 @@ function calc_stats($errors, $times) {
     ];
 }
 
-function is_spontaneous_zero($series, $idx) {
-    if (!isset($series[$idx - 1]) || !isset($series[$idx + 1])) {
-        return false;
+function mark_spontaneous_zero_runs($series) {
+    $n = count($series);
+    if ($n < 3) {
+        return [
+            'series' => $series,
+            'glitch_count' => 0,
+        ];
     }
 
-    $prev = $series[$idx - 1];
-    $curr = $series[$idx];
-    $next = $series[$idx + 1];
+    $zeroThreshold = 0.02;
+    $minBoundaryValue = 0.15;
+    $maxBoundaryDrift = 0.25;
+    $maxControllerSpread = 0.06;
+    $maxRunLen = 2;
 
-    if ($curr['value'] > 0.02) {
-        return false;
-    }
-    if ($prev['value'] < 0.15 || $next['value'] < 0.15) {
-        return false;
-    }
-    if (abs($prev['value'] - $next['value']) > 0.25) {
-        return false;
-    }
+    $glitchCount = 0;
 
-    if ($prev['controller'] !== null && $curr['controller'] !== null && $next['controller'] !== null) {
-        $ctrlJump1 = abs($curr['controller'] - $prev['controller']);
-        $ctrlJump2 = abs($next['controller'] - $curr['controller']);
-        if ($ctrlJump1 > 0.05 || $ctrlJump2 > 0.05) {
-            return false;
+    for ($i = 1; $i < $n - 1; $i++) {
+        if ($series[$i]['value'] > $zeroThreshold || $series[$i]['zero_glitch']) {
+            continue;
         }
+
+        $start = $i;
+        $end = $i;
+        while (($end + 1) < $n && $series[$end + 1]['value'] <= $zeroThreshold) {
+            $end++;
+        }
+
+        $runLen = $end - $start + 1;
+        if ($runLen > $maxRunLen) {
+            $i = $end;
+            continue;
+        }
+        if ($start <= 0 || $end >= ($n - 1)) {
+            $i = $end;
+            continue;
+        }
+
+        $prev = $series[$start - 1];
+        $next = $series[$end + 1];
+        if ($prev['value'] < $minBoundaryValue || $next['value'] < $minBoundaryValue) {
+            $i = $end;
+            continue;
+        }
+        if (abs($prev['value'] - $next['value']) > $maxBoundaryDrift) {
+            $i = $end;
+            continue;
+        }
+
+        $controllers = [];
+        for ($k = $start - 1; $k <= $end + 1; $k++) {
+            if ($series[$k]['controller'] !== null) {
+                $controllers[] = $series[$k]['controller'];
+            }
+        }
+        if (count($controllers) >= 2) {
+            $spread = max($controllers) - min($controllers);
+            if ($spread > $maxControllerSpread) {
+                $i = $end;
+                continue;
+            }
+        }
+
+        for ($k = $start; $k <= $end; $k++) {
+            $series[$k]['zero_glitch'] = true;
+            $glitchCount++;
+        }
+
+        $i = $end;
     }
 
-    return true;
+    return [
+        'series' => $series,
+        'glitch_count' => $glitchCount,
+    ];
 }
 
 function calc_disturbance_recovery($series) {
@@ -378,13 +425,9 @@ function analyze_tank($conn, $tankId, $startDate) {
         return null;
     }
 
-    $zeroGlitches = 0;
-    for ($i = 1; $i < count($series) - 1; $i++) {
-        if (is_spontaneous_zero($series, $i)) {
-            $series[$i]['zero_glitch'] = true;
-            $zeroGlitches++;
-        }
-    }
+    $markResult = mark_spontaneous_zero_runs($series);
+    $series = $markResult['series'];
+    $zeroGlitches = $markResult['glitch_count'];
 
     $errors = [];
     $times = [];

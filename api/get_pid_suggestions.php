@@ -32,7 +32,26 @@ if (!isset($_GET['tank_id']) || !is_numeric($_GET['tank_id'])) {
 
 $tank_id = (int)$_GET['tank_id'];
 $days = isset($_GET['days']) && is_numeric($_GET['days']) && $_GET['days'] > 0 ? (int)$_GET['days'] : 3;
-$start_date = date('Y-m-d H:i:s', strtotime("-{$days} days"));
+$rangeStart = isset($_GET['start_date']) ? trim($_GET['start_date']) : null;
+$rangeEnd = isset($_GET['end_date']) ? trim($_GET['end_date']) : null;
+$hasRange = false;
+
+if (
+    $rangeStart && $rangeEnd
+    && preg_match('/^\d{4}-\d{2}-\d{2}$/', $rangeStart)
+    && preg_match('/^\d{4}-\d{2}-\d{2}$/', $rangeEnd)
+    && strtotime($rangeStart) !== false
+    && strtotime($rangeEnd) !== false
+    && strtotime($rangeStart) <= strtotime($rangeEnd)
+) {
+    $hasRange = true;
+    $start_date = $rangeStart . ' 00:00:00';
+    $end_date = $rangeEnd . ' 23:59:59';
+    $days = max(1, (int)floor((strtotime($rangeEnd) - strtotime($rangeStart)) / 86400) + 1);
+} else {
+    $start_date = date('Y-m-d H:i:s', strtotime("-{$days} days"));
+    $end_date = date('Y-m-d H:i:s');
+}
 
 // Busca os dados do tanque e valores atuais de PID (se existirem colunas PID)
 // Primeiro, verifica se as colunas PID existem
@@ -69,11 +88,18 @@ $stmt_tank->close();
 
 
 // Agora busca também o estado do controlador de cloro
-$stmt = $conn->prepare("SELECT log_datetime, ph_value, ph_setpoint, chlorine_value, chlorine_setpoint, cl_controller_state FROM controller_history WHERE tank_id = ? AND log_datetime >= ? ORDER BY log_datetime ASC");
+$historySql = $hasRange
+    ? "SELECT log_datetime, ph_value, ph_setpoint, chlorine_value, chlorine_setpoint, cl_controller_state FROM controller_history WHERE tank_id = ? AND log_datetime BETWEEN ? AND ? ORDER BY log_datetime ASC"
+    : "SELECT log_datetime, ph_value, ph_setpoint, chlorine_value, chlorine_setpoint, cl_controller_state FROM controller_history WHERE tank_id = ? AND log_datetime >= ? ORDER BY log_datetime ASC";
+$stmt = $conn->prepare($historySql);
 if (!$stmt) {
     return_json_error('Erro ao preparar consulta de histórico: ' . $conn->error, 500);
 }
-$stmt->bind_param('is', $tank_id, $start_date);
+if ($hasRange) {
+    $stmt->bind_param('iss', $tank_id, $start_date, $end_date);
+} else {
+    $stmt->bind_param('is', $tank_id, $start_date);
+}
 if (!$stmt->execute()) {
     return_json_error('Erro ao executar consulta de histórico: ' . $stmt->error, 500);
 }
@@ -96,7 +122,9 @@ if (!$history) {
         ob_end_clean();
     }
 
-    $message = 'Sem dados recentes de controlador no período solicitado (' . (int)$days . ' dias).';
+    $message = $hasRange
+        ? ('Sem dados recentes de controlador no período solicitado (' . $rangeStart . ' até ' . $rangeEnd . ').')
+        : ('Sem dados recentes de controlador no período solicitado (' . (int)$days . ' dias).');
     if ($lastAvailable) {
         $message .= ' Último registo disponível: ' . $lastAvailable . '.';
     }
@@ -105,6 +133,8 @@ if (!$history) {
         'tank_id' => $tank_id,
         'tank_name' => $tank['name'],
         'days' => $days,
+        'start_date' => $hasRange ? $rangeStart : date('Y-m-d', strtotime($start_date)),
+        'end_date' => $hasRange ? $rangeEnd : date('Y-m-d'),
         'row_count' => 0,
         'no_recent_data' => true,
         'last_available_log_datetime' => $lastAvailable,
@@ -195,34 +225,81 @@ function calcStats($errors, $times) {
     ];
 }
 
-function isSpontaneousZero($series, $idx) {
-    if (!isset($series[$idx - 1]) || !isset($series[$idx + 1])) {
-        return false;
+function markSpontaneousZeroRuns($series) {
+    $n = count($series);
+    if ($n < 3) {
+        return [
+            'series' => $series,
+            'glitch_count' => 0,
+        ];
     }
 
-    $prev = $series[$idx - 1];
-    $curr = $series[$idx];
-    $next = $series[$idx + 1];
+    $zeroThreshold = 0.02;
+    $minBoundaryValue = 0.15;
+    $maxBoundaryDrift = 0.25;
+    $maxControllerSpread = 0.06;
+    $maxRunLen = 2;
 
-    if ($curr['value'] > 0.02) {
-        return false;
-    }
-    if ($prev['value'] < 0.15 || $next['value'] < 0.15) {
-        return false;
-    }
-    if (abs($prev['value'] - $next['value']) > 0.25) {
-        return false;
-    }
+    $glitchCount = 0;
 
-    if ($prev['controller'] !== null && $curr['controller'] !== null && $next['controller'] !== null) {
-        $ctrlJump1 = abs($curr['controller'] - $prev['controller']);
-        $ctrlJump2 = abs($next['controller'] - $curr['controller']);
-        if ($ctrlJump1 > 0.05 || $ctrlJump2 > 0.05) {
-            return false;
+    for ($i = 1; $i < $n - 1; $i++) {
+        if ($series[$i]['value'] > $zeroThreshold || $series[$i]['zero_glitch']) {
+            continue;
         }
+
+        $start = $i;
+        $end = $i;
+        while (($end + 1) < $n && $series[$end + 1]['value'] <= $zeroThreshold) {
+            $end++;
+        }
+
+        $runLen = $end - $start + 1;
+        if ($runLen > $maxRunLen) {
+            $i = $end;
+            continue;
+        }
+        if ($start <= 0 || $end >= ($n - 1)) {
+            $i = $end;
+            continue;
+        }
+
+        $prev = $series[$start - 1];
+        $next = $series[$end + 1];
+        if ($prev['value'] < $minBoundaryValue || $next['value'] < $minBoundaryValue) {
+            $i = $end;
+            continue;
+        }
+        if (abs($prev['value'] - $next['value']) > $maxBoundaryDrift) {
+            $i = $end;
+            continue;
+        }
+
+        $controllers = [];
+        for ($k = $start - 1; $k <= $end + 1; $k++) {
+            if ($series[$k]['controller'] !== null) {
+                $controllers[] = $series[$k]['controller'];
+            }
+        }
+        if (count($controllers) >= 2) {
+            $spread = max($controllers) - min($controllers);
+            if ($spread > $maxControllerSpread) {
+                $i = $end;
+                continue;
+            }
+        }
+
+        for ($k = $start; $k <= $end; $k++) {
+            $series[$k]['zero_glitch'] = true;
+            $glitchCount++;
+        }
+
+        $i = $end;
     }
 
-    return true;
+    return [
+        'series' => $series,
+        'glitch_count' => $glitchCount,
+    ];
 }
 
 function calcDisturbanceRecovery($series) {
@@ -339,6 +416,7 @@ function pidRecommendations($mode, $stats, $currentPid, $context = []) {
     $hasUnrecovered = isset($recovery['unrecovered_count']) && (int)$recovery['unrecovered_count'] > 0;
     $disturbanceHeavy = isset($recovery['disturbance_count']) && (int)$recovery['disturbance_count'] >= 2;
     $zeroGlitches = isset($context['zero_glitch_count']) ? (int)$context['zero_glitch_count'] : 0;
+    $zeroObserved = isset($context['zero_observed_count']) ? (int)$context['zero_observed_count'] : 0;
 
     // Semente de Ti com base no atraso médio observado do processo.
     $defaultTiSec = ($mode === 'chlorine') ? 1200.0 : 300.0;
@@ -403,8 +481,11 @@ function pidRecommendations($mode, $stats, $currentPid, $context = []) {
         $suggestions[] = 'Foram detetadas perturbações sem recuperação completa no período; manter ajustes conservadores e monitorizar.';
     }
 
+    if ($zeroObserved > 0) {
+        $suggestions[] = 'Foram observadas ' . $zeroObserved . ' leituras em zero/quase zero no período.';
+    }
     if ($zeroGlitches > 0) {
-        $suggestions[] = 'Foram ignorados ' . $zeroGlitches . ' zeros espontâneos isolados para evitar enviesamento da análise.';
+        $suggestions[] = 'Dessas, ' . $zeroGlitches . ' foram classificadas como sequências curtas (1-2 leituras) de zero espúrio e ignoradas na estatística principal.';
     }
 
     // Guard rails: limita variação por ciclo e impõe envelopes seguros.
@@ -464,13 +545,16 @@ foreach ($history as $row) {
 }
 
 
-$zeroGlitchCount = 0;
-for ($i = 1; $i < count($clSeries) - 1; $i++) {
-    if (isSpontaneousZero($clSeries, $i)) {
-        $clSeries[$i]['zero_glitch'] = true;
-        $zeroGlitchCount++;
+$zeroObservedCount = 0;
+foreach ($clSeries as $point) {
+    if ($point['value'] <= 0.02) {
+        $zeroObservedCount++;
     }
 }
+
+$markResult = markSpontaneousZeroRuns($clSeries);
+$clSeries = $markResult['series'];
+$zeroGlitchCount = $markResult['glitch_count'];
 
 $clErrors = [];
 $cleanSeries = [];
@@ -552,6 +636,7 @@ $recommendationsResult = pidRecommendations('chlorine', $clStats, $tankPid, [
     'mean_response_delay_sec' => $cl_mean_delay,
     'recovery' => $clRecovery,
     'zero_glitch_count' => $zeroGlitchCount,
+    'zero_observed_count' => $zeroObservedCount,
 ]);
 $recommendations = [
     'chlorine' => $recommendationsResult['suggestions'],
@@ -594,6 +679,8 @@ $response = [
     'tank_id' => $tank_id,
     'tank_name' => $tank['name'],
     'days' => $days,
+    'start_date' => $hasRange ? $rangeStart : date('Y-m-d', strtotime($start_date)),
+    'end_date' => $hasRange ? $rangeEnd : date('Y-m-d'),
     'row_count' => count($history),
     'chlorine' => [
         'stats' => $clStats,
@@ -610,6 +697,7 @@ $response = [
         'mean_stabilization_min' => isset($clRecovery['mean_stabilization_sec']) && $clRecovery['mean_stabilization_sec'] !== null ? round($clRecovery['mean_stabilization_sec'] / 60, 1) : null,
         'disturbance_count' => isset($clRecovery['disturbance_count']) ? (int)$clRecovery['disturbance_count'] : 0,
         'unrecovered_count' => isset($clRecovery['unrecovered_count']) ? (int)$clRecovery['unrecovered_count'] : 0,
+        'zero_observed_count' => $zeroObservedCount,
         'zero_glitch_count' => $zeroGlitchCount
     ],
     'current_pid' => $tankPid,
