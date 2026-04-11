@@ -65,7 +65,6 @@ if (isset($_GET['id']) && !empty($_GET['id'])) {
                            <select class="form-select" id="type" name="type">
                                 <option value="piscina" <?= $tank['type'] == 'piscina' ? 'selected' : '' ?>>Piscina</option>
                                 <option value="outro" <?= $tank['type'] == 'outro' ? 'selected' : '' ?>>Outro Contador</option>
-							    <option value="lora" <?= $tank['type'] == 'lora' ? 'selected' : '' ?>>Equipamento LoRa</option>
 							</select>
                         </div>
 
