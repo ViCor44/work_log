@@ -207,7 +207,7 @@ foreach ($tanks as $tank) {
 }
 
 if (!empty($reject_tanks)) {
-    $pdf->Ln(6);
+    $pdf->AddPage();
     $pdf->SetFillColor(255, 243, 205);
     $pdf->SetFont('Arial', 'B', 9);
     $pdf->Cell(0, 6, utf8_decode('Rejeitado'), 0, 1, 'L');
