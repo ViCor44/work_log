@@ -507,10 +507,10 @@ function createLoraCard(device) {
             cardElement.classList.remove('status-alarm', 'status-offline', 'border-danger', 'border-success', 'border-secondary', 'animate-pulse-red-bs');
             statusEl.classList.remove('bg-danger', 'bg-success', 'bg-secondary', 'bg-warning');
 
-            const pin = getNumericCandidate(data, ['pin', 'Pin', 'pressure_in', 'pressureIn', 'p_in', 'pIn', 'entrada', 'pressao_entrada']);
-            const pout = getNumericCandidate(data, ['pout', 'Pout', 'pressure_out', 'pressureOut', 'p_out', 'pOut', 'saida', 'pressao_saida']);
-            const deltaPSource = getNumericCandidate(data, ['delta_p', 'deltaP', 'DeltaP', 'dp', 'dP']);
-            const deltaP = deltaPSource !== null ? deltaPSource : (pin !== null && pout !== null ? pin - pout : null);
+            const pin    = (data.pin    !== null && data.pin    !== undefined) ? parseFloat(data.pin)    : null;
+            const pout   = (data.pout   !== null && data.pout   !== undefined) ? parseFloat(data.pout)   : null;
+            const deltaP = (data.delta_p !== null && data.delta_p !== undefined) ? parseFloat(data.delta_p)
+                          : (pin !== null && pout !== null ? pin - pout : null);
 
             let statusText = 'PARADO';
             if (data.activeFault) {

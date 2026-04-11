@@ -16,20 +16,15 @@ if (!isset($_GET['id']) || !is_numeric($_GET['id'])) {
 $filter_id = (int) $_GET['id'];
 
 $stmt = $conn->prepare(
-    "SELECT id, name, ip_address, slave_id
-     FROM filter_equipment
-     WHERE id = ?
-     LIMIT 1"
+    "SELECT id, name, ip_address, slave_id FROM filter_equipment WHERE id = ? LIMIT 1"
 );
-
 if ($stmt === false) {
     echo json_encode(['error' => 'Tabela filter_equipment nao encontrada. Execute o SQL de criacao.']);
     exit;
 }
 $stmt->bind_param('i', $filter_id);
 $stmt->execute();
-$result = $stmt->get_result();
-$filter = $result->fetch_assoc();
+$filter = $stmt->get_result()->fetch_assoc();
 $stmt->close();
 
 if (!$filter) {
@@ -37,46 +32,130 @@ if (!$filter) {
     exit;
 }
 
-$ip = $filter['ip_address'];
-$slave_id = (int) $filter['slave_id'];
+// ---- Mapeamento de registos Modbus (notacao 4x, 1-indexed) ----
+//   400079-400080 → Pin    (float32 big-endian)
+//   400081-400082 → Pout   (float32 big-endian)
+//   400083-400084 → Delta P (float32 big-endian)
+//   400085        → Registo de estado  (uint16)
+//   400087        → Registo de alarme  (uint16)
+// Endereco PDU 0-indexed: 78 … 87  →  10 registos
 
-$url = "http://{$ip}/api/status/{$slave_id}";
+const MODBUS_START = 78;
+const MODBUS_COUNT = 10;
+const MODBUS_PORT  = 502;
 
-$ch = curl_init();
-curl_setopt_array($ch, [
-    CURLOPT_URL => $url,
-    CURLOPT_RETURNTRANSFER => true,
-    CURLOPT_CONNECTTIMEOUT => 2,
-    CURLOPT_TIMEOUT => 4,
-    CURLOPT_NOSIGNAL => 1,
-    CURLOPT_FAILONERROR => false,
+function modbus_tcp_read_holding(string $ip, int $slave_id, int $start, int $count,
+                                  int $port = 502, int $timeout = 3): array {
+    $sock = @fsockopen($ip, $port, $errno, $errstr, $timeout);
+    if (!$sock) {
+        return ['error' => "Sem ligacao TCP ao dispositivo ($errstr)"];
+    }
+    stream_set_timeout($sock, $timeout);
+
+    $tid     = mt_rand(1, 0xFFFF);
+    $request = pack('nnnCCnn', $tid, 0x0000, 6, $slave_id & 0xFF, 0x03, $start, $count);
+    fwrite($sock, $request);
+
+    $deadline = microtime(true) + $timeout;
+
+    // Ler cabeçalho MBAP (6 bytes)
+    $raw = '';
+    while (strlen($raw) < 6 && microtime(true) < $deadline) {
+        $chunk = fread($sock, 6 - strlen($raw));
+        if ($chunk === false || $chunk === '') break;
+        $raw .= $chunk;
+    }
+    if (strlen($raw) < 6) { fclose($sock); return ['error' => 'Cabecalho MBAP incompleto']; }
+
+    $hdr      = unpack('ntid/nproto/nlength', $raw);
+    $body_len = (int) $hdr['length'];
+
+    // Ler corpo PDU
+    $body = '';
+    while (strlen($body) < $body_len && microtime(true) < $deadline) {
+        $chunk = fread($sock, $body_len - strlen($body));
+        if ($chunk === false || $chunk === '') break;
+        $body .= $chunk;
+    }
+    fclose($sock);
+
+    if (strlen($body) < $body_len) return ['error' => 'Dados PDU incompletos'];
+    if (strlen($body) < 3)         return ['error' => 'Resposta demasiado curta'];
+
+    $meta = unpack('Cunit/Cfc/Cbytes', substr($body, 0, 3));
+
+    // Exceção Modbus
+    if ($meta['fc'] & 0x80) {
+        $code = strlen($body) > 3 ? ord($body[3]) : 0;
+        return ['error' => "Excecao Modbus: codigo $code"];
+    }
+
+    $registers = [];
+    $data_raw  = substr($body, 3);
+    $num_regs  = (int) ($meta['bytes'] / 2);
+    for ($i = 0; $i < $num_regs; $i++) {
+        $w = unpack('n', substr($data_raw, $i * 2, 2));
+        $registers[] = (int) $w[1];
+    }
+
+    return ['registers' => $registers];
+}
+
+function regs_to_float32(int $hi, int $lo): ?float {
+    // Ordem de palavras: big-endian (ABCD)
+    $bytes = pack('nn', $hi, $lo);
+    $f     = unpack('G', $bytes);
+    $val   = $f[1];
+    return (is_nan($val) || is_infinite($val)) ? null : round($val, 4);
+}
+
+$result = modbus_tcp_read_holding(
+    $filter['ip_address'],
+    (int) $filter['slave_id'],
+    MODBUS_START,
+    MODBUS_COUNT,
+    MODBUS_PORT
+);
+
+if (isset($result['error'])) {
+    echo json_encode([
+        'error'       => $result['error'],
+        'filter_id'   => $filter_id,
+        'filter_name' => $filter['name'],
+    ]);
+    exit;
+}
+
+$regs = $result['registers'];
+if (count($regs) < 9) {
+    echo json_encode(['error' => 'Registos Modbus insuficientes na resposta', 'filter_id' => $filter_id]);
+    exit;
+}
+
+//  Indice 0,1 → addr 78,79 → Pin        (registos 400079-400080)
+//  Indice 2,3 → addr 80,81 → Pout       (registos 400081-400082)
+//  Indice 4,5 → addr 82,83 → Delta P    (registos 400083-400084)
+//  Indice 6   → addr 84    → Estado     (registo  400085)
+//  Indice 8   → addr 86    → Alarme     (registo  400087)
+$pin        = regs_to_float32($regs[0], $regs[1]);
+$pout       = regs_to_float32($regs[2], $regs[3]);
+$delta_p    = regs_to_float32($regs[4], $regs[5]);
+$status_reg = $regs[6];
+$alarm_reg  = $regs[8];
+
+$active_fault = ($alarm_reg !== 0);
+$is_running   = (!$active_fault && $status_reg !== 0);
+
+echo json_encode([
+    'filter_id'   => $filter_id,
+    'filter_name' => $filter['name'],
+    'ip_address'  => $filter['ip_address'],
+    'slave_id'    => $filter['slave_id'],
+    'pin'         => $pin,
+    'pout'        => $pout,
+    'delta_p'     => $delta_p,
+    'status_reg'  => $status_reg,
+    'alarm_reg'   => $alarm_reg,
+    'isRunning'   => $is_running,
+    'activeFault' => $active_fault,
 ]);
-
-$response_text = curl_exec($ch);
-if ($response_text === false) {
-    $error = curl_error($ch);
-    curl_close($ch);
-    echo json_encode(['error' => 'Timeout ou erro ao contactar filtro: ' . $error]);
-    exit;
-}
-
-$http_code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-curl_close($ch);
-
-if ((int) $http_code !== 200) {
-    echo json_encode(['error' => 'Resposta HTTP invalida do filtro']);
-    exit;
-}
-
-$data = json_decode($response_text, true);
-if (json_last_error() !== JSON_ERROR_NONE || !is_array($data)) {
-    echo json_encode(['error' => 'Resposta invalida do filtro']);
-    exit;
-}
-
-$data['filter_id'] = $filter_id;
-$data['filter_name'] = $filter['name'];
-$data['ip_address'] = $ip;
-$data['slave_id'] = $slave_id;
-
-echo json_encode($data);
