@@ -204,7 +204,8 @@ $is_admin = isset($_SESSION['user_type']) && $_SESSION['user_type'] === 'admin';
 		                        <li><a class="dropdown-item" href="create_asset.php">Equipamento Padrão</a></li>
 		                        <li><a class="dropdown-item" href="create_lora.php">Equipamento LoRaWAN</a></li>
 		                        <li><a class="dropdown-item" href="create_medida.php">Central de Medida</a></li>
-								<li><a class="dropdown-item" href="create_remote_equipment.php">Controlo de Equipamento Remoto</a></li>
+                                <li><a class="dropdown-item" href="create_remote_equipment.php">Controlo de Equipamento Remoto</a></li>
+                                <li><a class="dropdown-item" href="pools/form_tanque.php">Tanque/Piscina</a></li>
 		                    </ul>
 		                </div>
 		            </div>
