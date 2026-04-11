@@ -150,8 +150,8 @@ $filters = fetch_all_safe(
         margin-top: 4px;
         color: #198754;
     }
-    .filtro-metric.pump .metric-value.parado { color: #dc3545 !important; }
-    .filtro-metric.pump .metric-value.precoat { color: #0d6efd !important; }
+    .filtro-metric.pump .metric-value.parado { color: #dc3545 !important; white-space: nowrap; }
+    .filtro-metric.pump .metric-value.precoat { color: #0d6efd !important; white-space: nowrap; }
     .filtro-metric.pump .metric-value.filtracao { color: #198754 !important; white-space: nowrap; }
     .filtro-footer {
         background-color: var(--scada-section-bg);
