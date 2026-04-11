@@ -152,7 +152,7 @@ $filters = fetch_all_safe(
     }
     .filtro-metric.pump .metric-value.parado { color: #dc3545 !important; }
     .filtro-metric.pump .metric-value.precoat { color: #0d6efd !important; }
-    .filtro-metric.pump .metric-value.filtracao { color: #198754 !important; }
+    .filtro-metric.pump .metric-value.filtracao { color: #198754 !important; white-space: nowrap; }
     .filtro-footer {
         background-color: var(--scada-section-bg);
         border-top: 1px solid var(--scada-border-color);
