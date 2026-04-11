@@ -36,6 +36,7 @@ $tanks = $tanks_stmt->fetch_all(MYSQLI_ASSOC);
                             <th>Usa Hipoclorito?</th>
                             <th>Requer Análises?</th>
                             <th>Contador Rejeitado?</th>
+                            <th>Volume (m³)</th>
                             <th class="text-end">Ações</th>
                         </tr>
                     </thead>
@@ -63,6 +64,13 @@ $tanks = $tanks_stmt->fetch_all(MYSQLI_ASSOC);
                                             -
                                         <?php endif; ?>
                                     </td>
+                                    <td>
+                                        <?php if ($tank['type'] === 'piscina' && !empty($tank['volume_m3'])): ?>
+                                            <?= number_format($tank['volume_m3'], 2, ',', ' ') ?> m³
+                                        <?php else: ?>
+                                            -
+                                        <?php endif; ?>
+                                    </td>
                                     <td class="text-end">
 									    <a href="form_tanque.php?id=<?= $tank['id'] ?>" class="btn btn-sm btn-warning">
 									        <i class="fas fa-edit"></i> Editar
@@ -76,7 +84,7 @@ $tanks = $tanks_stmt->fetch_all(MYSQLI_ASSOC);
                             <?php endforeach; ?>
                         <?php else: ?>
                             <tr>
-                                <td colspan="7" class="text-center">Nenhum tanque registado.</td>
+                                <td colspan="8" class="text-center">Nenhum tanque registado.</td>
                             </tr>
                         <?php endif; ?>
                     </tbody>
