@@ -145,16 +145,14 @@ $filters = fetch_all_safe(
     .filtro-metric.pump  .metric-value { color: #a78bfa; }
     .pump-state-badge {
         display: inline-block;
-        padding: 2px 8px;
-        border-radius: 4px;
-        font-size: 0.75rem;
+        font-size: 1.1rem;
         font-weight: 600;
-        margin-top: 6px;
+        margin-top: 4px;
+        color: #198754;
     }
-    .pump-state-badge.parado { background-color: #dc3545; color: white; }
-    .pump-state-badge.precoat { background-color: #0d6efd; color: white; }
-    .pump-state-badge.filtracao { background-color: #198754; color: white; }
-    .filtro-metric.pump  .metric-value { color: #a78bfa; }
+    .filtro-metric.pump .metric-value.parado { color: #dc3545 !important; }
+    .filtro-metric.pump .metric-value.precoat { color: #0d6efd !important; }
+    .filtro-metric.pump .metric-value.filtracao { color: #198754 !important; }
     .filtro-footer {
         background-color: var(--scada-section-bg);
         border-top: 1px solid var(--scada-border-color);
@@ -301,9 +299,8 @@ $filters = fetch_all_safe(
                                     <div class="metric-unit">bar</div>
                                 </div>
                                 <div class="filtro-metric pump" style="border-right: none;">
-                                    <div class="metric-label">Bomba</div>
-                                    <div class="metric-value" id="filtro-pump-<?= $filter['id'] ?>">--</div>
-                                    <div class="pump-state-badge" id="filtro-pump-state-<?= $filter['id'] ?>" style="display:none;"></div>
+                                    <div class="metric-label">Estado</div>
+                                    <div class="metric-value" id="filtro-pump-state-<?= $filter['id'] ?>">--</div>
                                     <div class="metric-unit"></div>
                                 </div>
                             </div>
@@ -586,10 +583,8 @@ function createLoraCard(device) {
                           : (pin !== null && pout !== null ? pin - pout : null);
             const pump_state = (data.pump_state !== null && data.pump_state !== undefined) ? parseFloat(data.pump_state) : null;
 
-            let pumpText = '--';
-            let pumpState = '';
+            let pumpState = '--';
             if (pump_state !== null) {
-                pumpText = `${pump_state.toFixed(0)}%`;
                 if (pump_state === 0) pumpState = 'Parado';
                 else if (pump_state === 100) pumpState = 'Em Filtração';
                 else pumpState = 'Pré-coat';
@@ -608,16 +603,14 @@ function createLoraCard(device) {
             pinEl.textContent   = pin    !== null ? pin.toFixed(2)    : '--';
             poutEl.textContent  = pout   !== null ? pout.toFixed(2)   : '--';
             deltaEl.textContent = deltaP !== null ? deltaP.toFixed(2) : '--';
-            document.getElementById(`filtro-pump-${filterId}`).textContent = pumpText;
+            document.getElementById(`filtro-pump-state-${filterId}`).textContent = pumpState;
             
             const pumpStateBadge = document.getElementById(`filtro-pump-state-${filterId}`);
-            if (pumpStateBadge && pumpState) {
-                pumpStateBadge.textContent = pumpState;
-                pumpStateBadge.className = 'pump-state-badge';
+            if (pumpStateBadge) {
+                pumpStateBadge.className = 'metric-value';
                 if (pump_state === 0) pumpStateBadge.classList.add('parado');
                 else if (pump_state === 100) pumpStateBadge.classList.add('filtracao');
-                else pumpStateBadge.classList.add('precoat');
-                pumpStateBadge.style.display = '';
+                else if (pump_state !== null) pumpStateBadge.classList.add('precoat');
             }
 
             if (metricsEl) metricsEl.style.display = '';
@@ -634,9 +627,9 @@ function createLoraCard(device) {
             pinEl.textContent   = '--';
             poutEl.textContent  = '--';
             deltaEl.textContent = '--';
-            document.getElementById(`filtro-pump-${filterId}`).textContent = '--';
+            document.getElementById(`filtro-pump-state-${filterId}`).textContent = '--';
             const pumpStateBadgeErr = document.getElementById(`filtro-pump-state-${filterId}`);
-            if (pumpStateBadgeErr) pumpStateBadgeErr.style.display = 'none';
+            if (pumpStateBadgeErr) pumpStateBadgeErr.className = 'metric-value';
 
             if (metricsEl) metricsEl.style.display = 'none';
             if (footerEl)  footerEl.style.display  = 'none';
