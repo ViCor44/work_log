@@ -33,16 +33,15 @@ if (!$filter) {
 }
 
 // ---- Mapeamento de registos Modbus (notacao 4x, 1-indexed) ----
-//   400058-400059 → Fluxo  (float32 big-endian)
-//   400079-400080 → Pin    (float32 big-endian)
-//   400081-400082 → Pout   (float32 big-endian)
+//   400079-400080 → Pin     (float32 big-endian)
+//   400081-400082 → Pout    (float32 big-endian)
 //   400083-400084 → Delta P (float32 big-endian)
-//   400085        → Registo de estado  (uint16)
-//   400087        → Registo de alarme  (uint16)
-// Endereco PDU 0-indexed: 57 … 86  →  30 registos
+//   400085        → Fluxo   (uint16)
+//   400087        → Alarme  (uint16)
+// Endereco PDU 0-indexed: 78 … 87  →  10 registos
 
-const MODBUS_START = 57;
-const MODBUS_COUNT = 30;
+const MODBUS_START = 78;
+const MODBUS_COUNT = 10;
 const MODBUS_PORT  = 502;
 
 function modbus_tcp_read_holding(string $ip, int $slave_id, int $start, int $count,
@@ -128,27 +127,25 @@ if (isset($result['error'])) {
 }
 
 $regs = $result['registers'];
-if (count($regs) < 30) {
+if (count($regs) < 10) {
     echo json_encode(['error' => 'Registos Modbus insuficientes na resposta', 'filter_id' => $filter_id]);
     exit;
 }
 
-//  Indices relativos a PDU start=57 (registo 400058)
-//  Indice 0,1   → addr 57,58  → Fluxo     (registos 400058-400059)
-//  Indice 21,22 → addr 78,79  → Pin       (registos 400079-400080)
-//  Indice 23,24 → addr 80,81  → Pout      (registos 400081-400082)
-//  Indice 25,26 → addr 82,83  → Delta P   (registos 400083-400084)
-//  Indice 27    → addr 84     → Estado    (registo  400085)
-//  Indice 29    → addr 86     → Alarme    (registo  400087)
-$flow       = regs_to_float32($regs[0],  $regs[1]);
-$pin        = regs_to_float32($regs[21], $regs[22]);
-$pout       = regs_to_float32($regs[23], $regs[24]);
-$delta_p    = regs_to_float32($regs[25], $regs[26]);
-$status_reg = $regs[27];
-$alarm_reg  = $regs[29];
+//  Indices relativos a PDU start=78 (registo 400079)
+//  Indice 0,1 → addr 78,79 → Pin     (registos 400079-400080, float32)
+//  Indice 2,3 → addr 80,81 → Pout    (registos 400081-400082, float32)
+//  Indice 4,5 → addr 82,83 → Delta P (registos 400083-400084, float32)
+//  Indice 6   → addr 84    → Fluxo   (registo  400085, uint16)
+//  Indice 8   → addr 86    → Alarme  (registo  400087, uint16)
+$pin        = regs_to_float32($regs[0], $regs[1]);
+$pout       = regs_to_float32($regs[2], $regs[3]);
+$delta_p    = regs_to_float32($regs[4], $regs[5]);
+$flow       = $regs[6];   // uint16, unidade a confirmar
+$alarm_reg  = $regs[8];
 
 $active_fault = ($alarm_reg !== 0);
-$is_running   = (!$active_fault && $status_reg !== 0);
+$is_running   = !$active_fault;
 
 echo json_encode([
     'filter_id'   => $filter_id,
@@ -159,7 +156,6 @@ echo json_encode([
     'pin'         => $pin,
     'pout'        => $pout,
     'delta_p'     => $delta_p,
-    'status_reg'  => $status_reg,
     'alarm_reg'   => $alarm_reg,
     'isRunning'   => $is_running,
     'activeFault' => $active_fault,

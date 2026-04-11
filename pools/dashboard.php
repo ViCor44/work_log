@@ -517,25 +517,22 @@ function createLoraCard(device) {
             const deltaP = (data.delta_p !== null && data.delta_p !== undefined) ? parseFloat(data.delta_p)
                           : (pin !== null && pout !== null ? pin - pout : null);
 
-            let statusText = 'PARADO';
+            let statusText;
             if (data.activeFault) {
                 statusText = 'FALHA';
                 cardElement.classList.add('border-danger', 'animate-pulse-red-bs');
                 statusEl.classList.add('bg-danger');
-            } else if (data.isRunning) {
-                statusText = 'A FUNCIONAR';
+            } else {
+                statusText = 'ONLINE';
                 cardElement.classList.add('border-success');
                 statusEl.classList.add('bg-success');
-            } else {
-                cardElement.classList.add('border-secondary');
-                statusEl.classList.add('bg-secondary');
             }
 
             statusEl.textContent = statusText;
             stateEl.textContent = statusText;
 
             document.getElementById(`filtro-flow-${filterId}`).innerHTML = flow !== null
-                ? `${flow.toFixed(2)} <span class="unit">m³/h</span>`
+                ? `${flow} <span class="unit">m³/h</span>`
                 : '--';
 
             document.getElementById(`filtro-pin-${filterId}`).innerHTML = pin !== null
