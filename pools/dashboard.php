@@ -142,6 +142,8 @@ $filters = fetch_all_safe(
     .filtro-metric.pin   .metric-value { color: #5bc8f5; }
     .filtro-metric.pout  .metric-value { color: #6ee0a0; }
     .filtro-metric.delta .metric-value { color: #f5a623; }
+    .filtro-metric.pump  .metric-value { color: #a78bfa; }
+    .filtro-metric.pump  .metric-value { color: #a78bfa; }
     .filtro-footer {
         background-color: var(--scada-section-bg);
         border-top: 1px solid var(--scada-border-color);
@@ -286,6 +288,11 @@ $filters = fetch_all_safe(
                                     <div class="metric-label">&Delta;P</div>
                                     <div class="metric-value" id="filtro-delta-<?= $filter['id'] ?>">--</div>
                                     <div class="metric-unit">bar</div>
+                                </div>
+                                <div class="filtro-metric pump" style="border-right: none;">
+                                    <div class="metric-label">Bomba</div>
+                                    <div class="metric-value" id="filtro-pump-<?= $filter['id'] ?>">--</div>
+                                    <div class="metric-unit"></div>
                                 </div>
                             </div>
                             <div class="filtro-footer d-flex justify-content-between">
@@ -565,6 +572,14 @@ function createLoraCard(device) {
             const pout   = (data.pout   !== null && data.pout   !== undefined) ? parseFloat(data.pout)   : null;
             const deltaP = (data.delta_p !== null && data.delta_p !== undefined) ? parseFloat(data.delta_p)
                           : (pin !== null && pout !== null ? pin - pout : null);
+            const pumpState = (data.pump_state !== null && data.pump_state !== undefined) ? parseInt(data.pump_state) : null;
+
+            let pumpText = '--';
+            if (pumpState !== null) {
+                if (pumpState === 0) pumpText = 'Parado';
+                else if (pumpState === 100) pumpText = 'Filtrando';
+                else pumpText = `Pré-coat ${pumpState}%`;
+            }
 
             if (data.activeFault) {
                 cardElement.classList.add('border-danger', 'animate-pulse-red-bs');
@@ -579,6 +594,7 @@ function createLoraCard(device) {
             pinEl.textContent   = pin    !== null ? pin.toFixed(2)    : '--';
             poutEl.textContent  = pout   !== null ? pout.toFixed(2)   : '--';
             deltaEl.textContent = deltaP !== null ? deltaP.toFixed(2) : '--';
+            document.getElementById(`filtro-pump-${filterId}`).textContent = pumpText;
 
             if (metricsEl) metricsEl.style.display = '';
             if (footerEl)  footerEl.style.display  = '';
@@ -594,6 +610,7 @@ function createLoraCard(device) {
             pinEl.textContent   = '--';
             poutEl.textContent  = '--';
             deltaEl.textContent = '--';
+            document.getElementById(`filtro-pump-${filterId}`).textContent = '--';
 
             if (metricsEl) metricsEl.style.display = 'none';
             if (footerEl)  footerEl.style.display  = 'none';

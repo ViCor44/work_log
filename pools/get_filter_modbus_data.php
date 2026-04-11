@@ -33,15 +33,16 @@ if (!$filter) {
 }
 
 // ---- Mapeamento de registos Modbus (notacao 4x, 1-indexed) ----
-//   400079-400080 → Pin     (float32 big-endian)
-//   400081-400082 → Pout    (float32 big-endian)
-//   400083-400084 → Delta P (float32 big-endian)
-//   400085        → Fluxo   (uint16)
-//   400087        → Alarme  (uint16)
-// Endereco PDU 0-indexed: 78 … 87  →  10 registos
+//   400079-400080 → Pin           (float32 big-endian)
+//   400081-400082 → Pout          (float32 big-endian)
+//   400083-400084 → Delta P       (float32 big-endian)
+//   400085        → Fluxo         (uint16)
+//   400087        → Alarme        (uint16)
+//   400089        → Estado Bomba  (uint16: 0=parado, 1-99=precoat, 100=filtracao)
+// Endereco PDU 0-indexed: 78 … 89  →  12 registos
 
 const MODBUS_START = 78;
-const MODBUS_COUNT = 10;
+const MODBUS_COUNT = 12;
 const MODBUS_PORT  = 502;
 
 function modbus_tcp_read_holding(string $ip, int $slave_id, int $start, int $count,
@@ -127,22 +128,24 @@ if (isset($result['error'])) {
 }
 
 $regs = $result['registers'];
-if (count($regs) < 10) {
+if (count($regs) < 12) {
     echo json_encode(['error' => 'Registos Modbus insuficientes na resposta', 'filter_id' => $filter_id]);
     exit;
 }
 
 //  Indices relativos a PDU start=78 (registo 400079)
-//  Indice 0,1 → addr 78,79 → Pin     (registos 400079-400080, float32)
-//  Indice 2,3 → addr 80,81 → Pout    (registos 400081-400082, float32)
-//  Indice 4,5 → addr 82,83 → Delta P (registos 400083-400084, float32)
-//  Indice 6   → addr 84    → Fluxo   (registo  400085, uint16)
-//  Indice 8   → addr 86    → Alarme  (registo  400087, uint16)
+//  Indice 0,1   → addr 78,79  → Pin          (registos 400079-400080, float32)
+//  Indice 2,3   → addr 80,81  → Pout         (registos 400081-400082, float32)
+//  Indice 4,5   → addr 82,83  → Delta P      (registos 400083-400084, float32)
+//  Indice 6     → addr 84     → Fluxo        (registo  400085, uint16)
+//  Indice 8     → addr 86     → Alarme       (registo  400087, uint16)
+//  Indice 10,11 → addr 88,89  → Estado Bomba (registo  400089, uint16)
 $pin        = regs_to_float32($regs[0], $regs[1]);
 $pout       = regs_to_float32($regs[2], $regs[3]);
 $delta_p    = regs_to_float32($regs[4], $regs[5]);
-$flow       = $regs[6];   // uint16, unidade a confirmar
+$flow       = $regs[6];
 $alarm_reg  = $regs[8];
+$pump_state = $regs[10];  // 0=parado, 1-99=precoat, 100=filtracao
 
 $active_fault = ($alarm_reg !== 0);
 $is_running   = !$active_fault;
