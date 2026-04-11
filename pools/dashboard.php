@@ -21,6 +21,16 @@ $pools = fetch_all_safe($conn, "SELECT id, name, controller_ip FROM tanks WHERE 
 
 // Busca todas as Centrais de Medida
 $power_meters = fetch_all_safe($conn, "SELECT id, local, ip_address FROM centrais_de_medida ORDER BY local ASC");
+
+// Busca ativos de filtro (equipamentos remotos por categoria)
+$filters = fetch_all_safe(
+    $conn,
+    "SELECT rem.id, rem.name, rem.ip_address, rem.slave_id
+     FROM remote_equipment rem
+     LEFT JOIN categories cat ON cat.id = rem.category_id
+     WHERE LOWER(COALESCE(cat.name, '')) LIKE '%filtro%'
+     ORDER BY rem.name ASC"
+);
 ?>
 
 <style>
@@ -129,6 +139,11 @@ $power_meters = fetch_all_safe($conn, "SELECT id, local, ip_address FROM centrai
                 <i class="fas fa-tachometer-alt me-2"></i>Centrais de Medida
             </button>
         </li>
+        <li class="nav-item" role="presentation">
+            <button class="nav-link" id="filtros-tab" data-bs-toggle="tab" data-bs-target="#filtros-pane" type="button" role="tab">
+                <i class="fas fa-filter me-2"></i>Filtros
+            </button>
+        </li>
     </ul>
 
     <div class="tab-content pt-4" id="dashboardTabsContent">
@@ -205,11 +220,62 @@ $power_meters = fetch_all_safe($conn, "SELECT id, local, ip_address FROM centrai
             </div>
         </div>
 
+        <div class="tab-pane fade" id="filtros-pane" role="tabpanel">
+            <div class="dashboard-grid" id="dashboard-container-filtros">
+                <?php if (!empty($filters)): ?>
+                    <?php foreach ($filters as $filter): ?>
+                        <a href="../view_equipment_details.php?id=<?= $filter['id'] ?>" class="text-decoration-none">
+                            <div id="card-filtro-<?= $filter['id'] ?>" class="card scada-card h-100 border-secondary shadow-sm" data-type="filtro" data-ip="<?= htmlspecialchars($filter['ip_address']) ?>" data-slave-id="<?= (int)$filter['slave_id'] ?>">
+                                <div class="card-header d-flex justify-content-between align-items-center">
+                                    <h5 class="card-title mb-0 fw-bold"><?= htmlspecialchars($filter['name']) ?></h5>
+                                    <span id="status-filtro-<?= $filter['id'] ?>" class="badge bg-secondary">Aguardando...</span>
+                                </div>
+                                <ul class="list-group list-group-flush">
+                                    <li class="list-group-item d-flex justify-content-between align-items-center">
+                                        <span class="text-white-50">Corrente</span>
+                                        <span id="filtro-current-<?= $filter['id'] ?>" class="font-monospace fw-bold fs-5">--</span>
+                                    </li>
+                                    <li class="list-group-item d-flex justify-content-between align-items-center">
+                                        <span class="text-white-50">Potência</span>
+                                        <span id="filtro-power-<?= $filter['id'] ?>" class="font-monospace fw-bold fs-5">--</span>
+                                    </li>
+                                    <li class="list-group-item d-flex justify-content-between align-items-center">
+                                        <span class="text-white-50">Falha</span>
+                                        <span id="filtro-fault-<?= $filter['id'] ?>" class="font-monospace fw-bold" style="font-size: 1rem;">--</span>
+                                    </li>
+                                </ul>
+                                <div class="card-body text-center alarm-content">
+                                    <img src="../images/rj45.png" style="width: 64px; height: 64px;" alt="Erro de Comunicação">
+                                    <div class="fw-bold mt-2">Erro de Comunicação</div>
+                                </div>
+                            </div>
+                        </a>
+                    <?php endforeach; ?>
+                <?php else: ?>
+                    <div class="col-12">
+                        <p class="text-muted text-center">Nenhum ativo de filtro configurado.</p>
+                    </div>
+                <?php endif; ?>
+            </div>
+        </div>
+
     </div>
 </div>    
 
 <script>
 document.addEventListener('DOMContentLoaded', function() {
+
+    const filterFaultMap = {
+        0: 'Sem falha',
+        1: 'Protecao inibida',
+        2: 'Falha interna',
+        3: 'Sobrecorrente',
+        4: 'Inversao de fase',
+        5: 'Falha comunicacao',
+        10: 'Sobreaquecimento',
+        11: 'Rotor bloqueado',
+        12: 'Sobrecarga termica'
+    };
 
     // ... (O resto do JavaScript não precisa de alterações)
     function getValueClass(type, value) {
@@ -420,6 +486,74 @@ function createLoraCard(device) {
         }
     }
 
+    async function updateFiltroCard(cardElement) {
+        const filterId = cardElement.id.split('-')[2];
+        const statusEl = document.getElementById(`status-filtro-${filterId}`);
+
+        try {
+            const response = await fetch(`get_filter_modbus_data.php?id=${filterId}`);
+            const data = await response.json();
+            if (!response.ok || data.error) throw new Error(data.error || ('HTTP ' + response.status));
+
+            cardElement.classList.remove('status-alarm', 'status-offline', 'border-danger', 'border-success', 'border-secondary', 'animate-pulse-red-bs');
+            statusEl.classList.remove('bg-danger', 'bg-success', 'bg-secondary', 'bg-warning');
+
+            const currentA = Number.isFinite(parseFloat(data.currentRaw)) ? parseFloat(data.currentRaw) : null;
+            const V_LL = 400;
+            const SQRT3 = Math.sqrt(3);
+            const PF = 0.8;
+            const powerKw = currentA !== null ? ((V_LL * currentA * SQRT3 * PF) / 1000) : null;
+
+            let statusText = 'PARADO';
+            if (data.activeFault) {
+                statusText = 'FALHA';
+                cardElement.classList.add('border-danger', 'animate-pulse-red-bs');
+                statusEl.classList.add('bg-danger');
+            } else if (data.isRunning) {
+                statusText = 'A FUNCIONAR';
+                cardElement.classList.add('border-success');
+                statusEl.classList.add('bg-success');
+            } else {
+                cardElement.classList.add('border-secondary');
+                statusEl.classList.add('bg-secondary');
+            }
+
+            statusEl.textContent = statusText;
+
+            document.getElementById(`filtro-current-${filterId}`).innerHTML = currentA !== null
+                ? `${currentA.toFixed(1)} <span class="unit">A</span>`
+                : '--';
+
+            document.getElementById(`filtro-power-${filterId}`).innerHTML = powerKw !== null
+                ? `${powerKw.toFixed(2)} <span class="unit">kW</span>`
+                : '--';
+
+            const faultCode = Number.isFinite(parseInt(data.faultHex, 16)) ? parseInt(data.faultHex, 16) : null;
+            const faultText = (faultCode !== null && filterFaultMap[faultCode])
+                ? filterFaultMap[faultCode]
+                : (faultCode !== null ? `Codigo ${faultCode}` : 'Sem falha');
+
+            document.getElementById(`filtro-fault-${filterId}`).textContent = data.activeFault ? faultText : 'Sem falha';
+
+            const listGroup = cardElement.querySelector('.list-group');
+            if (listGroup) listGroup.style.display = '';
+            const alarmContent = cardElement.querySelector('.alarm-content');
+            if (alarmContent) alarmContent.style.display = 'none';
+
+        } catch (error) {
+            cardElement.classList.remove('border-success', 'border-secondary', 'animate-pulse-red-bs');
+            cardElement.classList.add('status-offline', 'border-danger');
+            statusEl.classList.remove('bg-success', 'bg-secondary', 'bg-warning');
+            statusEl.classList.add('bg-danger');
+            statusEl.textContent = 'OFFLINE';
+
+            const listGroup = cardElement.querySelector('.list-group');
+            if (listGroup) listGroup.style.display = 'none';
+            const alarmContent = cardElement.querySelector('.alarm-content');
+            if (alarmContent) alarmContent.style.display = 'block';
+        }
+    }
+
     function updateTabAlerts() {
         document.querySelectorAll('.nav-link[data-bs-toggle="tab"]').forEach(tab => {
             const paneId = tab.getAttribute('data-bs-target');
@@ -453,10 +587,12 @@ function createLoraCard(device) {
     async function updateAllDashboards() {
         const poolCards = document.querySelectorAll('#dashboard-container-piscinas .scada-card');
         const medidaCards = document.querySelectorAll('#dashboard-container-medida .scada-card');
+        const filtroCards = document.querySelectorAll('#dashboard-container-filtros .scada-card');
 
         const allPromises = [
             ...Array.from(poolCards).map(card => updatePoolDashboard(card)),
             ...Array.from(medidaCards).map(card => updateMedidaCard(card)),
+            ...Array.from(filtroCards).map(card => updateFiltroCard(card)),
             updateLoraDashboard()
         ];
         
