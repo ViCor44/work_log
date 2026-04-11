@@ -576,9 +576,7 @@ function createLoraCard(device) {
 
             let pumpText = '--';
             if (pumpState !== null) {
-                if (pumpState === 0) pumpText = 'Parado';
-                else if (pumpState === 100) pumpText = 'Filtração';
-                else pumpText = `Pré-coat ${pumpState}%`;
+                pumpText = `${pumpState}%`;
             }
 
             if (data.activeFault) {

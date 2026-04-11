@@ -134,12 +134,12 @@ if (count($regs) < 12) {
 }
 
 //  Indices relativos a PDU start=78 (registo 400079)
-//  Indice 0,1   → addr 78,79  → Pin          (registos 400079-400080, float32)
-//  Indice 2,3   → addr 80,81  → Pout         (registos 400081-400082, float32)
-//  Indice 4,5   → addr 82,83  → Delta P      (registos 400083-400084, float32)
-//  Indice 6     → addr 84     → Fluxo        (registo  400085, uint16)
-//  Indice 8     → addr 86     → Alarme       (registo  400087, uint16)
-//  Indice 10,11 → addr 88,89  → Estado Bomba (registo  400089, uint16)
+//  Indice 0,1   → addr 78,79  → Pin             (registos 400079-400080, float32)
+//  Indice 2,3   → addr 80,81  → Pout            (registos 400081-400082, float32)
+//  Indice 4,5   → addr 82,83  → Delta P         (registos 400083-400084, float32)
+//  Indice 6     → addr 84     → Fluxo           (registo  400085, uint16)
+//  Indice 8     → addr 86     → Alarme          (registo  400087, uint16)
+//  Indice 10    → addr 88     → Velocidade Bomba (registo  400089, uint16 0-100%)
 $pin        = regs_to_float32($regs[0], $regs[1]);
 $pout       = regs_to_float32($regs[2], $regs[3]);
 $delta_p    = regs_to_float32($regs[4], $regs[5]);
