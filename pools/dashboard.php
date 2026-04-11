@@ -120,6 +120,23 @@ $filters = fetch_all_safe(
         border-right: 1px solid var(--scada-border-color);
     }
     .filtro-metric:last-child { border-right: none; }
+    .filtro-state-panel {
+        padding: 12px 16px 16px;
+        border-top: 1px solid rgba(255, 255, 255, 0.04);
+    }
+    .filtro-state-panel .metric-label {
+        font-size: 0.7rem;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+        color: var(--scada-text-secondary);
+        margin-bottom: 8px;
+    }
+    .filtro-state-panel .metric-value {
+        font-size: 1.8rem;
+        font-weight: 700;
+        font-family: monospace;
+        line-height: 1;
+    }
     .filtro-metric .metric-label {
         font-size: 0.7rem;
         text-transform: uppercase;
@@ -142,17 +159,9 @@ $filters = fetch_all_safe(
     .filtro-metric.pin   .metric-value { color: #5bc8f5; }
     .filtro-metric.pout  .metric-value { color: #6ee0a0; }
     .filtro-metric.delta .metric-value { color: #f5a623; }
-    .filtro-metric.pump  .metric-value { color: #a78bfa; }
-    .pump-state-badge {
-        display: inline-block;
-        font-size: 1.1rem;
-        font-weight: 600;
-        margin-top: 4px;
-        color: #198754;
-    }
-    .filtro-metric.pump .metric-value.parado { color: #dc3545 !important; white-space: nowrap; }
-    .filtro-metric.pump .metric-value.precoat { color: #0d6efd !important; white-space: nowrap; }
-    .filtro-metric.pump .metric-value.filtracao { color: #198754 !important; white-space: nowrap; }
+    .filtro-state-panel .metric-value.parado { color: #dc3545 !important; white-space: nowrap; }
+    .filtro-state-panel .metric-value.precoat { color: #0d6efd !important; white-space: nowrap; }
+    .filtro-state-panel .metric-value.filtracao { color: #198754 !important; white-space: nowrap; }
     .filtro-footer {
         background-color: var(--scada-section-bg);
         border-top: 1px solid var(--scada-border-color);
@@ -298,11 +307,10 @@ $filters = fetch_all_safe(
                                     <div class="metric-value" id="filtro-delta-<?= $filter['id'] ?>">--</div>
                                     <div class="metric-unit">bar</div>
                                 </div>
-                                <div class="filtro-metric pump" style="border-right: none;">
-                                    <div class="metric-label">Estado</div>
-                                    <div class="metric-value" id="filtro-pump-state-<?= $filter['id'] ?>">--</div>
-                                    <div class="metric-unit"></div>
-                                </div>
+                            </div>
+                            <div class="filtro-state-panel">
+                                <div class="metric-label">Estado</div>
+                                <div class="metric-value" id="filtro-pump-state-<?= $filter['id'] ?>">--</div>
                             </div>
                             <div class="filtro-footer d-flex justify-content-between">
                                 <span><i class="fas fa-network-wired me-1"></i><?= htmlspecialchars($filter['ip_address']) ?></span>
@@ -567,6 +575,7 @@ function createLoraCard(device) {
 
         const metricsEl  = cardElement.querySelector('.filtro-metrics');
         const footerEl   = cardElement.querySelector('.filtro-footer');
+        const stateEl    = cardElement.querySelector('.filtro-state-panel');
         const alarmEl    = cardElement.querySelector('.alarm-content');
 
         try {
@@ -614,6 +623,7 @@ function createLoraCard(device) {
             }
 
             if (metricsEl) metricsEl.style.display = '';
+            if (stateEl)   stateEl.style.display   = '';
             if (footerEl)  footerEl.style.display  = '';
             if (alarmEl)   alarmEl.style.display   = 'none';
 
@@ -632,6 +642,7 @@ function createLoraCard(device) {
             if (pumpStateBadgeErr) pumpStateBadgeErr.className = 'metric-value';
 
             if (metricsEl) metricsEl.style.display = 'none';
+            if (stateEl)   stateEl.style.display   = 'none';
             if (footerEl)  footerEl.style.display  = 'none';
             if (alarmEl)   alarmEl.style.display   = 'block';
         }
