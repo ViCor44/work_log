@@ -12,6 +12,7 @@ $tank = [
     'water_reading_frequency' => 0,
     'uses_hypochlorite' => 0,
     'requires_analysis' => 1,
+    'has_reject_counter' => 0,
     'has_controller' => 0, // Valor padrão adicionado
     'controller_ip' => ''  // Valor padrão adicionado
 ];
@@ -23,14 +24,17 @@ if (isset($_GET['id']) && !empty($_GET['id'])) {
     $stmt->bind_param("i", $tank_id);
     $stmt->execute();
     $result = $stmt->get_result();
-    $tank = $result->fetch_assoc();
+    $tank_data = $result->fetch_assoc();
     $stmt->close();
     
-    if (!$tank) {
+    if (!$tank_data) {
         // Se o ID for inválido, redireciona para a lista
         header("Location: gerir_tanques.php");
         exit;
     }
+
+    // Mantém defaults para evitar avisos se a coluna ainda não existir localmente.
+    $tank = array_merge($tank, $tank_data);
 }
 ?>
 
@@ -58,8 +62,8 @@ if (isset($_GET['id']) && !empty($_GET['id'])) {
                         <div class="mb-3">
                             <label for="type" class="form-label">Tipo</label>
                            <select class="form-select" id="type" name="type">
-							    <option value="piscina" ...>Piscina</option>
-							    <option value="outro" ...>Outro Contador</option>
+                                <option value="piscina" <?= $tank['type'] == 'piscina' ? 'selected' : '' ?>>Piscina</option>
+                                <option value="outro" <?= $tank['type'] == 'outro' ? 'selected' : '' ?>>Outro Contador</option>
 							    <option value="lora" <?= $tank['type'] == 'lora' ? 'selected' : '' ?>>Equipamento LoRa</option>
 							</select>
                         </div>
@@ -86,6 +90,14 @@ if (isset($_GET['id']) && !empty($_GET['id'])) {
                             <select class="form-select" id="requires_analysis" name="requires_analysis">
                                 <option value="1" <?= $tank['requires_analysis'] == 1 ? 'selected' : '' ?>>Sim</option>
                                 <option value="0" <?= $tank['requires_analysis'] == 0 ? 'selected' : '' ?>>Não</option>
+                            </select>
+                        </div>
+
+						<div class="mb-3" id="reject_counter_container" style="display: none;">
+                            <label for="has_reject_counter" class="form-label">Tem Contador de Rejeitado?</label>
+                            <select class="form-select" id="has_reject_counter" name="has_reject_counter">
+                                <option value="1" <?= $tank['has_reject_counter'] == 1 ? 'selected' : '' ?>>Sim</option>
+                                <option value="0" <?= $tank['has_reject_counter'] == 0 ? 'selected' : '' ?>>Não</option>
                             </select>
                         </div>
 						<div class="mb-3">
@@ -119,9 +131,21 @@ if (isset($_GET['id']) && !empty($_GET['id'])) {
 </div>
 <script>
 document.addEventListener('DOMContentLoaded', function() {
+    const typeSelect = document.getElementById('type');
+    const rejectCounterContainer = document.getElementById('reject_counter_container');
+    const rejectCounterSelect = document.getElementById('has_reject_counter');
     const controllerRadios = document.querySelectorAll('input[name="has_controller"]');
     const ipContainer = document.getElementById('ip_field_container');
     const ipInput = document.getElementById('controller_ip');
+
+    function toggleRejectCounterField() {
+        if (typeSelect.value === 'piscina') {
+            rejectCounterContainer.style.display = 'block';
+        } else {
+            rejectCounterContainer.style.display = 'none';
+            rejectCounterSelect.value = '0';
+        }
+    }
 
     function toggleIpField() {
         if (document.querySelector('input[name="has_controller"]:checked').value == '1') {
@@ -136,7 +160,10 @@ document.addEventListener('DOMContentLoaded', function() {
         radio.addEventListener('change', toggleIpField);
     });
 
+    typeSelect.addEventListener('change', toggleRejectCounterField);
+
     // Executa a função ao carregar a página
+    toggleRejectCounterField();
     toggleIpField();
 });
 </script>
