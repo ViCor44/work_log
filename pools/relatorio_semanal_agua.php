@@ -22,6 +22,9 @@ $day_before_start = $day_before_start_obj->format('Y-m-d');
 // --- Lógica de Busca e Processamento de Dados ---
 $tanks_stmt = $conn->query("SELECT id, name, type, has_reject_counter, volume_m3 FROM tanks WHERE water_reading_frequency > 0 ORDER BY name ASC");
 $tanks = $tanks_stmt->fetch_all(MYSQLI_ASSOC);
+$reject_tanks = array_values(array_filter($tanks, function ($tank) {
+    return $tank['type'] === 'piscina' && (int)$tank['has_reject_counter'] === 1;
+}));
 
 $sql = "
     SELECT tank_id, reading_datetime, meter_value
@@ -117,6 +120,7 @@ for ($i = 0; $i < 7; $i++) {
 <style>
     .weekly-report th, .weekly-report td { font-size: 0.8rem; text-align: center; vertical-align: middle; }
     .consumption-cell { background-color: #f8f9fa; font-weight: bold; }
+    .reject-cell { background-color: #fff3cd; font-weight: bold; }
 </style>
 	<div class="container-fluid mt-4">
 	    <h1 class="h3 mb-4">Relatório Semanal de Consumo de Água</h1>
@@ -143,8 +147,9 @@ for ($i = 0; $i < 7; $i++) {
 	    </div>
 	</div>
 
-    <div class="card shadow-sm">
+    <div class="card shadow-sm mb-4">
         <div class="card-body table-responsive">
+            <h5 class="mb-3">Consumo Geral</h5>
             <table class="table table-bordered table-sm weekly-report">
                 <thead class="table-light">
                     <tr>
@@ -155,20 +160,15 @@ for ($i = 0; $i < 7; $i++) {
                             $header_date_obj = clone $start_of_week;
                             $header_date_obj->modify("+$i days");
                             $header_date_str = $header_date_obj->format('d/m');
-                            echo '<th colspan="5">' . $dias_semana[$i] . '<br>' . $header_date_str . '</th>';
+                            echo '<th colspan="2">' . $dias_semana[$i] . '<br>' . $header_date_str . '</th>';
                         }
                         ?>
-                        <th rowspan="2" class="align-middle">Total Cons. (m³)</th>
-                        <th rowspan="2" class="align-middle">Total Rej. (m³)</th>
-                        <th rowspan="2" class="align-middle">% Vol. Sem.</th>
+                        <th rowspan="2" class="align-middle">Total Semanal (m³)</th>
                     </tr>
                     <tr>
                         <?php for ($i = 0; $i < 7; $i++): ?>
                             <th>Leitura</th>
                             <th>Consumo</th>
-                            <th>Leit. Rej.</th>
-                            <th>Rej.</th>
-                            <th>% Vol.</th>
                         <?php endfor; ?>
                     </tr>
                 </thead>
@@ -178,32 +178,76 @@ for ($i = 0; $i < 7; $i++) {
                             <td class="fw-bold text-start"><?= htmlspecialchars($tank['name']) ?></td>
                             <?php 
                             $weekly_total = 0;
-                            $weekly_rejected_total = 0;
                             for ($i = 0; $i < 7; $i++): 
                                 $data = $report_data[$tank['id']][$i];
                                 if (isset($data['consumo'])) {
                                     $weekly_total += $data['consumo'];
                                 }
-                                if (isset($data['rejeitado']) && $data['rejeitado'] !== null) {
-                                    $weekly_rejected_total += $data['rejeitado'];
-                                }
                             ?>
                                 <td><?= $data['leitura'] !== null ? number_format($data['leitura'], 0) : '' ?></td>
                                 <td class="consumption-cell"><?= $data['consumo'] !== null ? number_format($data['consumo'], 0) : '' ?></td>
-                                <td><?= $data['leitura_rejeitada'] !== null ? number_format($data['leitura_rejeitada'], 0) : '' ?></td>
-                                <td class="consumption-cell"><?= $data['rejeitado'] !== null ? number_format($data['rejeitado'], 0) : '' ?></td>
-                                <td class="consumption-cell"><?= $data['percentagem_rejeitado'] !== null ? number_format($data['percentagem_rejeitado'], 2, ',', '.') . '%' : '' ?></td>
                             <?php endfor; ?>
-                            <?php $weekly_rejected_percentage = !empty($tank['volume_m3']) ? (($weekly_rejected_total / (float)$tank['volume_m3']) * 100) : null; ?>
                             <td class="fw-bold table-light"><?= number_format($weekly_total, 0) ?></td>
-                            <td class="fw-bold table-light"><?= $weekly_rejected_total > 0 ? number_format($weekly_rejected_total, 0) : '' ?></td>
-                            <td class="fw-bold table-light"><?= $weekly_rejected_percentage !== null ? number_format($weekly_rejected_percentage, 2, ',', '.') . '%' : '' ?></td>
                         </tr>
                     <?php endforeach; ?>
                 </tbody>
             </table>
         </div>
     </div>
+
+    <?php if (!empty($reject_tanks)): ?>
+        <div class="card shadow-sm">
+            <div class="card-body table-responsive">
+                <h5 class="mb-3">Rejeitado</h5>
+                <table class="table table-bordered table-sm weekly-report">
+                    <thead class="table-warning">
+                        <tr>
+                            <th rowspan="2" class="align-middle">Piscina</th>
+                            <?php
+                            for ($i = 0; $i < 7; $i++) {
+                                $header_date_obj = clone $start_of_week;
+                                $header_date_obj->modify("+$i days");
+                                $header_date_str = $header_date_obj->format('d/m');
+                                echo '<th colspan="3">' . $dias_semana[$i] . '<br>' . $header_date_str . '</th>';
+                            }
+                            ?>
+                            <th rowspan="2" class="align-middle">Total Rej. (m³)</th>
+                            <th rowspan="2" class="align-middle">% Vol. Sem.</th>
+                        </tr>
+                        <tr>
+                            <?php for ($i = 0; $i < 7; $i++): ?>
+                                <th>Leit. Rej.</th>
+                                <th>Rej.</th>
+                                <th>% Vol.</th>
+                            <?php endfor; ?>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <?php foreach ($reject_tanks as $tank): ?>
+                            <tr>
+                                <td class="fw-bold text-start"><?= htmlspecialchars($tank['name']) ?></td>
+                                <?php
+                                $weekly_rejected_total = 0;
+                                for ($i = 0; $i < 7; $i++):
+                                    $data = $report_data[$tank['id']][$i];
+                                    if ($data['rejeitado'] !== null) {
+                                        $weekly_rejected_total += $data['rejeitado'];
+                                    }
+                                ?>
+                                    <td><?= $data['leitura_rejeitada'] !== null ? number_format($data['leitura_rejeitada'], 0) : '' ?></td>
+                                    <td class="reject-cell"><?= $data['rejeitado'] !== null ? number_format($data['rejeitado'], 0) : '' ?></td>
+                                    <td class="reject-cell"><?= $data['percentagem_rejeitado'] !== null ? number_format($data['percentagem_rejeitado'], 2, ',', '.') . '%' : '' ?></td>
+                                <?php endfor; ?>
+                                <?php $weekly_rejected_percentage = !empty($tank['volume_m3']) ? (($weekly_rejected_total / (float)$tank['volume_m3']) * 100) : null; ?>
+                                <td class="fw-bold table-warning"><?= $weekly_rejected_total > 0 ? number_format($weekly_rejected_total, 0) : '' ?></td>
+                                <td class="fw-bold table-warning"><?= $weekly_rejected_percentage !== null ? number_format($weekly_rejected_percentage, 2, ',', '.') . '%' : '' ?></td>
+                            </tr>
+                        <?php endforeach; ?>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    <?php endif; ?>
 </div>
 
 <script>
