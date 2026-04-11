@@ -267,7 +267,8 @@ $stmt_ot->close();
                     <h5 class="card-title"><i class="fas fa-swimming-pool text-primary"></i> Módulo de Piscinas</h5>
                     <p class="card-text text-muted">Registe análises, consumos, consulte relatórios e monitorize os controladores em tempo real.</p>
                     <div class="mt-auto">
-                        <a href="pools/registos.php" class="btn btn-primary stretched-link">Aceder ao Módulo</a>
+                        <a href="pools/registos.php" class="btn btn-primary">Aceder ao Módulo</a>
+                        <a href="pools/gerir_tanques.php" class="btn btn-secondary">Lista de Tanques</a>
                     </div>
                 </div>
             </div>

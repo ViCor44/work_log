@@ -212,6 +212,21 @@ $is_admin = isset($_SESSION['user_type']) && $_SESSION['user_type'] === 'admin';
 		        </div>
 		    </div>
 		</div>
+
+        <div class="col-md-6 col-lg-4 mb-4">
+            <div class="card h-100">
+                <div class="card-body text-center d-flex flex-column">
+                    <div class="mb-3">
+                        <i class="fas fa-water fa-3x text-primary"></i>
+                    </div>
+                    <h5 class="card-title">Gerir Tanques</h5>
+                    <p class="card-text text-muted">Ver a lista de tanques e editar as configurações existentes.</p>
+                    <div class="mt-auto">
+                        <a href="pools/gerir_tanques.php" class="btn btn-primary stretched-link">Ver Lista de Tanques</a>
+                    </div>
+                </div>
+            </div>
+        </div>
     </div>
 </div>
 
