@@ -36,7 +36,9 @@ if ($query_result === false) {
 }
 $all_tanks = $query_result->fetch_all(MYSQLI_ASSOC);
 
-// ALTERAÇÃO 2: Separar os tanques em arrays diferentes, incluindo tanques com contador de rejeitado
+// ALTERAÇÃO 2: Separar os tanques em arrays diferentes
+// Todas as piscinas vão para $piscina_tanks (com ou sem contador de rejeitado)
+// As piscinas com contador de rejeitado também vão para $piscina_reject_tanks
 $piscina_tanks = [];
 $piscina_reject_tanks = [];
 $special_tanks = [];
@@ -46,10 +48,10 @@ foreach ($all_tanks as $tank) {
     if ($tank['name'] === 'Rede' || $tank['name'] === 'Edificio') {
         $special_tanks[] = $tank;
     } elseif ($tank['type'] === 'piscina') {
+        $piscina_tanks[] = $tank;
+        // Se tiver contador de rejeitado, adiciona também ao array de rejeitado
         if (!empty($tank['has_reject_counter']) && (int)$tank['has_reject_counter'] === 1) {
             $piscina_reject_tanks[] = $tank;
-        } else {
-            $piscina_tanks[] = $tank;
         }
     } else {
         $other_tanks[] = $tank;
