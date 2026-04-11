@@ -56,10 +56,13 @@ case 'analise':
         case 'agua_manha':
         case 'agua_tarde':
             $nome_do_registo = ($tipo_registo === 'agua_manha') ? "leitura da manhã" : "leitura da tarde";
-            if (isset($_POST['agua'])) {
-                // Query simples que guarda apenas a leitura do contador
+            if (isset($_POST['agua']) || isset($_POST['agua_normal']) || isset($_POST['agua_rejeitada'])) {
+                // Query simples que guarda apenas a leitura do contador de água normal
                 $stmt_insert = $conn->prepare("INSERT INTO water_readings (tank_id, user_id, reading_datetime, meter_value) VALUES (?, ?, ?, ?)");
-                foreach ($_POST['agua'] as $tank_id => $agua_value) {
+                
+                // Processa água normal (campo 'agua' ou 'agua_normal')
+                $agua_array = isset($_POST['agua']) ? $_POST['agua'] : (isset($_POST['agua_normal']) ? $_POST['agua_normal'] : []);
+                foreach ($agua_array as $tank_id => $agua_value) {
                     if (!empty($agua_value)) {
                         $stmt_insert->bind_param("iisd", $tank_id, $user_id, $now, $agua_value);
                         $stmt_insert->execute();
@@ -67,6 +70,19 @@ case 'analise':
                     }
                 }
                 $stmt_insert->close();
+                
+                // Processa água rejeitada (novo campo)
+                if (isset($_POST['agua_rejeitada'])) {
+                    $stmt_reject = $conn->prepare("INSERT INTO rejected_water_readings (tank_id, user_id, reading_datetime, meter_value) VALUES (?, ?, ?, ?)");
+                    foreach ($_POST['agua_rejeitada'] as $tank_id => $agua_reject_value) {
+                        if (!empty($agua_reject_value)) {
+                            $stmt_reject->bind_param("iisd", $tank_id, $user_id, $now, $agua_reject_value);
+                            $stmt_reject->execute();
+                            $registos_inseridos++;
+                        }
+                    }
+                    $stmt_reject->close();
+                }
             }
             break;
 

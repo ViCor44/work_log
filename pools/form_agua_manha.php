@@ -1,19 +1,27 @@
 <?php
 require_once '../header.php';
 
-// ALTERAÇÃO 1: A query SQL agora também seleciona a coluna 'type'
+// ALTERAÇÃO 1: A query SQL agora também seleciona a coluna 'type' e has_reject_counter
 $sql = "
     SELECT
         t.id,
         t.name,
         t.type, -- Adicionada a coluna 'type'
+        t.has_reject_counter,
         (
             SELECT lr.meter_value
             FROM water_readings lr
             WHERE lr.tank_id = t.id
             ORDER BY lr.reading_datetime DESC
             LIMIT 1
-        ) AS last_reading
+        ) AS last_reading,
+        (
+            SELECT rwr.meter_value
+            FROM rejected_water_readings rwr
+            WHERE rwr.tank_id = t.id
+            ORDER BY rwr.reading_datetime DESC
+            LIMIT 1
+        ) AS last_rejected_reading
     FROM
         tanks t
     WHERE
@@ -28,8 +36,9 @@ if ($query_result === false) {
 }
 $all_tanks = $query_result->fetch_all(MYSQLI_ASSOC);
 
-// ALTERAÇÃO 2: Separar os tanques em dois arrays diferentes
+// ALTERAÇÃO 2: Separar os tanques em arrays diferentes, incluindo tanques com contador de rejeitado
 $piscina_tanks = [];
+$piscina_reject_tanks = [];
 $special_tanks = [];
 $other_tanks = [];
 
@@ -37,7 +46,11 @@ foreach ($all_tanks as $tank) {
     if ($tank['name'] === 'Rede' || $tank['name'] === 'Edificio') {
         $special_tanks[] = $tank;
     } elseif ($tank['type'] === 'piscina') {
-        $piscina_tanks[] = $tank;
+        if (!empty($tank['has_reject_counter']) && (int)$tank['has_reject_counter'] === 1) {
+            $piscina_reject_tanks[] = $tank;
+        } else {
+            $piscina_tanks[] = $tank;
+        }
     } else {
         $other_tanks[] = $tank;
     }
@@ -120,6 +133,49 @@ foreach ($all_tanks as $tank) {
                                 </div>
                                 <div>Diferença: 
                                     <span id="diff-<?= $tank['id'] ?>" class="diff-value"></span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                <?php endforeach; ?>
+            </div>
+            <hr class="my-4">
+        <?php endif; ?>
+
+        <?php if(count($piscina_reject_tanks) > 0): ?>
+            <h4 class="mb-3">Piscinas - Contadores de Rejeitado</h4>
+            <div class="row">
+                <?php foreach($piscina_reject_tanks as $tank): ?>
+                    <div class="col-xl-2 col-lg-3 col-md-4 col-sm-6 mb-4">
+                        <div class="tank-card-form">
+                            <h5><?= htmlspecialchars($tank['name']) ?></h5>
+                            <hr class="text-white-50 mt-1 mb-3">
+                            <div class="mb-2">
+                                <label class="form-label">Valor do Contador (m³)</label>
+                                <input type="number" step="0.001" class="form-control reading-input" 
+                                       name="agua_normal[<?= $tank['id'] ?>]"
+                                       data-tank-id="<?= $tank['id'] ?>"
+                                       data-last-reading="<?= htmlspecialchars(isset($tank['last_reading']) ? $tank['last_reading'] : '0') ?>">
+                            </div>
+                            <div class="mb-2">
+                                <label class="form-label">Contador Rejeitado (m³)</label>
+                                <input type="number" step="0.001" class="form-control reading-input" 
+                                       name="agua_rejeitada[<?= $tank['id'] ?>]"
+                                       data-tank-id="<?= $tank['id'] ?>"
+                                       data-last-reading="<?= htmlspecialchars(isset($tank['last_rejected_reading']) ? $tank['last_rejected_reading'] : '0') ?>">
+                            </div>
+                            <div class="reading-details">
+                                <div style="font-size: 0.8rem; margin-bottom: 8px;">
+                                    <strong>Normal:</strong> 
+                                    <span id="last-reading-<?= $tank['id'] ?>">
+                                        <?= !empty($tank['last_reading']) ? number_format($tank['last_reading'], 0, ',', '.') : 'N/A' ?>
+                                    </span>
+                                </div>
+                                <div style="font-size: 0.8rem;">
+                                    <strong>Rejeitado:</strong> 
+                                    <span id="last-rejected-reading-<?= $tank['id'] ?>">
+                                        <?= !empty($tank['last_rejected_reading']) ? number_format($tank['last_rejected_reading'], 0, ',', '.') : 'N/A' ?>
+                                    </span>
                                 </div>
                             </div>
                         </div>
