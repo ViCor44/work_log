@@ -35,6 +35,7 @@ $tanks = $tanks_stmt->fetch_all(MYSQLI_ASSOC);
                             <th>Contagem Água</th>
                             <th>Usa Hipoclorito?</th>
                             <th>Requer Análises?</th>
+                            <th>Contador Rejeitado?</th>
                             <th class="text-end">Ações</th>
                         </tr>
                     </thead>
@@ -55,22 +56,27 @@ $tanks = $tanks_stmt->fetch_all(MYSQLI_ASSOC);
                                     </td>
                                     <td><?= $tank['uses_hypochlorite'] ? 'Sim' : 'Não' ?></td>
                                     <td><?= $tank['requires_analysis'] ? 'Sim' : 'Não' ?></td>
+                                    <td>
+                                        <?php if ($tank['type'] === 'piscina'): ?>
+                                            <?= (!empty($tank['has_reject_counter']) && (int)$tank['has_reject_counter'] === 1) ? 'Sim' : 'Não' ?>
+                                        <?php else: ?>
+                                            -
+                                        <?php endif; ?>
+                                    </td>
                                     <td class="text-end">
-                                        <td class="text-end">
-										    <a href="form_tanque.php?id=<?= $tank['id'] ?>" class="btn btn-sm btn-warning">
-										        <i class="fas fa-edit"></i> Editar
-										    </a>
-										    
-										    <a href="excluir_tanque.php?id=<?= $tank['id'] ?>" class="btn btn-sm btn-danger" onclick="return confirm('Tem a certeza que deseja excluir o tanque \'<?= htmlspecialchars($tank['name']) ?>\'? Esta ação é irreversível e irá apagar todos os seus registos associados.');">
-										        <i class="fas fa-trash-alt"></i> Excluir
-										    </a>
-										</td>
+									    <a href="form_tanque.php?id=<?= $tank['id'] ?>" class="btn btn-sm btn-warning">
+									        <i class="fas fa-edit"></i> Editar
+									    </a>
+									    
+									    <a href="excluir_tanque.php?id=<?= $tank['id'] ?>" class="btn btn-sm btn-danger" onclick="return confirm('Tem a certeza que deseja excluir o tanque \'<?= htmlspecialchars($tank['name']) ?>\'? Esta ação é irreversível e irá apagar todos os seus registos associados.');">
+									        <i class="fas fa-trash-alt"></i> Excluir
+									    </a>
                                     </td>
                                 </tr>
                             <?php endforeach; ?>
                         <?php else: ?>
                             <tr>
-                                <td colspan="6" class="text-center">Nenhum tanque registado.</td>
+                                <td colspan="7" class="text-center">Nenhum tanque registado.</td>
                             </tr>
                         <?php endif; ?>
                     </tbody>
