@@ -1,5 +1,5 @@
 <?php
-require_once '../header.php';
+require_once '../core.php';
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $name = trim($_POST['name'] ?? '');
@@ -27,6 +27,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
     }
 }
+
+require_once '../header.php';
 ?>
 
 <div class="container mt-4" style="max-width: 720px;">
