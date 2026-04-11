@@ -20,7 +20,7 @@ $day_before_start = $day_before_start_obj->format('Y-m-d');
 // --- FIM DA CORREÇÃO DE DATA INICIAL ---
 
 // --- Lógica de Busca e Processamento de Dados ---
-$tanks_stmt = $conn->query("SELECT id, name FROM tanks WHERE water_reading_frequency > 0 ORDER BY name ASC");
+$tanks_stmt = $conn->query("SELECT id, name, type, has_reject_counter, volume_m3 FROM tanks WHERE water_reading_frequency > 0 ORDER BY name ASC");
 $tanks = $tanks_stmt->fetch_all(MYSQLI_ASSOC);
 
 $sql = "
@@ -35,12 +35,32 @@ $stmt->execute();
 $results = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
 $stmt->close();
 
+$reject_sql = "
+    SELECT tank_id, reading_datetime, meter_value
+    FROM rejected_water_readings
+    WHERE DATE(reading_datetime) BETWEEN ? AND ?
+    ORDER BY tank_id, reading_datetime ASC
+";
+$reject_stmt = $conn->prepare($reject_sql);
+$reject_stmt->bind_param("ss", $day_before_start, $end_date_str);
+$reject_stmt->execute();
+$reject_results = $reject_stmt->get_result()->fetch_all(MYSQLI_ASSOC);
+$reject_stmt->close();
+
 $report_data = [];
 $readings_by_day = [];
+$reject_readings_by_day = [];
 foreach ($results as $row) {
     $date_key = date('Y-m-d', strtotime($row['reading_datetime']));
     if (!isset($readings_by_day[$row['tank_id']][$date_key])) {
         $readings_by_day[$row['tank_id']][$date_key] = $row['meter_value'];
+    }
+}
+
+foreach ($reject_results as $row) {
+    $date_key = date('Y-m-d', strtotime($row['reading_datetime']));
+    if (!isset($reject_readings_by_day[$row['tank_id']][$date_key])) {
+        $reject_readings_by_day[$row['tank_id']][$date_key] = $row['meter_value'];
     }
 }
 
@@ -59,16 +79,37 @@ for ($i = 0; $i < 7; $i++) {
         $tank_id = $tank['id'];
         $leitura = isset($readings_by_day[$tank_id][$current_date_str]) ? $readings_by_day[$tank_id][$current_date_str] : null;
         $leitura_ant = isset($readings_by_day[$tank_id][$prev_date_str]) ? $readings_by_day[$tank_id][$prev_date_str] : null;
+        $leitura_rejeitada = null;
+        $leitura_rejeitada_ant = null;
+        $rejeitado = null;
+        $percentagem_rejeitado = null;
         
         $consumo = null;
         if ($leitura !== null && $leitura_ant !== null) {
             $consumo = $leitura - $leitura_ant;
             if ($consumo < 0) $consumo = 0;
         }
+
+        if ($tank['type'] === 'piscina' && (int)$tank['has_reject_counter'] === 1) {
+            $leitura_rejeitada = isset($reject_readings_by_day[$tank_id][$current_date_str]) ? $reject_readings_by_day[$tank_id][$current_date_str] : null;
+            $leitura_rejeitada_ant = isset($reject_readings_by_day[$tank_id][$prev_date_str]) ? $reject_readings_by_day[$tank_id][$prev_date_str] : null;
+
+            if ($leitura_rejeitada !== null && $leitura_rejeitada_ant !== null) {
+                $rejeitado = $leitura_rejeitada - $leitura_rejeitada_ant;
+                if ($rejeitado < 0) $rejeitado = 0;
+            }
+
+            if ($rejeitado !== null && !empty($tank['volume_m3'])) {
+                $percentagem_rejeitado = ($rejeitado / (float)$tank['volume_m3']) * 100;
+            }
+        }
         
         $report_data[$tank_id][$i] = [
             'leitura' => $leitura,
-            'consumo' => $consumo
+            'consumo' => $consumo,
+            'leitura_rejeitada' => $leitura_rejeitada,
+            'rejeitado' => $rejeitado,
+            'percentagem_rejeitado' => $percentagem_rejeitado
         ];
     }
 }
@@ -114,15 +155,20 @@ for ($i = 0; $i < 7; $i++) {
                             $header_date_obj = clone $start_of_week;
                             $header_date_obj->modify("+$i days");
                             $header_date_str = $header_date_obj->format('d/m');
-                            echo '<th colspan="2">' . $dias_semana[$i] . '<br>' . $header_date_str . '</th>';
+                            echo '<th colspan="5">' . $dias_semana[$i] . '<br>' . $header_date_str . '</th>';
                         }
                         ?>
-                        <th rowspan="2" class="align-middle">Total Semanal (m³)</th>
+                        <th rowspan="2" class="align-middle">Total Cons. (m³)</th>
+                        <th rowspan="2" class="align-middle">Total Rej. (m³)</th>
+                        <th rowspan="2" class="align-middle">% Vol. Sem.</th>
                     </tr>
                     <tr>
                         <?php for ($i = 0; $i < 7; $i++): ?>
                             <th>Leitura</th>
                             <th>Consumo</th>
+                            <th>Leit. Rej.</th>
+                            <th>Rej.</th>
+                            <th>% Vol.</th>
                         <?php endfor; ?>
                     </tr>
                 </thead>
@@ -132,16 +178,26 @@ for ($i = 0; $i < 7; $i++) {
                             <td class="fw-bold text-start"><?= htmlspecialchars($tank['name']) ?></td>
                             <?php 
                             $weekly_total = 0;
+                            $weekly_rejected_total = 0;
                             for ($i = 0; $i < 7; $i++): 
                                 $data = $report_data[$tank['id']][$i];
                                 if (isset($data['consumo'])) {
                                     $weekly_total += $data['consumo'];
                                 }
+                                if (isset($data['rejeitado']) && $data['rejeitado'] !== null) {
+                                    $weekly_rejected_total += $data['rejeitado'];
+                                }
                             ?>
                                 <td><?= $data['leitura'] !== null ? number_format($data['leitura'], 0) : '' ?></td>
                                 <td class="consumption-cell"><?= $data['consumo'] !== null ? number_format($data['consumo'], 0) : '' ?></td>
+                                <td><?= $data['leitura_rejeitada'] !== null ? number_format($data['leitura_rejeitada'], 0) : '' ?></td>
+                                <td class="consumption-cell"><?= $data['rejeitado'] !== null ? number_format($data['rejeitado'], 0) : '' ?></td>
+                                <td class="consumption-cell"><?= $data['percentagem_rejeitado'] !== null ? number_format($data['percentagem_rejeitado'], 2, ',', '.') . '%' : '' ?></td>
                             <?php endfor; ?>
+                            <?php $weekly_rejected_percentage = !empty($tank['volume_m3']) ? (($weekly_rejected_total / (float)$tank['volume_m3']) * 100) : null; ?>
                             <td class="fw-bold table-light"><?= number_format($weekly_total, 0) ?></td>
+                            <td class="fw-bold table-light"><?= $weekly_rejected_total > 0 ? number_format($weekly_rejected_total, 0) : '' ?></td>
+                            <td class="fw-bold table-light"><?= $weekly_rejected_percentage !== null ? number_format($weekly_rejected_percentage, 2, ',', '.') . '%' : '' ?></td>
                         </tr>
                     <?php endforeach; ?>
                 </tbody>

@@ -22,7 +22,7 @@ $day_before_start = $day_before_start_obj->format('Y-m-d');
 
 // --- Lógica de Busca e Processamento de Dados ---
 // 1. Buscar TODOS os tanques com contagem de água
-$tanks_stmt = $conn->query("SELECT id, name FROM tanks WHERE water_reading_frequency > 0 ORDER BY name ASC");
+$tanks_stmt = $conn->query("SELECT id, name, type, has_reject_counter, volume_m3 FROM tanks WHERE water_reading_frequency > 0 ORDER BY name ASC");
 $tanks = $tanks_stmt->fetch_all(MYSQLI_ASSOC);
 
 // 2. Buscar as leituras da semana selecionada e do dia anterior ao início
@@ -38,14 +38,34 @@ $stmt->execute();
 $results = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
 $stmt->close();
 
+$reject_sql = "
+    SELECT tank_id, reading_datetime, meter_value
+    FROM rejected_water_readings
+    WHERE DATE(reading_datetime) BETWEEN ? AND ?
+    ORDER BY tank_id, reading_datetime ASC
+";
+$reject_stmt = $conn->prepare($reject_sql);
+$reject_stmt->bind_param("ss", $day_before_start, $end_date_str);
+$reject_stmt->execute();
+$reject_results = $reject_stmt->get_result()->fetch_all(MYSQLI_ASSOC);
+$reject_stmt->close();
+
 // 3. Processar os dados
 $report_data = [];
 $readings_by_day = [];
+$reject_readings_by_day = [];
 foreach ($results as $row) {
     $date_key = date('Y-m-d', strtotime($row['reading_datetime']));
     // Guarda a primeira leitura do dia
     if (!isset($readings_by_day[$row['tank_id']][$date_key])) {
         $readings_by_day[$row['tank_id']][$date_key] = $row['meter_value'];
+    }
+}
+
+foreach ($reject_results as $row) {
+    $date_key = date('Y-m-d', strtotime($row['reading_datetime']));
+    if (!isset($reject_readings_by_day[$row['tank_id']][$date_key])) {
+        $reject_readings_by_day[$row['tank_id']][$date_key] = $row['meter_value'];
     }
 }
 
@@ -62,16 +82,37 @@ for ($i = 0; $i < 7; $i++) {
         $tank_id = $tank['id'];
         $leitura = isset($readings_by_day[$tank_id][$current_date_str]) ? $readings_by_day[$tank_id][$current_date_str] : null;
         $leitura_ant = isset($readings_by_day[$tank_id][$prev_date_str]) ? $readings_by_day[$tank_id][$prev_date_str] : null;
+        $leitura_rejeitada = null;
+        $leitura_rejeitada_ant = null;
+        $rejeitado = null;
+        $percentagem_rejeitado = null;
         
         $consumo = null;
         if ($leitura !== null && $leitura_ant !== null) {
             $consumo = $leitura - $leitura_ant;
             if ($consumo < 0) $consumo = 0;
         }
+
+        if ($tank['type'] === 'piscina' && (int)$tank['has_reject_counter'] === 1) {
+            $leitura_rejeitada = isset($reject_readings_by_day[$tank_id][$current_date_str]) ? $reject_readings_by_day[$tank_id][$current_date_str] : null;
+            $leitura_rejeitada_ant = isset($reject_readings_by_day[$tank_id][$prev_date_str]) ? $reject_readings_by_day[$tank_id][$prev_date_str] : null;
+
+            if ($leitura_rejeitada !== null && $leitura_rejeitada_ant !== null) {
+                $rejeitado = $leitura_rejeitada - $leitura_rejeitada_ant;
+                if ($rejeitado < 0) $rejeitado = 0;
+            }
+
+            if ($rejeitado !== null && !empty($tank['volume_m3'])) {
+                $percentagem_rejeitado = ($rejeitado / (float)$tank['volume_m3']) * 100;
+            }
+        }
         
         $report_data[$tank_id][$i] = [
             'leitura' => $leitura,
-            'consumo' => $consumo
+            'consumo' => $consumo,
+            'leitura_rejeitada' => $leitura_rejeitada,
+            'rejeitado' => $rejeitado,
+            'percentagem_rejeitado' => $percentagem_rejeitado
         ];
     }
 }
@@ -113,16 +154,22 @@ $pdf->AddPage();
 
 // --- Desenho da Tabela ---
 $pdf->SetFillColor(230, 230, 230);
-$pdf->SetFont('Arial', 'B', 7);
+$pdf->SetFont('Arial', 'B', 5);
 $cell_height = 4;
 
 // Larguras
-$col_tanque_width = 25;
-$col_total_width = 15;
+$col_tanque_width = 24;
+$col_total_consumo_width = 12;
+$col_total_rejeitado_width = 12;
+$col_total_percent_width = 14;
 $num_days = 7;
-$usable_width = 281 - $col_tanque_width - $col_total_width;
+$usable_width = 281 - $col_tanque_width - $col_total_consumo_width - $col_total_rejeitado_width - $col_total_percent_width;
 $day_col_width = floor($usable_width / $num_days);
-$sub_col_width = floor($day_col_width / 2);
+$sub_col_leitura_width = 6;
+$sub_col_consumo_width = 6;
+$sub_col_leitura_rej_width = 6;
+$sub_col_rejeitado_width = 6;
+$sub_col_percent_width = $day_col_width - $sub_col_leitura_width - $sub_col_consumo_width - $sub_col_leitura_rej_width - $sub_col_rejeitado_width;
 
 // Cabeçalho da Tabela
 $pdf->Cell($col_tanque_width, $cell_height * 2, 'Tanque', 1, 0, 'C', true);
@@ -135,28 +182,44 @@ for ($i = 0; $i < 7; $i++) {
     $pdf->MultiCell($day_col_width, $cell_height, utf8_decode($dias_semana[$i]) . "\n" . $header_date_str, 1, 'C', true);
     $pdf->SetXY($x + $day_col_width, $y);
 }
-$pdf->Cell($col_total_width, $cell_height * 2, 'Total', 1, 1, 'C', true);
+$pdf->Cell($col_total_consumo_width, $cell_height * 2, 'Tot. C', 1, 0, 'C', true);
+$pdf->Cell($col_total_rejeitado_width, $cell_height * 2, 'Tot. R', 1, 0, 'C', true);
+$pdf->Cell($col_total_percent_width, $cell_height * 2, '% Vol.', 1, 1, 'C', true);
 $pdf->SetXY(10 + $col_tanque_width, $pdf->GetY());
 for ($i = 0; $i < 7; $i++) {
-    $pdf->Cell($sub_col_width, $cell_height, 'Leitura', 1, 0, 'C', true);
-    $pdf->Cell($sub_col_width, $cell_height, 'Consumo', 1, 0, 'C', true);
+    $pdf->Cell($sub_col_leitura_width, $cell_height, 'Leit.', 1, 0, 'C', true);
+    $pdf->Cell($sub_col_consumo_width, $cell_height, 'Cons.', 1, 0, 'C', true);
+    $pdf->Cell($sub_col_leitura_rej_width, $cell_height, 'L. Rej.', 1, 0, 'C', true);
+    $pdf->Cell($sub_col_rejeitado_width, $cell_height, 'Rej.', 1, 0, 'C', true);
+    $pdf->Cell($sub_col_percent_width, $cell_height, '%', 1, 0, 'C', true);
 }
 $pdf->Ln();
 
 // Corpo da Tabela
-$pdf->SetFont('Arial', '', 7);
+$pdf->SetFont('Arial', '', 5);
 foreach ($tanks as $tank) {
     $pdf->Cell($col_tanque_width, $cell_height, utf8_decode($tank['name']), 1, 0, 'L');
     $weekly_total = 0;
+    $weekly_rejected_total = 0;
     for ($i = 0; $i < 7; $i++) {
         $data = $report_data[$tank['id']][$i];
         $leitura = $data['leitura'] !== null ? number_format($data['leitura'], 0) : '';
         $consumo = $data['consumo'] !== null ? number_format($data['consumo'], 0) : '';
+        $leitura_rejeitada = $data['leitura_rejeitada'] !== null ? number_format($data['leitura_rejeitada'], 0) : '';
+        $rejeitado = $data['rejeitado'] !== null ? number_format($data['rejeitado'], 0) : '';
+        $percentagem_rejeitado = $data['percentagem_rejeitado'] !== null ? number_format($data['percentagem_rejeitado'], 1, ',', '.') . '%' : '';
         if ($data['consumo'] !== null) $weekly_total += $data['consumo'];
-        $pdf->Cell($sub_col_width, $cell_height, $leitura, 1, 0, 'C');
-        $pdf->Cell($sub_col_width, $cell_height, $consumo, 1, 0, 'C');
+        if ($data['rejeitado'] !== null) $weekly_rejected_total += $data['rejeitado'];
+        $pdf->Cell($sub_col_leitura_width, $cell_height, $leitura, 1, 0, 'C');
+        $pdf->Cell($sub_col_consumo_width, $cell_height, $consumo, 1, 0, 'C');
+        $pdf->Cell($sub_col_leitura_rej_width, $cell_height, $leitura_rejeitada, 1, 0, 'C');
+        $pdf->Cell($sub_col_rejeitado_width, $cell_height, $rejeitado, 1, 0, 'C');
+        $pdf->Cell($sub_col_percent_width, $cell_height, $percentagem_rejeitado, 1, 0, 'C');
     }
-    $pdf->Cell($col_total_width, $cell_height, number_format($weekly_total, 0), 1, 1, 'C');
+    $weekly_rejected_percentage = !empty($tank['volume_m3']) ? (($weekly_rejected_total / (float)$tank['volume_m3']) * 100) : null;
+    $pdf->Cell($col_total_consumo_width, $cell_height, number_format($weekly_total, 0), 1, 0, 'C');
+    $pdf->Cell($col_total_rejeitado_width, $cell_height, $weekly_rejected_total > 0 ? number_format($weekly_rejected_total, 0) : '', 1, 0, 'C');
+    $pdf->Cell($col_total_percent_width, $cell_height, $weekly_rejected_percentage !== null ? number_format($weekly_rejected_percentage, 1, ',', '.') . '%' : '', 1, 1, 'C');
 }
 
 // Envia o PDF para o browser
