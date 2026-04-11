@@ -22,14 +22,12 @@ $pools = fetch_all_safe($conn, "SELECT id, name, controller_ip FROM tanks WHERE 
 // Busca todas as Centrais de Medida
 $power_meters = fetch_all_safe($conn, "SELECT id, local, ip_address FROM centrais_de_medida ORDER BY local ASC");
 
-// Busca ativos de filtro (equipamentos remotos por categoria)
+// Busca filtros defender (entidade dedicada)
 $filters = fetch_all_safe(
     $conn,
-    "SELECT rem.id, rem.name, rem.ip_address, rem.slave_id
-     FROM remote_equipment rem
-     LEFT JOIN categories cat ON cat.id = rem.category_id
-     WHERE LOWER(COALESCE(cat.name, '')) LIKE '%filtro%'
-     ORDER BY rem.name ASC"
+    "SELECT id, name, ip_address, slave_id
+     FROM filter_equipment
+     ORDER BY name ASC"
 );
 ?>
 
@@ -224,36 +222,34 @@ $filters = fetch_all_safe(
             <div class="dashboard-grid" id="dashboard-container-filtros">
                 <?php if (!empty($filters)): ?>
                     <?php foreach ($filters as $filter): ?>
-                        <a href="../view_equipment_details.php?id=<?= $filter['id'] ?>" class="text-decoration-none">
-                            <div id="card-filtro-<?= $filter['id'] ?>" class="card scada-card h-100 border-secondary shadow-sm" data-type="filtro" data-ip="<?= htmlspecialchars($filter['ip_address']) ?>" data-slave-id="<?= (int)$filter['slave_id'] ?>">
-                                <div class="card-header d-flex justify-content-between align-items-center">
-                                    <h5 class="card-title mb-0 fw-bold"><?= htmlspecialchars($filter['name']) ?></h5>
-                                    <span id="status-filtro-<?= $filter['id'] ?>" class="badge bg-secondary">Aguardando...</span>
-                                </div>
-                                <ul class="list-group list-group-flush">
-                                    <li class="list-group-item d-flex justify-content-between align-items-center">
-                                        <span class="text-white-50">Estado</span>
-                                        <span id="filtro-state-<?= $filter['id'] ?>" class="font-monospace fw-bold fs-5">--</span>
-                                    </li>
-                                    <li class="list-group-item d-flex justify-content-between align-items-center">
-                                        <span class="text-white-50">Pressão de entrada (Pin)</span>
-                                        <span id="filtro-pin-<?= $filter['id'] ?>" class="font-monospace fw-bold fs-5">--</span>
-                                    </li>
-                                    <li class="list-group-item d-flex justify-content-between align-items-center">
-                                        <span class="text-white-50">Pressão de saída (Pout)</span>
-                                        <span id="filtro-pout-<?= $filter['id'] ?>" class="font-monospace fw-bold fs-5">--</span>
-                                    </li>
-                                    <li class="list-group-item d-flex justify-content-between align-items-center">
-                                        <span class="text-white-50">Diferença (Delta P)</span>
-                                        <span id="filtro-delta-<?= $filter['id'] ?>" class="font-monospace fw-bold fs-5">--</span>
-                                    </li>
-                                </ul>
-                                <div class="card-body text-center alarm-content">
-                                    <img src="../images/rj45.png" style="width: 64px; height: 64px;" alt="Erro de Comunicação">
-                                    <div class="fw-bold mt-2">Erro de Comunicação</div>
-                                </div>
+                        <div id="card-filtro-<?= $filter['id'] ?>" class="card scada-card h-100 border-secondary shadow-sm" data-type="filtro" data-ip="<?= htmlspecialchars($filter['ip_address']) ?>" data-slave-id="<?= (int)$filter['slave_id'] ?>">
+                            <div class="card-header d-flex justify-content-between align-items-center">
+                                <h5 class="card-title mb-0 fw-bold"><?= htmlspecialchars($filter['name']) ?></h5>
+                                <span id="status-filtro-<?= $filter['id'] ?>" class="badge bg-secondary">Aguardando...</span>
                             </div>
-                        </a>
+                            <ul class="list-group list-group-flush">
+                                <li class="list-group-item d-flex justify-content-between align-items-center">
+                                    <span class="text-white-50">Estado</span>
+                                    <span id="filtro-state-<?= $filter['id'] ?>" class="font-monospace fw-bold fs-5">--</span>
+                                </li>
+                                <li class="list-group-item d-flex justify-content-between align-items-center">
+                                    <span class="text-white-50">Pressão de entrada (Pin)</span>
+                                    <span id="filtro-pin-<?= $filter['id'] ?>" class="font-monospace fw-bold fs-5">--</span>
+                                </li>
+                                <li class="list-group-item d-flex justify-content-between align-items-center">
+                                    <span class="text-white-50">Pressão de saída (Pout)</span>
+                                    <span id="filtro-pout-<?= $filter['id'] ?>" class="font-monospace fw-bold fs-5">--</span>
+                                </li>
+                                <li class="list-group-item d-flex justify-content-between align-items-center">
+                                    <span class="text-white-50">Diferença (Delta P)</span>
+                                    <span id="filtro-delta-<?= $filter['id'] ?>" class="font-monospace fw-bold fs-5">--</span>
+                                </li>
+                            </ul>
+                            <div class="card-body text-center alarm-content">
+                                <img src="../images/rj45.png" style="width: 64px; height: 64px;" alt="Erro de Comunicação">
+                                <div class="fw-bold mt-2">Erro de Comunicação</div>
+                            </div>
+                        </div>
                     <?php endforeach; ?>
                 <?php else: ?>
                     <div class="col-12">

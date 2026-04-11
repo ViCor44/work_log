@@ -16,12 +16,16 @@ if (!isset($_GET['id']) || !is_numeric($_GET['id'])) {
 $filter_id = (int) $_GET['id'];
 
 $stmt = $conn->prepare(
-    "SELECT rem.id, rem.name, rem.ip_address, rem.slave_id
-     FROM remote_equipment rem
-     LEFT JOIN categories cat ON cat.id = rem.category_id
-     WHERE rem.id = ? AND LOWER(COALESCE(cat.name, '')) LIKE '%filtro%'
+    "SELECT id, name, ip_address, slave_id
+     FROM filter_equipment
+     WHERE id = ?
      LIMIT 1"
 );
+
+if ($stmt === false) {
+    echo json_encode(['error' => 'Tabela filter_equipment nao encontrada. Execute o SQL de criacao.']);
+    exit;
+}
 $stmt->bind_param('i', $filter_id);
 $stmt->execute();
 $result = $stmt->get_result();

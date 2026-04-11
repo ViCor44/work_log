@@ -1,0 +1,9 @@
+CREATE TABLE IF NOT EXISTS filter_equipment (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    name VARCHAR(150) NOT NULL,
+    ip_address VARCHAR(45) NOT NULL,
+    slave_id INT NOT NULL DEFAULT 1,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    UNIQUE KEY uniq_filter_ip_slave (ip_address, slave_id)
+);
