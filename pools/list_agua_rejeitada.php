@@ -145,52 +145,48 @@ foreach ($tanks as $tank) {
             <table class="table table-bordered table-hover report-table">
                 <thead class="table-light">
                     <tr>
-                        <th rowspan="2">Dia</th>
-                        <th rowspan="2">Período</th>
+                        <th>Dia</th>
                         <?php foreach ($tanks as $tank): ?>
                             <th colspan="2"><?= htmlspecialchars($tank['name']) ?></th>
                         <?php endforeach; ?>
-                        <th rowspan="2">Total (m³)</th>
+                        <th>Total (m³)</th>
                     </tr>
                     <tr>
+                        <th></th>
                         <?php foreach ($tanks as $tank): ?>
                             <th style="font-size: 0.7rem;">Leitura</th>
-                            <th style="font-size: 0.7rem;">Cons.</th>
+                            <th style="font-size: 0.7rem;">Rejeitado</th>
                         <?php endforeach; ?>
+                        <th></th>
                     </tr>
                 </thead>
                 <tbody>
                     <?php 
                     for ($day = 1; $day <= $days_in_month; $day++) {
-                        foreach (['manha' => 'Manhã', 'tarde' => 'Tarde'] as $period_key => $period_label) {
-                            echo '<tr>';
-                            if ($period_key === 'manha') {
-                                echo '<td rowspan="2"><strong>' . $day . '</strong></td>';
+                        echo '<tr>';
+                        echo '<td><strong>' . $day . '</strong></td>';
+                        
+                        $day_total = 0;
+                        foreach ($tanks as $tank) {
+                            $tank_id = $tank['id'];
+                            if (isset($report_data[$day][$tank_id]['manha'])) {
+                                $data = $report_data[$day][$tank_id]['manha'];
+                                echo '<td>' . number_format($data['leitura'], 0, ',', '.') . '</td>';
+                                echo '<td class="col-gasto">' . number_format($data['consumo'], 2, ',', '.') . '</td>';
+                                $day_total += $data['consumo'];
+                            } else {
+                                echo '<td>-</td>';
+                                echo '<td class="col-gasto">-</td>';
                             }
-                            echo '<td>' . $period_label . '</td>';
-                            
-                            $day_total = 0;
-                            foreach ($tanks as $tank) {
-                                $tank_id = $tank['id'];
-                                if (isset($report_data[$day][$tank_id][$period_key])) {
-                                    $data = $report_data[$day][$tank_id][$period_key];
-                                    echo '<td>' . number_format($data['leitura'], 0, ',', '.') . '</td>';
-                                    echo '<td class="col-gasto">' . number_format($data['consumo'], 2, ',', '.') . '</td>';
-                                    $day_total += $data['consumo'];
-                                } else {
-                                    echo '<td>-</td>';
-                                    echo '<td class="col-gasto">-</td>';
-                                }
-                            }
-                            echo '<td class="total-col">' . number_format($day_total, 2, ',', '.') . '</td>';
-                            echo '</tr>';
                         }
+                        echo '<td class="total-col">' . number_format($day_total, 2, ',', '.') . '</td>';
+                        echo '</tr>';
                     }
                     ?>
                 </tbody>
                 <tfoot>
                     <tr class="total-row">
-                        <td colspan="2">Total do Mês (m³)</td>
+                        <td>Total do Mês (m³)</td>
                         <?php foreach ($tanks as $tank): ?>
                             <td colspan="2"><?= number_format($tank_totals[$tank['id']], 2, ',', '.') ?></td>
                         <?php endforeach; ?>

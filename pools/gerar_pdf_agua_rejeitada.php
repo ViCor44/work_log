@@ -135,16 +135,14 @@ $pdf->SetFont('Arial', 'B', 7);
 $cell_height = 4.2;
 
 $col_dia_width = 10;
-$col_periodo_width = 15;
 $col_total_width = 20;
 $num_tanks = count($tanks);
-$usable_width = 277 - $col_dia_width - $col_periodo_width - $col_total_width;
+$usable_width = 277 - $col_dia_width - $col_total_width;
 $tank_col_width = $num_tanks > 0 ? floor($usable_width / $num_tanks) : 0;
 $sub_col_leitura_width = floor($tank_col_width * 0.6);
 $sub_col_consumo_width = $tank_col_width - $sub_col_leitura_width;
 
-$pdf->Cell($col_dia_width, $cell_height * 2, 'Dia', 1, 0, 'C', true);
-$pdf->Cell($col_periodo_width, $cell_height * 2, 'Periodo', 1, 0, 'C', true);
+$pdf->Cell($col_dia_width, $cell_height, 'Dia', 1, 0, 'C', true);
 
 $y1 = $pdf->GetY();
 $x_start_tanks = $pdf->GetX();
@@ -156,23 +154,19 @@ foreach ($tanks as $tank) {
 }
 
 $pdf->SetXY($x_start_tanks + ($tank_col_width * $num_tanks), $y1);
-$pdf->Cell($col_total_width, $cell_height * 2, utf8_decode('Total (m³)'), 1, 1, 'C', true);
+$pdf->Cell($col_total_width, $cell_height, utf8_decode('Total (m³)'), 1, 1, 'C', true);
 
 $pdf->SetXY($x_start_tanks, $y1 + $cell_height);
 foreach ($tanks as $tank) {
     $pdf->Cell($sub_col_leitura_width, $cell_height, 'Leitura', 1, 0, 'C', true);
-    $pdf->Cell($sub_col_consumo_width, $cell_height, 'Cons.', 1, 0, 'C', true);
+    $pdf->Cell($sub_col_consumo_width, $cell_height, 'Rejeitado', 1, 0, 'C', true);
 }
 $pdf->Ln();
 
 // Corpo da Tabela
 $pdf->SetFont('Arial', '', 7);
 for ($day = 1; $day <= $days_in_month; $day++) {
-    $morning_y = $pdf->GetY();
-    
-    // Manhã
     $pdf->Cell($col_dia_width, $cell_height, $day, 1, 0, 'C');
-    $pdf->Cell($col_periodo_width, $cell_height, 'Manhã', 1, 0, 'C');
     $day_total = 0;
     foreach ($tanks as $tank) {
         $tank_id = $tank['id'];
@@ -187,30 +181,11 @@ for ($day = 1; $day <= $days_in_month; $day++) {
         }
     }
     $pdf->Cell($col_total_width, $cell_height, number_format($day_total, 2, ',', '.'), 1, 1, 'R');
-    
-    // Tarde
-    $pdf->Cell($col_dia_width, $cell_height, '', 1, 0, 'C');
-    $pdf->Cell($col_periodo_width, $cell_height, 'Tarde', 1, 0, 'C');
-    $day_total = 0;
-    foreach ($tanks as $tank) {
-        $tank_id = $tank['id'];
-        if (isset($report_data[$day][$tank_id]['tarde'])) {
-            $data = $report_data[$day][$tank_id]['tarde'];
-            $pdf->Cell($sub_col_leitura_width, $cell_height, number_format($data['leitura'], 0, ',', '.'), 1, 0, 'R');
-            $pdf->Cell($sub_col_consumo_width, $cell_height, number_format($data['consumo'], 2, ',', '.'), 1, 0, 'R');
-            $day_total += $data['consumo'];
-        } else {
-            $pdf->Cell($sub_col_leitura_width, $cell_height, '-', 1, 0, 'C');
-            $pdf->Cell($sub_col_consumo_width, $cell_height, '-', 1, 0, 'C');
-        }
-    }
-    $pdf->Cell($col_total_width, $cell_height, number_format($day_total, 2, ',', '.'), 1, 1, 'R');
 }
 
 // Totais do Mês
 $pdf->SetFont('Arial', 'B', 7);
 $pdf->Cell($col_dia_width, $cell_height, '', 1, 0, 'C', true);
-$pdf->Cell($col_periodo_width, $cell_height, 'Total Mês', 1, 0, 'C', true);
 $month_total = 0;
 foreach ($tanks as $tank) {
     $tank_id = $tank['id'];
