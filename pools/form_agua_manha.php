@@ -111,7 +111,7 @@ foreach ($all_tanks as $tank) {
         <?php endif; ?>
 
         <?php if(count($piscina_tanks) > 0): ?>
-            <h4 class="mb-3">Piscinas</h4>
+            <h4 class="mb-3">Piscinas - Enchimentos</h4>
             <div class="row">
                 <?php foreach($piscina_tanks as $tank): ?>
                     <div class="col-xl-2 col-lg-3 col-md-4 col-sm-6 mb-4">
@@ -143,20 +143,13 @@ foreach ($all_tanks as $tank) {
         <?php endif; ?>
 
         <?php if(count($piscina_reject_tanks) > 0): ?>
-            <h4 class="mb-3">Piscinas - Contadores de Rejeitado</h4>
+            <h4 class="mb-3">Piscinas - Rejeitado</h4>
             <div class="row">
                 <?php foreach($piscina_reject_tanks as $tank): ?>
                     <div class="col-xl-2 col-lg-3 col-md-4 col-sm-6 mb-4">
                         <div class="tank-card-form">
                             <h5><?= htmlspecialchars($tank['name']) ?></h5>
                             <hr class="text-white-50 mt-1 mb-3">
-                            <div class="mb-2">
-                                <label class="form-label">Valor do Contador (m³)</label>
-                                <input type="number" step="0.001" class="form-control reading-input" 
-                                       name="agua_normal[<?= $tank['id'] ?>]"
-                                       data-tank-id="<?= $tank['id'] ?>"
-                                       data-last-reading="<?= htmlspecialchars(isset($tank['last_reading']) ? $tank['last_reading'] : '0') ?>">
-                            </div>
                             <div class="mb-2">
                                 <label class="form-label">Contador Rejeitado (m³)</label>
                                 <input type="number" step="0.001" class="form-control reading-input" 
@@ -165,17 +158,13 @@ foreach ($all_tanks as $tank) {
                                        data-last-reading="<?= htmlspecialchars(isset($tank['last_rejected_reading']) ? $tank['last_rejected_reading'] : '0') ?>">
                             </div>
                             <div class="reading-details">
-                                <div style="font-size: 0.8rem; margin-bottom: 8px;">
-                                    <strong>Normal:</strong> 
-                                    <span id="last-reading-<?= $tank['id'] ?>">
-                                        <?= !empty($tank['last_reading']) ? number_format($tank['last_reading'], 0, ',', '.') : 'N/A' ?>
-                                    </span>
-                                </div>
-                                <div style="font-size: 0.8rem;">
-                                    <strong>Rejeitado:</strong> 
-                                    <span id="last-rejected-reading-<?= $tank['id'] ?>">
+                                <div>Última Leitura: 
+                                    <strong id="last-rejected-reading-<?= $tank['id'] ?>">
                                         <?= !empty($tank['last_rejected_reading']) ? number_format($tank['last_rejected_reading'], 0, ',', '.') : 'N/A' ?>
-                                    </span>
+                                    </strong>
+                                </div>
+                                <div>Diferença: 
+                                    <span id="diff-reject-<?= $tank['id'] ?>" class="diff-value"></span>
                                 </div>
                             </div>
                         </div>
