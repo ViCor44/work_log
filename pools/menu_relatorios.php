@@ -39,6 +39,11 @@ require_once '../header.php';
         </div>
         <div class="col-md-6 col-lg-3 mb-3">
              <div class="d-grid">
+                <a href="list_agua_rejeitada.php" class="btn btn-outline-warning btn-lg p-3">Relatório de Água Rejeitada</a>
+            </div>
+        </div>
+        <div class="col-md-6 col-lg-3 mb-3">
+             <div class="d-grid">
                 <a href="list_edificio.php" class="btn btn-warning btn-lg p-3 text-dark">Relatório de Água Quente</a>
             </div>
         </div>
