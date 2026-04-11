@@ -232,16 +232,20 @@ $filters = fetch_all_safe(
                                 </div>
                                 <ul class="list-group list-group-flush">
                                     <li class="list-group-item d-flex justify-content-between align-items-center">
-                                        <span class="text-white-50">Corrente</span>
-                                        <span id="filtro-current-<?= $filter['id'] ?>" class="font-monospace fw-bold fs-5">--</span>
+                                        <span class="text-white-50">Estado</span>
+                                        <span id="filtro-state-<?= $filter['id'] ?>" class="font-monospace fw-bold fs-5">--</span>
                                     </li>
                                     <li class="list-group-item d-flex justify-content-between align-items-center">
-                                        <span class="text-white-50">Potência</span>
-                                        <span id="filtro-power-<?= $filter['id'] ?>" class="font-monospace fw-bold fs-5">--</span>
+                                        <span class="text-white-50">Pressão de entrada (Pin)</span>
+                                        <span id="filtro-pin-<?= $filter['id'] ?>" class="font-monospace fw-bold fs-5">--</span>
                                     </li>
                                     <li class="list-group-item d-flex justify-content-between align-items-center">
-                                        <span class="text-white-50">Falha</span>
-                                        <span id="filtro-fault-<?= $filter['id'] ?>" class="font-monospace fw-bold" style="font-size: 1rem;">--</span>
+                                        <span class="text-white-50">Pressão de saída (Pout)</span>
+                                        <span id="filtro-pout-<?= $filter['id'] ?>" class="font-monospace fw-bold fs-5">--</span>
+                                    </li>
+                                    <li class="list-group-item d-flex justify-content-between align-items-center">
+                                        <span class="text-white-50">Diferença (Delta P)</span>
+                                        <span id="filtro-delta-<?= $filter['id'] ?>" class="font-monospace fw-bold fs-5">--</span>
                                     </li>
                                 </ul>
                                 <div class="card-body text-center alarm-content">
@@ -265,18 +269,6 @@ $filters = fetch_all_safe(
 <script>
 document.addEventListener('DOMContentLoaded', function() {
 
-    const filterFaultMap = {
-        0: 'Sem falha',
-        1: 'Protecao inibida',
-        2: 'Falha interna',
-        3: 'Sobrecorrente',
-        4: 'Inversao de fase',
-        5: 'Falha comunicacao',
-        10: 'Sobreaquecimento',
-        11: 'Rotor bloqueado',
-        12: 'Sobrecarga termica'
-    };
-
     // ... (O resto do JavaScript não precisa de alterações)
     function getValueClass(type, value) {
         const numValue = parseFloat(String(value).replace(',', '.'));
@@ -284,6 +276,26 @@ document.addEventListener('DOMContentLoaded', function() {
         if (type === 'ph') return (numValue < 7.0 || numValue > 7.8) ? 'text-danger' : 'text-success';
         if (type === 'cloro') return (numValue < 1.0 || numValue > 3.0) ? 'text-danger' : 'text-success';
         return 'text-light';
+    }
+
+    function getNumericCandidate(data, keys) {
+        for (const key of keys) {
+            if (Object.prototype.hasOwnProperty.call(data, key)) {
+                const value = parseFloat(String(data[key]).replace(',', '.'));
+                if (Number.isFinite(value)) return value;
+            }
+        }
+
+        if (data.readings && typeof data.readings === 'object') {
+            for (const key of keys) {
+                if (Object.prototype.hasOwnProperty.call(data.readings, key)) {
+                    const value = parseFloat(String(data.readings[key]).replace(',', '.'));
+                    if (Number.isFinite(value)) return value;
+                }
+            }
+        }
+
+        return null;
     }
 
     async function updatePoolDashboard(cardElement) {
@@ -489,6 +501,7 @@ function createLoraCard(device) {
     async function updateFiltroCard(cardElement) {
         const filterId = cardElement.id.split('-')[2];
         const statusEl = document.getElementById(`status-filtro-${filterId}`);
+        const stateEl = document.getElementById(`filtro-state-${filterId}`);
 
         try {
             const response = await fetch(`get_filter_modbus_data.php?id=${filterId}`);
@@ -498,11 +511,10 @@ function createLoraCard(device) {
             cardElement.classList.remove('status-alarm', 'status-offline', 'border-danger', 'border-success', 'border-secondary', 'animate-pulse-red-bs');
             statusEl.classList.remove('bg-danger', 'bg-success', 'bg-secondary', 'bg-warning');
 
-            const currentA = Number.isFinite(parseFloat(data.currentRaw)) ? parseFloat(data.currentRaw) : null;
-            const V_LL = 400;
-            const SQRT3 = Math.sqrt(3);
-            const PF = 0.8;
-            const powerKw = currentA !== null ? ((V_LL * currentA * SQRT3 * PF) / 1000) : null;
+            const pin = getNumericCandidate(data, ['pin', 'Pin', 'pressure_in', 'pressureIn', 'p_in', 'pIn', 'entrada', 'pressao_entrada']);
+            const pout = getNumericCandidate(data, ['pout', 'Pout', 'pressure_out', 'pressureOut', 'p_out', 'pOut', 'saida', 'pressao_saida']);
+            const deltaPSource = getNumericCandidate(data, ['delta_p', 'deltaP', 'DeltaP', 'dp', 'dP']);
+            const deltaP = deltaPSource !== null ? deltaPSource : (pin !== null && pout !== null ? pin - pout : null);
 
             let statusText = 'PARADO';
             if (data.activeFault) {
@@ -519,21 +531,19 @@ function createLoraCard(device) {
             }
 
             statusEl.textContent = statusText;
+            stateEl.textContent = statusText;
 
-            document.getElementById(`filtro-current-${filterId}`).innerHTML = currentA !== null
-                ? `${currentA.toFixed(1)} <span class="unit">A</span>`
+            document.getElementById(`filtro-pin-${filterId}`).innerHTML = pin !== null
+                ? `${pin.toFixed(2)} <span class="unit">bar</span>`
                 : '--';
 
-            document.getElementById(`filtro-power-${filterId}`).innerHTML = powerKw !== null
-                ? `${powerKw.toFixed(2)} <span class="unit">kW</span>`
+            document.getElementById(`filtro-pout-${filterId}`).innerHTML = pout !== null
+                ? `${pout.toFixed(2)} <span class="unit">bar</span>`
                 : '--';
 
-            const faultCode = Number.isFinite(parseInt(data.faultHex, 16)) ? parseInt(data.faultHex, 16) : null;
-            const faultText = (faultCode !== null && filterFaultMap[faultCode])
-                ? filterFaultMap[faultCode]
-                : (faultCode !== null ? `Codigo ${faultCode}` : 'Sem falha');
-
-            document.getElementById(`filtro-fault-${filterId}`).textContent = data.activeFault ? faultText : 'Sem falha';
+            document.getElementById(`filtro-delta-${filterId}`).innerHTML = deltaP !== null
+                ? `${deltaP.toFixed(2)} <span class="unit">bar</span>`
+                : '--';
 
             const listGroup = cardElement.querySelector('.list-group');
             if (listGroup) listGroup.style.display = '';
@@ -546,6 +556,11 @@ function createLoraCard(device) {
             statusEl.classList.remove('bg-success', 'bg-secondary', 'bg-warning');
             statusEl.classList.add('bg-danger');
             statusEl.textContent = 'OFFLINE';
+            stateEl.textContent = 'OFFLINE';
+
+            document.getElementById(`filtro-pin-${filterId}`).textContent = '--';
+            document.getElementById(`filtro-pout-${filterId}`).textContent = '--';
+            document.getElementById(`filtro-delta-${filterId}`).textContent = '--';
 
             const listGroup = cardElement.querySelector('.list-group');
             if (listGroup) listGroup.style.display = 'none';
