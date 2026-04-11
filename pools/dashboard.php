@@ -107,6 +107,48 @@ $filters = fetch_all_safe(
     .scada-card.status-offline .alarm-content {
         display: block;
     }
+
+    /* Cards de filtros */
+    .filtro-metrics {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 0;
+    }
+    .filtro-metric {
+        padding: 14px 10px;
+        text-align: center;
+        border-right: 1px solid var(--scada-border-color);
+    }
+    .filtro-metric:last-child { border-right: none; }
+    .filtro-metric .metric-label {
+        font-size: 0.7rem;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+        color: var(--scada-text-secondary);
+        margin-bottom: 6px;
+    }
+    .filtro-metric .metric-value {
+        font-size: 1.5rem;
+        font-weight: 700;
+        font-family: monospace;
+        color: var(--scada-text-primary);
+        line-height: 1;
+    }
+    .filtro-metric .metric-unit {
+        font-size: 0.72rem;
+        color: var(--scada-text-secondary);
+        margin-top: 3px;
+    }
+    .filtro-metric.pin   .metric-value { color: #5bc8f5; }
+    .filtro-metric.pout  .metric-value { color: #6ee0a0; }
+    .filtro-metric.delta .metric-value { color: #f5a623; }
+    .filtro-footer {
+        background-color: var(--scada-section-bg);
+        border-top: 1px solid var(--scada-border-color);
+        font-size: 0.75rem;
+        color: var(--scada-text-secondary);
+        padding: 6px 14px;
+    }
 </style>
 
 
@@ -224,32 +266,33 @@ $filters = fetch_all_safe(
                     <?php foreach ($filters as $filter): ?>
                         <div id="card-filtro-<?= $filter['id'] ?>" class="card scada-card h-100 border-secondary shadow-sm" data-type="filtro" data-ip="<?= htmlspecialchars($filter['ip_address']) ?>" data-slave-id="<?= (int)$filter['slave_id'] ?>">
                             <div class="card-header d-flex justify-content-between align-items-center">
-                                <h5 class="card-title mb-0 fw-bold"><?= htmlspecialchars($filter['name']) ?></h5>
+                                <h5 class="card-title mb-0 fw-bold">
+                                    <i class="fas fa-filter me-2 opacity-75"></i><?= htmlspecialchars($filter['name']) ?>
+                                </h5>
                                 <span id="status-filtro-<?= $filter['id'] ?>" class="badge bg-secondary">Aguardando...</span>
                             </div>
-                            <ul class="list-group list-group-flush">
-                                <li class="list-group-item d-flex justify-content-between align-items-center">
-                                    <span class="text-white-50">Estado</span>
-                                    <span id="filtro-state-<?= $filter['id'] ?>" class="font-monospace fw-bold fs-5">--</span>
-                                </li>
-                                <li class="list-group-item d-flex justify-content-between align-items-center">
-                                    <span class="text-white-50">Fluxo de água</span>
-                                    <span id="filtro-flow-<?= $filter['id'] ?>" class="font-monospace fw-bold fs-5">--</span>
-                                </li>
-                                <li class="list-group-item d-flex justify-content-between align-items-center">
-                                    <span class="text-white-50">Pressão de entrada (Pin)</span>
-                                    <span id="filtro-pin-<?= $filter['id'] ?>" class="font-monospace fw-bold fs-5">--</span>
-                                </li>
-                                <li class="list-group-item d-flex justify-content-between align-items-center">
-                                    <span class="text-white-50">Pressão de saída (Pout)</span>
-                                    <span id="filtro-pout-<?= $filter['id'] ?>" class="font-monospace fw-bold fs-5">--</span>
-                                </li>
-                                <li class="list-group-item d-flex justify-content-between align-items-center">
-                                    <span class="text-white-50">Diferença (Delta P)</span>
-                                    <span id="filtro-delta-<?= $filter['id'] ?>" class="font-monospace fw-bold fs-5">--</span>
-                                </li>
-                            </ul>
-                            <div class="card-body text-center alarm-content">
+                            <div class="filtro-metrics">
+                                <div class="filtro-metric pin">
+                                    <div class="metric-label">Pin</div>
+                                    <div class="metric-value" id="filtro-pin-<?= $filter['id'] ?>">--</div>
+                                    <div class="metric-unit">bar</div>
+                                </div>
+                                <div class="filtro-metric pout">
+                                    <div class="metric-label">Pout</div>
+                                    <div class="metric-value" id="filtro-pout-<?= $filter['id'] ?>">--</div>
+                                    <div class="metric-unit">bar</div>
+                                </div>
+                                <div class="filtro-metric delta">
+                                    <div class="metric-label">&Delta;P</div>
+                                    <div class="metric-value" id="filtro-delta-<?= $filter['id'] ?>">--</div>
+                                    <div class="metric-unit">bar</div>
+                                </div>
+                            </div>
+                            <div class="filtro-footer d-flex justify-content-between">
+                                <span><i class="fas fa-network-wired me-1"></i><?= htmlspecialchars($filter['ip_address']) ?></span>
+                                <span>Slave <?= (int)$filter['slave_id'] ?></span>
+                            </div>
+                            <div class="card-body text-center alarm-content" style="display:none;">
                                 <img src="../images/rj45.png" style="width: 64px; height: 64px;" alt="Erro de Comunicação">
                                 <div class="fw-bold mt-2">Erro de Comunicação</div>
                             </div>
@@ -501,56 +544,45 @@ function createLoraCard(device) {
     async function updateFiltroCard(cardElement) {
         const filterId = cardElement.id.split('-')[2];
         const statusEl = document.getElementById(`status-filtro-${filterId}`);
-        const stateEl = document.getElementById(`filtro-state-${filterId}`);
+
+        const pinEl   = document.getElementById(`filtro-pin-${filterId}`);
+        const poutEl  = document.getElementById(`filtro-pout-${filterId}`);
+        const deltaEl = document.getElementById(`filtro-delta-${filterId}`);
+
+        const metricsEl  = cardElement.querySelector('.filtro-metrics');
+        const footerEl   = cardElement.querySelector('.filtro-footer');
+        const alarmEl    = cardElement.querySelector('.alarm-content');
 
         try {
             const response = await fetch(`get_filter_modbus_data.php?id=${filterId}`);
             const data = await response.json();
             if (!response.ok || data.error) throw new Error(data.error || ('HTTP ' + response.status));
 
-            cardElement.classList.remove('status-alarm', 'status-offline', 'border-danger', 'border-success', 'border-secondary', 'animate-pulse-red-bs');
+            cardElement.classList.remove('status-offline', 'border-danger', 'border-success', 'border-secondary', 'animate-pulse-red-bs');
             statusEl.classList.remove('bg-danger', 'bg-success', 'bg-secondary', 'bg-warning');
 
-            const flow   = (data.flow   !== null && data.flow   !== undefined) ? parseFloat(data.flow)   : null;
             const pin    = (data.pin    !== null && data.pin    !== undefined) ? parseFloat(data.pin)    : null;
             const pout   = (data.pout   !== null && data.pout   !== undefined) ? parseFloat(data.pout)   : null;
             const deltaP = (data.delta_p !== null && data.delta_p !== undefined) ? parseFloat(data.delta_p)
                           : (pin !== null && pout !== null ? pin - pout : null);
 
-            let statusText;
             if (data.activeFault) {
-                statusText = 'FALHA';
                 cardElement.classList.add('border-danger', 'animate-pulse-red-bs');
                 statusEl.classList.add('bg-danger');
+                statusEl.textContent = 'FALHA';
             } else {
-                statusText = 'ONLINE';
                 cardElement.classList.add('border-success');
                 statusEl.classList.add('bg-success');
+                statusEl.textContent = 'ONLINE';
             }
 
-            statusEl.textContent = statusText;
-            stateEl.textContent = statusText;
+            pinEl.textContent   = pin    !== null ? pin.toFixed(2)    : '--';
+            poutEl.textContent  = pout   !== null ? pout.toFixed(2)   : '--';
+            deltaEl.textContent = deltaP !== null ? deltaP.toFixed(2) : '--';
 
-            document.getElementById(`filtro-flow-${filterId}`).innerHTML = flow !== null
-                ? `${flow} <span class="unit">m³/h</span>`
-                : '--';
-
-            document.getElementById(`filtro-pin-${filterId}`).innerHTML = pin !== null
-                ? `${pin.toFixed(2)} <span class="unit">bar</span>`
-                : '--';
-
-            document.getElementById(`filtro-pout-${filterId}`).innerHTML = pout !== null
-                ? `${pout.toFixed(2)} <span class="unit">bar</span>`
-                : '--';
-
-            document.getElementById(`filtro-delta-${filterId}`).innerHTML = deltaP !== null
-                ? `${deltaP.toFixed(2)} <span class="unit">bar</span>`
-                : '--';
-
-            const listGroup = cardElement.querySelector('.list-group');
-            if (listGroup) listGroup.style.display = '';
-            const alarmContent = cardElement.querySelector('.alarm-content');
-            if (alarmContent) alarmContent.style.display = 'none';
+            if (metricsEl) metricsEl.style.display = '';
+            if (footerEl)  footerEl.style.display  = '';
+            if (alarmEl)   alarmEl.style.display   = 'none';
 
         } catch (error) {
             cardElement.classList.remove('border-success', 'border-secondary', 'animate-pulse-red-bs');
@@ -558,17 +590,14 @@ function createLoraCard(device) {
             statusEl.classList.remove('bg-success', 'bg-secondary', 'bg-warning');
             statusEl.classList.add('bg-danger');
             statusEl.textContent = 'OFFLINE';
-            stateEl.textContent = 'OFFLINE';
 
-            document.getElementById(`filtro-flow-${filterId}`).textContent = '--';
-            document.getElementById(`filtro-pin-${filterId}`).textContent = '--';
-            document.getElementById(`filtro-pout-${filterId}`).textContent = '--';
-            document.getElementById(`filtro-delta-${filterId}`).textContent = '--';
+            pinEl.textContent   = '--';
+            poutEl.textContent  = '--';
+            deltaEl.textContent = '--';
 
-            const listGroup = cardElement.querySelector('.list-group');
-            if (listGroup) listGroup.style.display = 'none';
-            const alarmContent = cardElement.querySelector('.alarm-content');
-            if (alarmContent) alarmContent.style.display = 'block';
+            if (metricsEl) metricsEl.style.display = 'none';
+            if (footerEl)  footerEl.style.display  = 'none';
+            if (alarmEl)   alarmEl.style.display   = 'block';
         }
     }
 
