@@ -7,7 +7,7 @@ $current_month = isset($_GET['month']) ? $_GET['month'] : date('Y-m');
 list($year, $month) = explode('-', $current_month);
 
 // Busca apenas piscinas que têm contador de rejeitado
-$tanks_stmt = $conn->query("SELECT id, name FROM tanks WHERE type = 'piscina' AND has_reject_counter = 1 ORDER BY name ASC");
+$tanks_stmt = $conn->query("SELECT id, name, volume_m3 FROM tanks WHERE type = 'piscina' AND has_reject_counter = 1 ORDER BY name ASC");
 $tanks = $tanks_stmt->fetch_all(MYSQLI_ASSOC);
 $tank_ids = array_column($tanks, 'id');
 
@@ -139,8 +139,9 @@ $col_total_width = 20;
 $num_tanks = count($tanks);
 $usable_width = 277 - $col_dia_width - $col_total_width;
 $tank_col_width = $num_tanks > 0 ? floor($usable_width / $num_tanks) : 0;
-$sub_col_leitura_width = floor($tank_col_width * 0.6);
-$sub_col_consumo_width = $tank_col_width - $sub_col_leitura_width;
+$sub_col_leitura_width = floor($tank_col_width * 0.42);
+$sub_col_consumo_width = floor($tank_col_width * 0.33);
+$sub_col_percent_width = $tank_col_width - $sub_col_leitura_width - $sub_col_consumo_width;
 
 $pdf->Cell($col_dia_width, $cell_height, 'Dia', 1, 0, 'C', true);
 
@@ -160,6 +161,7 @@ $pdf->SetXY($x_start_tanks, $y1 + $cell_height);
 foreach ($tanks as $tank) {
     $pdf->Cell($sub_col_leitura_width, $cell_height, 'Leitura', 1, 0, 'C', true);
     $pdf->Cell($sub_col_consumo_width, $cell_height, 'Rejeitado', 1, 0, 'C', true);
+    $pdf->Cell($sub_col_percent_width, $cell_height, '% Vol.', 1, 0, 'C', true);
 }
 $pdf->Ln();
 
@@ -170,14 +172,18 @@ for ($day = 1; $day <= $days_in_month; $day++) {
     $day_total = 0;
     foreach ($tanks as $tank) {
         $tank_id = $tank['id'];
+        $tank_volume = isset($tank['volume_m3']) ? (float)$tank['volume_m3'] : 0.0;
         if (isset($report_data[$day][$tank_id]['manha'])) {
             $data = $report_data[$day][$tank_id]['manha'];
+            $percentage = $tank_volume > 0 ? (($data['consumo'] / $tank_volume) * 100) : null;
             $pdf->Cell($sub_col_leitura_width, $cell_height, number_format($data['leitura'], 0, ',', '.'), 1, 0, 'R');
             $pdf->Cell($sub_col_consumo_width, $cell_height, number_format($data['consumo'], 2, ',', '.'), 1, 0, 'R');
+            $pdf->Cell($sub_col_percent_width, $cell_height, $percentage !== null ? number_format($percentage, 2, ',', '.') . '%' : '-', 1, 0, 'R');
             $day_total += $data['consumo'];
         } else {
             $pdf->Cell($sub_col_leitura_width, $cell_height, '-', 1, 0, 'C');
             $pdf->Cell($sub_col_consumo_width, $cell_height, '-', 1, 0, 'C');
+            $pdf->Cell($sub_col_percent_width, $cell_height, '-', 1, 0, 'C');
         }
     }
     $pdf->Cell($col_total_width, $cell_height, number_format($day_total, 2, ',', '.'), 1, 1, 'R');
@@ -189,8 +195,10 @@ $pdf->Cell($col_dia_width, $cell_height, '', 1, 0, 'C', true);
 $month_total = 0;
 foreach ($tanks as $tank) {
     $tank_id = $tank['id'];
+    $monthly_percentage = !empty($tank['volume_m3']) ? (($tank_totals[$tank_id] / (float)$tank['volume_m3']) * 100) : null;
     $pdf->Cell($sub_col_leitura_width, $cell_height, '', 1, 0, 'C', true);
     $pdf->Cell($sub_col_consumo_width, $cell_height, number_format($tank_totals[$tank_id], 2, ',', '.'), 1, 0, 'R', true);
+    $pdf->Cell($sub_col_percent_width, $cell_height, $monthly_percentage !== null ? number_format($monthly_percentage, 2, ',', '.') . '%' : '-', 1, 0, 'R', true);
     $month_total += $tank_totals[$tank_id];
 }
 $pdf->Cell($col_total_width, $cell_height, number_format($month_total, 2, ',', '.'), 1, 1, 'R', true);

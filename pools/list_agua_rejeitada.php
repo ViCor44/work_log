@@ -6,7 +6,7 @@ $current_month = isset($_GET['month']) ? $_GET['month'] : date('Y-m');
 list($year, $month) = explode('-', $current_month);
 
 // Busca apenas piscinas que têm contador de rejeitado
-$tanks_stmt = $conn->query("SELECT id, name FROM tanks WHERE type = 'piscina' AND has_reject_counter = 1 ORDER BY name ASC");
+$tanks_stmt = $conn->query("SELECT id, name, volume_m3 FROM tanks WHERE type = 'piscina' AND has_reject_counter = 1 ORDER BY name ASC");
 $tanks = $tanks_stmt->fetch_all(MYSQLI_ASSOC);
 $tank_ids = array_column($tanks, 'id');
 
@@ -147,7 +147,7 @@ foreach ($tanks as $tank) {
                     <tr>
                         <th>Dia</th>
                         <?php foreach ($tanks as $tank): ?>
-                            <th colspan="2"><?= htmlspecialchars($tank['name']) ?></th>
+                            <th colspan="3"><?= htmlspecialchars($tank['name']) ?></th>
                         <?php endforeach; ?>
                         <th>Total (m³)</th>
                     </tr>
@@ -156,6 +156,7 @@ foreach ($tanks as $tank) {
                         <?php foreach ($tanks as $tank): ?>
                             <th style="font-size: 0.7rem;">Leitura</th>
                             <th style="font-size: 0.7rem;">Rejeitado</th>
+                            <th style="font-size: 0.7rem;">% Vol.</th>
                         <?php endforeach; ?>
                         <th></th>
                     </tr>
@@ -169,13 +170,17 @@ foreach ($tanks as $tank) {
                         $day_total = 0;
                         foreach ($tanks as $tank) {
                             $tank_id = $tank['id'];
+                            $tank_volume = isset($tank['volume_m3']) ? (float)$tank['volume_m3'] : 0.0;
                             if (isset($report_data[$day][$tank_id]['manha'])) {
                                 $data = $report_data[$day][$tank_id]['manha'];
+                                $percentage = $tank_volume > 0 ? (($data['consumo'] / $tank_volume) * 100) : null;
                                 echo '<td>' . number_format($data['leitura'], 0, ',', '.') . '</td>';
                                 echo '<td class="col-gasto">' . number_format($data['consumo'], 2, ',', '.') . '</td>';
+                                echo '<td class="col-gasto">' . ($percentage !== null ? number_format($percentage, 2, ',', '.') . '%' : '-') . '</td>';
                                 $day_total += $data['consumo'];
                             } else {
                                 echo '<td>-</td>';
+                                echo '<td class="col-gasto">-</td>';
                                 echo '<td class="col-gasto">-</td>';
                             }
                         }
@@ -188,7 +193,10 @@ foreach ($tanks as $tank) {
                     <tr class="total-row">
                         <td>Total do Mês (m³)</td>
                         <?php foreach ($tanks as $tank): ?>
-                            <td colspan="2"><?= number_format($tank_totals[$tank['id']], 2, ',', '.') ?></td>
+                            <?php $monthly_percentage = !empty($tank['volume_m3']) ? (($tank_totals[$tank['id']] / (float)$tank['volume_m3']) * 100) : null; ?>
+                            <td>-</td>
+                            <td><?= number_format($tank_totals[$tank['id']], 2, ',', '.') ?></td>
+                            <td><?= $monthly_percentage !== null ? number_format($monthly_percentage, 2, ',', '.') . '%' : '-' ?></td>
                         <?php endforeach; ?>
                         <td><?= number_format(array_sum($tank_totals), 2, ',', '.') ?></td>
                     </tr>
