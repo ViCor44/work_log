@@ -233,6 +233,10 @@ $filters = fetch_all_safe(
                                     <span id="filtro-state-<?= $filter['id'] ?>" class="font-monospace fw-bold fs-5">--</span>
                                 </li>
                                 <li class="list-group-item d-flex justify-content-between align-items-center">
+                                    <span class="text-white-50">Fluxo de água</span>
+                                    <span id="filtro-flow-<?= $filter['id'] ?>" class="font-monospace fw-bold fs-5">--</span>
+                                </li>
+                                <li class="list-group-item d-flex justify-content-between align-items-center">
                                     <span class="text-white-50">Pressão de entrada (Pin)</span>
                                     <span id="filtro-pin-<?= $filter['id'] ?>" class="font-monospace fw-bold fs-5">--</span>
                                 </li>
@@ -507,6 +511,7 @@ function createLoraCard(device) {
             cardElement.classList.remove('status-alarm', 'status-offline', 'border-danger', 'border-success', 'border-secondary', 'animate-pulse-red-bs');
             statusEl.classList.remove('bg-danger', 'bg-success', 'bg-secondary', 'bg-warning');
 
+            const flow   = (data.flow   !== null && data.flow   !== undefined) ? parseFloat(data.flow)   : null;
             const pin    = (data.pin    !== null && data.pin    !== undefined) ? parseFloat(data.pin)    : null;
             const pout   = (data.pout   !== null && data.pout   !== undefined) ? parseFloat(data.pout)   : null;
             const deltaP = (data.delta_p !== null && data.delta_p !== undefined) ? parseFloat(data.delta_p)
@@ -528,6 +533,10 @@ function createLoraCard(device) {
 
             statusEl.textContent = statusText;
             stateEl.textContent = statusText;
+
+            document.getElementById(`filtro-flow-${filterId}`).innerHTML = flow !== null
+                ? `${flow.toFixed(2)} <span class="unit">m³/h</span>`
+                : '--';
 
             document.getElementById(`filtro-pin-${filterId}`).innerHTML = pin !== null
                 ? `${pin.toFixed(2)} <span class="unit">bar</span>`
@@ -554,6 +563,7 @@ function createLoraCard(device) {
             statusEl.textContent = 'OFFLINE';
             stateEl.textContent = 'OFFLINE';
 
+            document.getElementById(`filtro-flow-${filterId}`).textContent = '--';
             document.getElementById(`filtro-pin-${filterId}`).textContent = '--';
             document.getElementById(`filtro-pout-${filterId}`).textContent = '--';
             document.getElementById(`filtro-delta-${filterId}`).textContent = '--';
