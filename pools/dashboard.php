@@ -572,11 +572,11 @@ function createLoraCard(device) {
             const pout   = (data.pout   !== null && data.pout   !== undefined) ? parseFloat(data.pout)   : null;
             const deltaP = (data.delta_p !== null && data.delta_p !== undefined) ? parseFloat(data.delta_p)
                           : (pin !== null && pout !== null ? pin - pout : null);
-            const pumpState = (data.pump_state !== null && data.pump_state !== undefined) ? parseInt(data.pump_state) : null;
+            const pump_state = (data.pump_state !== null && data.pump_state !== undefined) ? parseFloat(data.pump_state) : null;
 
             let pumpText = '--';
-            if (pumpState !== null) {
-                pumpText = `${pumpState}%`;
+            if (pump_state !== null) {
+                pumpText = `${pump_state.toFixed(0)}%`;
             }
 
             if (data.activeFault) {

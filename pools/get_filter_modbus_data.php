@@ -42,7 +42,7 @@ if (!$filter) {
 // Endereco PDU 0-indexed: 78 … 89  →  12 registos
 
 const MODBUS_START = 78;
-const MODBUS_COUNT = 12;
+const MODBUS_COUNT = 13;
 const MODBUS_PORT  = 502;
 
 function modbus_tcp_read_holding(string $ip, int $slave_id, int $start, int $count,
@@ -128,7 +128,7 @@ if (isset($result['error'])) {
 }
 
 $regs = $result['registers'];
-if (count($regs) < 12) {
+if (count($regs) < 13) {
     echo json_encode(['error' => 'Registos Modbus insuficientes na resposta', 'filter_id' => $filter_id]);
     exit;
 }
@@ -145,7 +145,7 @@ $pout       = regs_to_float32($regs[2], $regs[3]);
 $delta_p    = regs_to_float32($regs[4], $regs[5]);
 $flow       = $regs[6];
 $alarm_reg  = $regs[8];
-$pump_state = $regs[10];  // 0=parado, 1-99=precoat, 100=filtracao
+$pump_state = regs_to_float32($regs[10], $regs[11]);  // float32 velocidade bomba (0-100%)
 
 $active_fault = ($alarm_reg !== 0);
 $is_running   = !$active_fault;
