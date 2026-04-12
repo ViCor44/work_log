@@ -150,6 +150,7 @@ foreach ($tanks as $tank) {
                             <th colspan="3"><?= htmlspecialchars($tank['name']) ?></th>
                         <?php endforeach; ?>
                         <th>Total (m³)</th>
+                        <th></th>
                     </tr>
                     <tr>
                         <th></th>
@@ -158,6 +159,7 @@ foreach ($tanks as $tank) {
                             <th style="font-size: 0.7rem;">Rejeitado</th>
                             <th style="font-size: 0.7rem;">% Vol.</th>
                         <?php endforeach; ?>
+                        <th></th>
                         <th></th>
                     </tr>
                 </thead>
@@ -185,6 +187,15 @@ foreach ($tanks as $tank) {
                             }
                         }
                         echo '<td class="total-col">' . number_format($day_total, 2, ',', '.') . '</td>';
+                        $current_date_str = sprintf('%s-%s-%02d', $year, $month, $day);
+                        $has_data = isset($report_data[$day]) && !empty($report_data[$day]);
+                        echo '<td style="white-space:nowrap;">';
+                        if ($has_data) {
+                            echo '<a href="form_editar_agua_rejeitada.php?date=' . $current_date_str . '" class="btn btn-sm btn-outline-warning"><i class="fas fa-edit"></i></a>';
+                        } else {
+                            echo '<a href="form_editar_agua_rejeitada.php?date=' . $current_date_str . '" class="btn btn-sm btn-outline-secondary"><i class="fas fa-plus"></i></a>';
+                        }
+                        echo '</td>';
                         echo '</tr>';
                     }
                     ?>
@@ -199,6 +210,7 @@ foreach ($tanks as $tank) {
                             <td><?= $monthly_percentage !== null ? number_format($monthly_percentage, 2, ',', '.') . '%' : '-' ?></td>
                         <?php endforeach; ?>
                         <td><?= number_format(array_sum($tank_totals), 2, ',', '.') ?></td>
+                        <td></td>
                     </tr>
                 </tfoot>
             </table>
