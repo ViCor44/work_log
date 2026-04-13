@@ -1,4 +1,4 @@
-name: Economato CI + Deploy
+name: WorkLog CI + Deploy
 
 on:
   push:
@@ -34,6 +34,6 @@ jobs:
       - name: Deploy to production
         shell: powershell
         run: |
-          cd C:\xampp\htdocs\economato
+          cd C:\xampp\htdocs\work_log
           git pull origin main
           composer install --no-interaction --prefer-dist --no-dev
