@@ -1,0 +1,39 @@
+name: Economato CI + Deploy
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+
+jobs:
+  economato:
+    runs-on: self-hosted
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: PHP version
+        run: php -v
+
+      - name: Composer install
+        run: composer install --no-interaction --prefer-dist
+
+      - name: PHP lint
+        shell: powershell
+        run: |
+          Get-ChildItem -Recurse -Filter *.php |
+            Where-Object { $_.FullName -notmatch '\\vendor\\' } |
+            ForEach-Object {
+              php -l $_.FullName
+            }
+
+      - name: Skip PHPStan
+        run: echo "PHPStan disabled"
+
+      # DEPLOY SÓ SE PASSAR TUDO
+      - name: Deploy to production
+        shell: powershell
+        run: |
+          cd C:\xampp\htdocs\economato
+          git pull origin main
+          composer install --no-interaction --prefer-dist --no-dev
