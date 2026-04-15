@@ -595,7 +595,7 @@ function createLoraCard(device) {
             let pumpState = '--';
             if (pump_state !== null) {
                 if (pump_state === 0) pumpState = 'Parado';
-                else if (pump_state === 100) pumpState = 'Em Filtração';
+                else if (pump_state >= 90) pumpState = 'Em Filtração';
                 else pumpState = 'Pré-coat';
             }
 
@@ -618,7 +618,7 @@ function createLoraCard(device) {
             if (pumpStateBadge) {
                 pumpStateBadge.className = 'metric-value';
                 if (pump_state === 0) pumpStateBadge.classList.add('parado');
-                else if (pump_state === 100) pumpStateBadge.classList.add('filtracao');
+                else if (pump_state >= 90) pumpStateBadge.classList.add('filtracao');
                 else if (pump_state !== null) pumpStateBadge.classList.add('precoat');
             }
 
