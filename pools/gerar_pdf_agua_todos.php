@@ -194,9 +194,9 @@ foreach ($sections as $secIdx => $section) {
     // Calcula altura necessária para esta tabela
     $table_height = 6 + ($cell_height * 2) + ($cell_height * count($section_tanks)) + 8; // título + cabeçalho + linhas + espaço
     
-    // Verifica se cabe na página atual
+    // Verifica se cabe na página atual (A4 paisagem = 210mm altura, com 15mm margens = 180mm úteis)
     $current_y = $pdf->GetY();
-    $page_height = $pdf->h - 15 - 15; // altura da página menos margens
+    $page_height = 180; // altura útil da página (210mm - 15mm margens)
     if ($current_y + $table_height > $page_height && $current_y > 30) {
         // Se não couber, vai para nova página
         $pdf->AddPage();
