@@ -1,6 +1,13 @@
 <?php
 require_once '../core.php';
-require_once '../fpdf/fpdf.php'; // Verifique se este caminho está correto
+require_once '../fpdf/fpdf.php';
+
+// Carrega configuração de secções
+$config_path = __DIR__ . '/config_relatorio.json';
+$sections = [];
+if (file_exists($config_path)) {
+    $sections = json_decode(file_get_contents($config_path), true);
+}
 
 // --- Lógica de Filtros ---
 // Determina a semana atual se nenhuma for selecionada
@@ -22,11 +29,13 @@ $day_before_start = $day_before_start_obj->format('Y-m-d');
 
 // --- Lógica de Busca e Processamento de Dados ---
 // 1. Buscar TODOS os tanques com contagem de água
+// Busca todos os tanques
 $tanks_stmt = $conn->query("SELECT id, name, type, has_reject_counter, volume_m3 FROM tanks WHERE water_reading_frequency > 0 ORDER BY name ASC");
 $tanks = $tanks_stmt->fetch_all(MYSQLI_ASSOC);
-$reject_tanks = array_values(array_filter($tanks, function ($tank) {
-    return $tank['type'] === 'piscina' && (int)$tank['has_reject_counter'] === 1;
-}));
+$tanks_by_id = [];
+foreach ($tanks as $t) {
+    $tanks_by_id[$t['id']] = $t;
+}
 
 // 2. Buscar as leituras da semana selecionada e do dia anterior ao início
 $sql = "
@@ -155,112 +164,74 @@ $pdf->AliasNbPages();
 $pdf->reportDateStr = "Semana de " . $start_date_str . " a " . $end_date_str;
 $pdf->AddPage();
 
-// --- Desenho da Tabela ---
+// --- Desenho das Tabelas por Secção ---
 $dias_semana = ['Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado', 'Domingo'];
 $cell_height = 4;
 
-// Tabela 1: Consumo geral
-$pdf->SetFillColor(230, 230, 230);
-$pdf->SetFont('Arial', 'B', 9);
-$pdf->Cell(0, 6, utf8_decode('Consumo Geral'), 0, 1, 'L');
-$pdf->SetFont('Arial', 'B', 6);
-
-$col_tanque_width = 32;
-$col_total_width = 16;
-$usable_width = 277 - $col_tanque_width - $col_total_width;
-$day_col_width = floor($usable_width / 7);
-$sub_col_width = floor($day_col_width / 2);
-
-$pdf->Cell($col_tanque_width, $cell_height * 2, 'Tanque', 1, 0, 'C', true);
-for ($i = 0; $i < 7; $i++) {
-    $header_date_obj = clone $start_of_week;
-    $header_date_obj->modify("+$i days");
-    $header_date_str = $header_date_obj->format('d/m');
-    $x = $pdf->GetX();
-    $y = $pdf->GetY();
-    $pdf->MultiCell($day_col_width, $cell_height, utf8_decode($dias_semana[$i]) . "\n" . $header_date_str, 1, 'C', true);
-    $pdf->SetXY($x + $day_col_width, $y);
-}
-$pdf->Cell($col_total_width, $cell_height * 2, 'Total', 1, 1, 'C', true);
-$pdf->SetXY(10 + $col_tanque_width, $pdf->GetY());
-for ($i = 0; $i < 7; $i++) {
-    $pdf->Cell($sub_col_width, $cell_height, 'Leit.', 1, 0, 'C', true);
-    $pdf->Cell($sub_col_width, $cell_height, 'Cons.', 1, 0, 'C', true);
-}
-$pdf->Ln();
-
-$pdf->SetFont('Arial', '', 6);
-foreach ($tanks as $tank) {
-    $pdf->Cell($col_tanque_width, $cell_height, utf8_decode($tank['name']), 1, 0, 'L');
-    $weekly_total = 0;
-    for ($i = 0; $i < 7; $i++) {
-        $data = $report_data[$tank['id']][$i];
-        $leitura = $data['leitura'] !== null ? number_format($data['leitura'], 0) : '';
-        $consumo = $data['consumo'] !== null ? number_format($data['consumo'], 0) : '';
-        if ($data['consumo'] !== null) {
-            $weekly_total += $data['consumo'];
+foreach ($sections as $secIdx => $section) {
+    // Filtra tanques da secção
+    $section_tanks = array();
+    foreach ($section['tanks'] as $tid) {
+        if (isset($tanks_by_id[$tid])) {
+            $section_tanks[] = $tanks_by_id[$tid];
         }
-        $pdf->Cell($sub_col_width, $cell_height, $leitura, 1, 0, 'C');
-        $pdf->Cell($sub_col_width, $cell_height, $consumo, 1, 0, 'C');
     }
-    $pdf->Cell($col_total_width, $cell_height, number_format($weekly_total, 0), 1, 1, 'C');
-}
+    if (empty($section_tanks)) continue;
 
-if (!empty($reject_tanks)) {
-    $pdf->AddPage();
-    $pdf->SetFillColor(255, 243, 205);
+    // Nova página para cada secção exceto a primeira
+    if ($secIdx > 0) $pdf->AddPage();
+
+    // Cores diferentes para "Rejeitado"
+    if (stripos($section['name'], 'rejeitado') !== false) {
+        $pdf->SetFillColor(255, 243, 205);
+    } else {
+        $pdf->SetFillColor(230, 230, 230);
+    }
+
     $pdf->SetFont('Arial', 'B', 9);
-    $pdf->Cell(0, 6, utf8_decode('Rejeitado'), 0, 1, 'L');
+    $pdf->Cell(0, 6, utf8_decode($section['name']), 0, 1, 'L');
     $pdf->SetFont('Arial', 'B', 6);
 
-    $col_pool_width = 32;
-    $col_total_rej_width = 18;
-    $col_total_percent_width = 18;
-    $usable_reject_width = 277 - $col_pool_width - $col_total_rej_width - $col_total_percent_width;
-    $day_reject_width = floor($usable_reject_width / 7);
-    $sub_reject_reading_width = floor($day_reject_width * 0.34);
-    $sub_reject_value_width = floor($day_reject_width * 0.28);
-    $sub_reject_percent_width = $day_reject_width - $sub_reject_reading_width - $sub_reject_value_width;
+    // Cabeçalho
+    $col_tanque_width = 32;
+    $col_total_width = 16;
+    $usable_width = 277 - $col_tanque_width - $col_total_width;
+    $day_col_width = floor($usable_width / 7);
+    $sub_col_width = floor($day_col_width / 2);
 
-    $pdf->Cell($col_pool_width, $cell_height * 2, 'Piscina', 1, 0, 'C', true);
+    $pdf->Cell($col_tanque_width, $cell_height * 2, 'Tanque', 1, 0, 'C', true);
     for ($i = 0; $i < 7; $i++) {
         $header_date_obj = clone $start_of_week;
         $header_date_obj->modify("+$i days");
         $header_date_str = $header_date_obj->format('d/m');
         $x = $pdf->GetX();
         $y = $pdf->GetY();
-        $pdf->MultiCell($day_reject_width, $cell_height, utf8_decode($dias_semana[$i]) . "\n" . $header_date_str, 1, 'C', true);
-        $pdf->SetXY($x + $day_reject_width, $y);
+        $pdf->MultiCell($day_col_width, $cell_height, utf8_decode($dias_semana[$i]) . "\n" . $header_date_str, 1, 'C', true);
+        $pdf->SetXY($x + $day_col_width, $y);
     }
-    $pdf->Cell($col_total_rej_width, $cell_height * 2, 'Total R', 1, 0, 'C', true);
-    $pdf->Cell($col_total_percent_width, $cell_height * 2, '% Vol.', 1, 1, 'C', true);
-    $pdf->SetXY(10 + $col_pool_width, $pdf->GetY());
+    $pdf->Cell($col_total_width, $cell_height * 2, 'Total', 1, 1, 'C', true);
+    $pdf->SetXY(10 + $col_tanque_width, $pdf->GetY());
     for ($i = 0; $i < 7; $i++) {
-        $pdf->Cell($sub_reject_reading_width, $cell_height, 'L. Rej.', 1, 0, 'C', true);
-        $pdf->Cell($sub_reject_value_width, $cell_height, 'Rej.', 1, 0, 'C', true);
-        $pdf->Cell($sub_reject_percent_width, $cell_height, '%', 1, 0, 'C', true);
+        $pdf->Cell($sub_col_width, $cell_height, 'Leit.', 1, 0, 'C', true);
+        $pdf->Cell($sub_col_width, $cell_height, 'Cons.', 1, 0, 'C', true);
     }
     $pdf->Ln();
 
     $pdf->SetFont('Arial', '', 6);
-    foreach ($reject_tanks as $tank) {
-        $pdf->Cell($col_pool_width, $cell_height, utf8_decode($tank['name']), 1, 0, 'L');
-        $weekly_rejected_total = 0;
+    foreach ($section_tanks as $tank) {
+        $pdf->Cell($col_tanque_width, $cell_height, utf8_decode($tank['name']), 1, 0, 'L');
+        $weekly_total = 0;
         for ($i = 0; $i < 7; $i++) {
             $data = $report_data[$tank['id']][$i];
-            $leitura_rejeitada = $data['leitura_rejeitada'] !== null ? number_format($data['leitura_rejeitada'], 0) : '';
-            $rejeitado = $data['rejeitado'] !== null ? number_format($data['rejeitado'], 0) : '';
-            $percentagem_rejeitado = $data['percentagem_rejeitado'] !== null ? number_format($data['percentagem_rejeitado'], 1, ',', '.') . '%' : '';
-            if ($data['rejeitado'] !== null) {
-                $weekly_rejected_total += $data['rejeitado'];
+            $leitura = $data['leitura'] !== null ? number_format($data['leitura'], 0) : '';
+            $consumo = $data['consumo'] !== null ? number_format($data['consumo'], 0) : '';
+            if ($data['consumo'] !== null) {
+                $weekly_total += $data['consumo'];
             }
-            $pdf->Cell($sub_reject_reading_width, $cell_height, $leitura_rejeitada, 1, 0, 'C');
-            $pdf->Cell($sub_reject_value_width, $cell_height, $rejeitado, 1, 0, 'C');
-            $pdf->Cell($sub_reject_percent_width, $cell_height, $percentagem_rejeitado, 1, 0, 'C');
+            $pdf->Cell($sub_col_width, $cell_height, $leitura, 1, 0, 'C');
+            $pdf->Cell($sub_col_width, $cell_height, $consumo, 1, 0, 'C');
         }
-        $weekly_rejected_percentage = !empty($tank['volume_m3']) ? (($weekly_rejected_total / (float)$tank['volume_m3']) * 100) : null;
-        $pdf->Cell($col_total_rej_width, $cell_height, $weekly_rejected_total > 0 ? number_format($weekly_rejected_total, 0) : '', 1, 0, 'C');
-        $pdf->Cell($col_total_percent_width, $cell_height, $weekly_rejected_percentage !== null ? number_format($weekly_rejected_percentage, 1, ',', '.') . '%' : '', 1, 1, 'C');
+        $pdf->Cell($col_total_width, $cell_height, number_format($weekly_total, 0), 1, 1, 'C');
     }
 }
 
