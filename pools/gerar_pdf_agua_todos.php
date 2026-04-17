@@ -219,9 +219,12 @@ foreach ($sections as $secIdx => $section) {
     if ($isRejectSection) {
         $col_tanque_width = 32;
         $col_total_width = 16;
-        $usable_width = 277 - $col_tanque_width - $col_total_width;
+        $col_total_percent_width = 16;
+        $usable_width = 277 - $col_tanque_width - $col_total_width - $col_total_percent_width;
         $day_col_width = floor($usable_width / 7);
-        $sub_col_width = floor($day_col_width / 2);
+        $sub_reading_width = floor($day_col_width * 0.34);
+        $sub_value_width = floor($day_col_width * 0.33);
+        $sub_percent_width = $day_col_width - $sub_reading_width - $sub_value_width;
 
         $pdf->Cell($col_tanque_width, $cell_height * 2, 'Tanque', 1, 0, 'C', true);
         for ($i = 0; $i < 7; $i++) {
@@ -233,11 +236,13 @@ foreach ($sections as $secIdx => $section) {
             $pdf->MultiCell($day_col_width, $cell_height, utf8_decode($dias_semana[$i]) . "\n" . $header_date_str, 1, 'C', true);
             $pdf->SetXY($x + $day_col_width, $y);
         }
-        $pdf->Cell($col_total_width, $cell_height * 2, 'Total', 1, 1, 'C', true);
+        $pdf->Cell($col_total_width, $cell_height * 2, 'Total', 1, 0, 'C', true);
+        $pdf->Cell($col_total_percent_width, $cell_height * 2, '% Vol.', 1, 1, 'C', true);
         $pdf->SetXY(10 + $col_tanque_width, $pdf->GetY());
         for ($i = 0; $i < 7; $i++) {
-            $pdf->Cell($sub_col_width, $cell_height, 'Leit.', 1, 0, 'C', true);
-            $pdf->Cell($sub_col_width, $cell_height, 'Rej.', 1, 0, 'C', true);
+            $pdf->Cell($sub_reading_width, $cell_height, 'Leit.', 1, 0, 'C', true);
+            $pdf->Cell($sub_value_width, $cell_height, 'Rej.', 1, 0, 'C', true);
+            $pdf->Cell($sub_percent_width, $cell_height, '%', 1, 0, 'C', true);
         }
         $pdf->Ln();
     } else {
@@ -275,6 +280,7 @@ foreach ($sections as $secIdx => $section) {
             if ($isRejectSection) {
                 $leitura = $data['leitura_rejeitada'] !== null ? number_format($data['leitura_rejeitada'], 0) : '';
                 $valor = $data['rejeitado'] !== null ? number_format($data['rejeitado'], 0) : '';
+                $percentagem = $data['percentagem_rejeitado'] !== null ? number_format($data['percentagem_rejeitado'], 1, ',', '.') . '%' : '';
                 if ($data['rejeitado'] !== null) {
                     $weekly_total += $data['rejeitado'];
                 }
@@ -285,10 +291,22 @@ foreach ($sections as $secIdx => $section) {
                     $weekly_total += $data['consumo'];
                 }
             }
-            $pdf->Cell($sub_col_width, $cell_height, $leitura, 1, 0, 'C');
-            $pdf->Cell($sub_col_width, $cell_height, $valor, 1, 0, 'C');
+            if ($isRejectSection) {
+                $pdf->Cell($sub_reading_width, $cell_height, $leitura, 1, 0, 'C');
+                $pdf->Cell($sub_value_width, $cell_height, $valor, 1, 0, 'C');
+                $pdf->Cell($sub_percent_width, $cell_height, $percentagem, 1, 0, 'C');
+            } else {
+                $pdf->Cell($sub_col_width, $cell_height, $leitura, 1, 0, 'C');
+                $pdf->Cell($sub_col_width, $cell_height, $valor, 1, 0, 'C');
+            }
         }
-        $pdf->Cell($col_total_width, $cell_height, number_format($weekly_total, 0), 1, 1, 'C');
+        if ($isRejectSection) {
+            $weekly_percentage = !empty($tank['volume_m3']) ? (($weekly_total / (float)$tank['volume_m3']) * 100) : null;
+            $pdf->Cell($col_total_width, $cell_height, $weekly_total > 0 ? number_format($weekly_total, 0) : '', 1, 0, 'C');
+            $pdf->Cell($col_total_percent_width, $cell_height, $weekly_percentage !== null ? number_format($weekly_percentage, 1, ',', '.') . '%' : '', 1, 1, 'C');
+        } else {
+            $pdf->Cell($col_total_width, $cell_height, number_format($weekly_total, 0), 1, 1, 'C');
+        }
     }
     
     // Espaço entre tabelas
