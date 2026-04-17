@@ -1,6 +1,13 @@
 <?php
 require_once '../header.php';
 
+// Link para configuração (exibe apenas se usuário for admin)
+if (isset($_SESSION['user_role']) && $_SESSION['user_role'] === 'admin') {
+    echo '<div style="padding:10px;background:#f5f5f5;border-bottom:1px solid #ccc;">
+        <a href="configurar_relatorio.php" style="font-weight:bold;">Configurar Relatório de Água</a>
+    </div>';
+}
+
 // --- Lógica de Filtros ---
 $year = isset($_GET['year']) ? $_GET['year'] : date('Y');
 $week = isset($_GET['week']) ? $_GET['week'] : date('W');
