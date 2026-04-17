@@ -1,8 +1,8 @@
 <?php
 require_once '../header.php';
 
-// Link para configuração (exibe apenas se usuário for admin)
-if (isset($_SESSION['user_role']) && $_SESSION['user_role'] === 'admin') {
+// Link para configuração (exibe para todos os usuários)
+if (isset($_SESSION['user_id'])) {
     echo '<div style="padding:10px;background:#f5f5f5;border-bottom:1px solid #ccc;">
         <a href="configurar_relatorio.php" style="font-weight:bold;">Configurar Relatório de Água</a>
     </div>';
@@ -149,11 +149,9 @@ for ($i = 0; $i < 7; $i++) {
                     <a href="gerar_pdf_agua_todos.php?year=<?= $year ?>&week=<?= $week ?>" target="_blank" class="btn btn-danger">
                         <i class="fas fa-file-pdf"></i> Exportar PDF
                     </a>
-                    <?php if (isset($_SESSION['user_role']) && $_SESSION['user_role'] === 'admin'): ?>
                     <a href="configurar_relatorio.php" class="btn btn-warning ms-2">
                         <i class="fas fa-cogs"></i> Configurar Relatório
                     </a>
-                    <?php endif; ?>
 	            </div>
 	        </form>
 	    </div>
