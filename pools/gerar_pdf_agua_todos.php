@@ -2,13 +2,6 @@
 require_once '../core.php';
 require_once '../fpdf/fpdf.php';
 
-// Link para configuração (exibe apenas se usuário for admin)
-if (isset($_SESSION['user_role']) && $_SESSION['user_role'] === 'admin') {
-    echo '<div style="padding:10px;background:#f5f5f5;border-bottom:1px solid #ccc;">
-        <a href="configurar_relatorio.php" style="font-weight:bold;">Configurar Relatório de Água</a>
-    </div>';
-}
-
 // Carrega configuração de secções
 $config_path = __DIR__ . '/config_relatorio.json';
 $sections = [];
@@ -182,6 +175,7 @@ $pdf->AddPage();
 // --- Desenho das Tabelas por Secção ---
 $dias_semana = ['Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado', 'Domingo'];
 $cell_height = 4;
+$margin_bottom = 15; // margem inferior
 
 foreach ($sections as $secIdx => $section) {
     // Garante que tanks existe e é array
@@ -197,8 +191,16 @@ foreach ($sections as $secIdx => $section) {
     }
     if (empty($section_tanks)) continue;
 
-    // Nova página para cada secção exceto a primeira
-    if ($secIdx > 0) $pdf->AddPage();
+    // Calcula altura necessária para esta tabela
+    $table_height = 6 + ($cell_height * 2) + ($cell_height * count($section_tanks)) + 8; // título + cabeçalho + linhas + espaço
+    
+    // Verifica se cabe na página atual
+    $current_y = $pdf->GetY();
+    $page_height = $pdf->h - 15 - 15; // altura da página menos margens
+    if ($current_y + $table_height > $page_height && $current_y > 30) {
+        // Se não couber, vai para nova página
+        $pdf->AddPage();
+    }
 
     // Cores diferentes para "Rejeitado"
     if (stripos($section['name'], 'rejeitado') !== false) {
@@ -252,6 +254,9 @@ foreach ($sections as $secIdx => $section) {
         }
         $pdf->Cell($col_total_width, $cell_height, number_format($weekly_total, 0), 1, 1, 'C');
     }
+    
+    // Espaço entre tabelas
+    $pdf->Ln(8);
 }
 
 // Envia o PDF para o browser
