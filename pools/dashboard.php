@@ -591,10 +591,12 @@ function createLoraCard(device) {
             const deltaP = (data.delta_p !== null && data.delta_p !== undefined) ? parseFloat(data.delta_p)
                           : (pin !== null && pout !== null ? pin - pout : null);
             const pump_state = (data.pump_state !== null && data.pump_state !== undefined) ? parseFloat(data.pump_state) : null;
+            const precoat_active = data.precoat_active === true || data.precoat_active === 1 || data.precoat_active === '1';
 
             let pumpState = '--';
             if (pump_state !== null) {
                 if (pump_state === 0) pumpState = 'Parado';
+                else if (precoat_active) pumpState = 'Pré-coat';
                 else if (pump_state >= 90) pumpState = 'Em Filtração';
                 else pumpState = 'Pré-coat';
             }
@@ -618,6 +620,7 @@ function createLoraCard(device) {
             if (pumpStateBadge) {
                 pumpStateBadge.className = 'metric-value';
                 if (pump_state === 0) pumpStateBadge.classList.add('parado');
+                else if (precoat_active) pumpStateBadge.classList.add('precoat');
                 else if (pump_state >= 90) pumpStateBadge.classList.add('filtracao');
                 else if (pump_state !== null) pumpStateBadge.classList.add('precoat');
             }

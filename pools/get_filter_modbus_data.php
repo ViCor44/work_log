@@ -44,6 +44,7 @@ if (!$filter) {
 const MODBUS_START = 78;
 const MODBUS_COUNT = 13;
 const MODBUS_PORT  = 502;
+const PRECOAT_COIL_ADDRESS = 3;
 
 function modbus_tcp_read_holding(string $ip, int $slave_id, int $start, int $count,
                                   int $port = 502, int $timeout = 3): array {
@@ -102,6 +103,65 @@ function modbus_tcp_read_holding(string $ip, int $slave_id, int $start, int $cou
     return ['registers' => $registers];
 }
 
+function modbus_tcp_read_coils(string $ip, int $slave_id, int $start, int $count,
+                               int $port = 502, int $timeout = 3): array {
+    $sock = @fsockopen($ip, $port, $errno, $errstr, $timeout);
+    if (!$sock) {
+        return ['error' => "Sem ligacao TCP ao dispositivo ($errstr)"];
+    }
+    stream_set_timeout($sock, $timeout);
+
+    $tid     = mt_rand(1, 0xFFFF);
+    $request = pack('nnnCCnn', $tid, 0x0000, 6, $slave_id & 0xFF, 0x01, $start, $count);
+    fwrite($sock, $request);
+
+    $deadline = microtime(true) + $timeout;
+
+    $raw = '';
+    while (strlen($raw) < 6 && microtime(true) < $deadline) {
+        $chunk = fread($sock, 6 - strlen($raw));
+        if ($chunk === false || $chunk === '') break;
+        $raw .= $chunk;
+    }
+    if (strlen($raw) < 6) { fclose($sock); return ['error' => 'Cabecalho MBAP incompleto']; }
+
+    $hdr      = unpack('ntid/nproto/nlength', $raw);
+    $body_len = (int) $hdr['length'];
+
+    $body = '';
+    while (strlen($body) < $body_len && microtime(true) < $deadline) {
+        $chunk = fread($sock, $body_len - strlen($body));
+        if ($chunk === false || $chunk === '') break;
+        $body .= $chunk;
+    }
+    fclose($sock);
+
+    if (strlen($body) < $body_len) return ['error' => 'Dados PDU incompletos'];
+    if (strlen($body) < 3)         return ['error' => 'Resposta demasiado curta'];
+
+    $meta = unpack('Cunit/Cfc/Cbytes', substr($body, 0, 3));
+
+    if ($meta['fc'] & 0x80) {
+        $code = strlen($body) > 3 ? ord($body[3]) : 0;
+        return ['error' => "Excecao Modbus: codigo $code"];
+    }
+
+    $coil_bits = [];
+    $data_raw  = substr($body, 3);
+    for ($i = 0; $i < $count; $i++) {
+        $byte_index = intdiv($i, 8);
+        if ($byte_index >= strlen($data_raw)) {
+            $coil_bits[] = null;
+            continue;
+        }
+        $byte = ord($data_raw[$byte_index]);
+        $bit  = ($byte >> ($i % 8)) & 0x01;
+        $coil_bits[] = $bit;
+    }
+
+    return ['coils' => $coil_bits];
+}
+
 function regs_to_float32(int $hi, int $lo): ?float {
     // Ordem de palavras: big-endian (ABCD)
     $bytes = pack('nn', $hi, $lo);
@@ -147,6 +207,21 @@ $flow       = $regs[6];
 $alarm_reg  = $regs[8];
 $pump_state = regs_to_float32($regs[10], $regs[11]);  // float32 velocidade bomba (0-100%)
 
+$coil_result = modbus_tcp_read_coils(
+    $filter['ip_address'],
+    (int) $filter['slave_id'],
+    PRECOAT_COIL_ADDRESS,
+    1,
+    MODBUS_PORT
+);
+
+$precoat_coil = null;
+if (!isset($coil_result['error']) && isset($coil_result['coils'][0])) {
+    $precoat_coil = (int) $coil_result['coils'][0];
+}
+
+$precoat_active = ($precoat_coil === 1);
+
 $active_fault = ($alarm_reg !== 0);
 $is_running   = !$active_fault;
 
@@ -159,6 +234,8 @@ echo json_encode([
     'pout'        => $pout,
     'delta_p'     => $delta_p,
     'pump_state'  => $pump_state,
+    'precoat_coil' => $precoat_coil,
+    'precoat_active' => $precoat_active,
     'alarm_reg'   => $alarm_reg,
     'isRunning'   => $is_running,
     'activeFault' => $active_fault,
