@@ -13,7 +13,15 @@ if (isset($_SESSION['user_role']) && $_SESSION['user_role'] === 'admin') {
 $config_path = __DIR__ . '/config_relatorio.json';
 $sections = [];
 if (file_exists($config_path)) {
-    $sections = json_decode(file_get_contents($config_path), true);
+    $json = file_get_contents($config_path);
+    $decoded = json_decode($json, true);
+    // Se for {'sections': ...} (novo formato)
+    if (isset($decoded['sections']) && is_array($decoded['sections'])) {
+        $sections = $decoded['sections'];
+    } elseif (is_array($decoded)) {
+        // Se for array simples (antigo formato)
+        $sections = $decoded;
+    }
 }
 
 // --- Lógica de Filtros ---
