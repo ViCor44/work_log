@@ -2,6 +2,13 @@
 require_once '../core.php';
 require_once '../fpdf/fpdf.php';
 
+// Link para configuração (exibe apenas se usuário for admin)
+if (isset($_SESSION['user_role']) && $_SESSION['user_role'] === 'admin') {
+    echo '<div style="padding:10px;background:#f5f5f5;border-bottom:1px solid #ccc;">
+        <a href="configurar_relatorio.php" style="font-weight:bold;">Configurar Relatório de Água</a>
+    </div>';
+}
+
 // Carrega configuração de secções
 $config_path = __DIR__ . '/config_relatorio.json';
 $sections = [];
