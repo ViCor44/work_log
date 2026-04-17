@@ -1,5 +1,5 @@
 <?php
-require_once '../header.php';
+require_once '../core.php';
 
 // Busca todos os tanques
 $tanks_stmt = $conn->query("SELECT id, name, type FROM tanks ORDER BY name ASC");
@@ -32,11 +32,37 @@ if (!isset($config['sections']) || !is_array($config['sections'])) {
 }
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    $config['sections'] = $_POST['sections'] ?? [];
+    $postedSections = $_POST['sections'] ?? [];
+    $normalizedSections = [];
+
+    foreach ($postedSections as $section) {
+        $name = isset($section['name']) ? trim($section['name']) : '';
+        $tanks = isset($section['tanks']) && is_array($section['tanks']) ? array_values($section['tanks']) : [];
+
+        if ($name === '' && empty($tanks)) {
+            continue;
+        }
+
+        $normalizedSections[] = [
+            'name' => $name !== '' ? $name : 'Nova Secção',
+            'tanks' => $tanks,
+        ];
+    }
+
+    $config['sections'] = $normalizedSections;
     file_put_contents($config_path, json_encode($config, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE));
-    header('Location: configurar_relatorio.php?salvo=1');
+
+    $redirectUrl = 'configurar_relatorio.php?salvo=1';
+    if (!headers_sent()) {
+        header('Location: ' . $redirectUrl);
+        exit;
+    }
+
+    echo '<script>window.location.href = ' . json_encode($redirectUrl) . ';</script>';
     exit;
 }
+
+require_once '../header.php';
 ?>
 
 <div class="container-fluid mt-4">
@@ -78,7 +104,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                                                name="sections[<?= $secIdx ?>][tanks][]" 
                                                value="<?= $tank['id'] ?>" 
                                                id="tank_<?= $secIdx ?>_<?= $tank['id'] ?>"
-                                               <?= in_array($tank['id'], $section['tanks']) ? 'checked' : '' ?>>
+                                               <?= in_array($tank['id'], $section['tanks'] ?? []) ? 'checked' : '' ?>>
                                         <label class="form-check-label" for="tank_<?= $secIdx ?>_<?= $tank['id'] ?>">
                                             <strong><?= htmlspecialchars($tank['name']) ?></strong>
                                             <small class="text-muted">(<?= htmlspecialchars($tank['type']) ?>)</small>
