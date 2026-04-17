@@ -176,6 +176,10 @@ $dias_semana = ['Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado', 'Do
 $cell_height = 4;
 
 foreach ($sections as $secIdx => $section) {
+    // Garante que tanks existe e é array
+    if (!isset($section['tanks']) || !is_array($section['tanks'])) {
+        $section['tanks'] = [];
+    }
     // Filtra tanques da secção
     $section_tanks = array();
     foreach ($section['tanks'] as $tid) {
