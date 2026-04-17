@@ -16,8 +16,21 @@ $config = [
         ['name' => 'Reserva nos Tanques', 'tanks' => []],
     ]
 ];
+
 if (file_exists($config_path)) {
-    $config = json_decode(file_get_contents($config_path), true);
+    $json = file_get_contents($config_path);
+    $decoded = json_decode($json, true);
+    // Se for array de secções (antigo formato), converte para ['sections' => ...]
+    if (isset($decoded['sections'])) {
+        $config = $decoded;
+    } elseif (is_array($decoded)) {
+        $config['sections'] = $decoded;
+    }
+}
+
+// Garante que sempre existe $config['sections']
+if (!isset($config['sections']) || !is_array($config['sections'])) {
+    $config['sections'] = [];
 }
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
