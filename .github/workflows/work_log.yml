@@ -8,7 +8,7 @@ on:
 
 jobs:
   ci:
-    runs-on: self-hosted
+    runs-on: [self-hosted, Windows, X64]
 
     steps:
       - uses: actions/checkout@v4
@@ -34,7 +34,7 @@ jobs:
   deploy:
     if: ${{ github.ref == 'refs/heads/main' }}
     needs: ci
-    runs-on: self-hosted
+    runs-on: [self-hosted, Windows, X64]
 
     steps:
       - uses: actions/checkout@v4
@@ -43,13 +43,17 @@ jobs:
         shell: powershell
         run: |
           cd C:\xampp\htdocs\work_log
-          git pull origin main
+          git fetch --all --prune
+          git checkout main
+          git pull --ff-only origin main
           composer install --no-interaction --prefer-dist --no-dev
 
       - name: PHP lint (server)
         shell: powershell
         run: |
           cd C:/xampp/htdocs/work_log
-          Get-ChildItem src -Recurse -Filter *.php | ForEach-Object {
-            php -l $_.FullName
-          }
+          Get-ChildItem -Recurse -Filter *.php |
+            Where-Object { $_.FullName -notmatch '\\vendor\\' } |
+            ForEach-Object {
+              php -l $_.FullName
+            }
