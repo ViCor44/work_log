@@ -710,7 +710,6 @@ function createLoraCard(device) {
         updateTabAlerts();
     }
 
-    updateAllDashboards();
     let updating = false;
 
     async function safeUpdate() {
@@ -727,7 +726,8 @@ function createLoraCard(device) {
 
     }
 
-    setInterval(safeUpdate, 10000);});
+    setInterval(safeUpdate, 10000);
+    safeUpdate();});
 </script>
 
 <?php
