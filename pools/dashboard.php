@@ -584,7 +584,7 @@ function createLoraCard(device) {
             if (!response.ok || data.error) throw new Error(data.error || ('HTTP ' + response.status));
 
             cardElement.classList.remove('status-offline', 'border-danger', 'border-success', 'border-secondary', 'animate-pulse-red-bs');
-            statusEl.classList.remove('bg-danger', 'bg-success', 'bg-secondary', 'bg-warning');
+            if (statusEl) statusEl.classList.remove('bg-danger', 'bg-success', 'bg-secondary', 'bg-warning');
 
             const pin    = (data.pin    !== null && data.pin    !== undefined) ? parseFloat(data.pin)    : null;
             const pout   = (data.pout   !== null && data.pout   !== undefined) ? parseFloat(data.pout)   : null;
@@ -594,7 +594,7 @@ function createLoraCard(device) {
             const precoat_active = data.precoat_active === true || data.precoat_active === 1 || data.precoat_active === '1';
 
             let pumpState = '--';
-            if (pump_state !== null) {
+            if (pump_state !== null && !isNaN(pump_state)) {
                 if (pump_state === 0) pumpState = 'Parado';
                 else if (precoat_active) pumpState = 'Pré-coat';
                 else if (pump_state >= 90) pumpState = 'Em Filtração';
@@ -603,26 +603,26 @@ function createLoraCard(device) {
 
             if (data.activeFault) {
                 cardElement.classList.add('border-danger', 'animate-pulse-red-bs');
-                statusEl.classList.add('bg-danger');
-                statusEl.textContent = 'FALHA';
+                if (statusEl) { statusEl.classList.add('bg-danger'); statusEl.textContent = 'FALHA'; }
             } else {
                 cardElement.classList.add('border-success');
-                statusEl.classList.add('bg-success');
-                statusEl.textContent = 'ONLINE';
+                if (statusEl) { statusEl.classList.add('bg-success'); statusEl.textContent = 'ONLINE'; }
             }
 
-            pinEl.textContent   = pin    !== null ? pin.toFixed(2)    : '--';
-            poutEl.textContent  = pout   !== null ? pout.toFixed(2)   : '--';
-            deltaEl.textContent = deltaP !== null ? deltaP.toFixed(2) : '--';
-            document.getElementById(`filtro-pump-state-${filterId}`).textContent = pumpState;
-            
+            if (pinEl)   pinEl.textContent   = pin    !== null && !isNaN(pin)    ? pin.toFixed(2)    : '--';
+            if (poutEl)  poutEl.textContent  = pout   !== null && !isNaN(pout)   ? pout.toFixed(2)   : '--';
+            if (deltaEl) deltaEl.textContent = deltaP !== null && !isNaN(deltaP) ? deltaP.toFixed(2) : '--';
+
             const pumpStateBadge = document.getElementById(`filtro-pump-state-${filterId}`);
             if (pumpStateBadge) {
+                pumpStateBadge.textContent = pumpState;
                 pumpStateBadge.className = 'metric-value';
-                if (pump_state === 0) pumpStateBadge.classList.add('parado');
-                else if (precoat_active) pumpStateBadge.classList.add('precoat');
-                else if (pump_state >= 90) pumpStateBadge.classList.add('filtracao');
-                else if (pump_state !== null) pumpStateBadge.classList.add('precoat');
+                if (pump_state !== null && !isNaN(pump_state)) {
+                    if (pump_state === 0) pumpStateBadge.classList.add('parado');
+                    else if (precoat_active) pumpStateBadge.classList.add('precoat');
+                    else if (pump_state >= 90) pumpStateBadge.classList.add('filtracao');
+                    else pumpStateBadge.classList.add('precoat');
+                }
             }
 
             if (metricsEl) metricsEl.style.display = '';
@@ -631,18 +631,22 @@ function createLoraCard(device) {
             if (alarmEl)   alarmEl.style.display   = 'none';
 
         } catch (error) {
+            console.error(`[filtro-${filterId}] updateFiltroCard error:`, error);
+
             cardElement.classList.remove('border-success', 'border-secondary', 'animate-pulse-red-bs');
             cardElement.classList.add('status-offline', 'border-danger');
-            statusEl.classList.remove('bg-success', 'bg-secondary', 'bg-warning');
-            statusEl.classList.add('bg-danger');
-            statusEl.textContent = 'OFFLINE';
+            if (statusEl) {
+                statusEl.classList.remove('bg-success', 'bg-secondary', 'bg-warning');
+                statusEl.classList.add('bg-danger');
+                statusEl.textContent = 'OFFLINE';
+            }
 
-            pinEl.textContent   = '--';
-            poutEl.textContent  = '--';
-            deltaEl.textContent = '--';
-            document.getElementById(`filtro-pump-state-${filterId}`).textContent = '--';
+            if (pinEl)   pinEl.textContent   = '--';
+            if (poutEl)  poutEl.textContent  = '--';
+            if (deltaEl) deltaEl.textContent = '--';
+
             const pumpStateBadgeErr = document.getElementById(`filtro-pump-state-${filterId}`);
-            if (pumpStateBadgeErr) pumpStateBadgeErr.className = 'metric-value';
+            if (pumpStateBadgeErr) { pumpStateBadgeErr.textContent = '--'; pumpStateBadgeErr.className = 'metric-value'; }
 
             if (metricsEl) metricsEl.style.display = 'none';
             if (stateEl)   stateEl.style.display   = 'none';
