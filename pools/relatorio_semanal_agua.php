@@ -1,6 +1,13 @@
 <?php
 require_once '../header.php';
 
+// Link para configuração (exibe para todos os usuários)
+if (isset($_SESSION['user_id'])) {
+    echo '<div style="padding:10px;background:#f5f5f5;border-bottom:1px solid #ccc;">
+        <a href="configurar_relatorio.php" style="font-weight:bold;">Configurar Relatório de Água</a>
+    </div>';
+}
+
 // --- Lógica de Filtros ---
 $year = isset($_GET['year']) ? $_GET['year'] : date('Y');
 $week = isset($_GET['week']) ? $_GET['week'] : date('W');
@@ -139,9 +146,12 @@ for ($i = 0; $i < 7; $i++) {
 	                <a href="menu_relatorios.php" class="btn btn-secondary">Voltar ao Menu</a>
 	            </div>
 	            <div class="col-md-auto">
-	                <a href="gerar_pdf_agua_todos.php?year=<?= $year ?>&week=<?= $week ?>" target="_blank" class="btn btn-danger">
-	                    <i class="fas fa-file-pdf"></i> Exportar PDF
-	                </a>
+                    <a href="gerar_pdf_agua_todos.php?year=<?= $year ?>&week=<?= $week ?>" target="_blank" class="btn btn-danger">
+                        <i class="fas fa-file-pdf"></i> Exportar PDF
+                    </a>
+                    <a href="configurar_relatorio.php" class="btn btn-warning ms-2">
+                        <i class="fas fa-cogs"></i> Configurar Relatório
+                    </a>
 	            </div>
 	        </form>
 	    </div>

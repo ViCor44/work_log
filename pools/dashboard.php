@@ -293,12 +293,12 @@ $filters = fetch_all_safe(
                             </div>
                             <div class="filtro-metrics">
                                 <div class="filtro-metric pin">
-                                    <div class="metric-label">Pin</div>
+                                    <div class="metric-label">P in</div>
                                     <div class="metric-value" id="filtro-pin-<?= $filter['id'] ?>">--</div>
                                     <div class="metric-unit">bar</div>
                                 </div>
                                 <div class="filtro-metric pout">
-                                    <div class="metric-label">Pout</div>
+                                    <div class="metric-label">P out</div>
                                     <div class="metric-value" id="filtro-pout-<?= $filter['id'] ?>">--</div>
                                     <div class="metric-unit">bar</div>
                                 </div>
@@ -565,6 +565,9 @@ function createLoraCard(device) {
         }
     }
 
+    const filtroFailCount = {};
+    const FILTRO_FAIL_THRESHOLD = 2;
+
     async function updateFiltroCard(cardElement) {
         const filterId = cardElement.id.split('-')[2];
         const statusEl = document.getElementById(`status-filtro-${filterId}`);
@@ -584,42 +587,45 @@ function createLoraCard(device) {
             if (!response.ok || data.error) throw new Error(data.error || ('HTTP ' + response.status));
 
             cardElement.classList.remove('status-offline', 'border-danger', 'border-success', 'border-secondary', 'animate-pulse-red-bs');
-            statusEl.classList.remove('bg-danger', 'bg-success', 'bg-secondary', 'bg-warning');
+            if (statusEl) statusEl.classList.remove('bg-danger', 'bg-success', 'bg-secondary', 'bg-warning');
 
             const pin    = (data.pin    !== null && data.pin    !== undefined) ? parseFloat(data.pin)    : null;
             const pout   = (data.pout   !== null && data.pout   !== undefined) ? parseFloat(data.pout)   : null;
             const deltaP = (data.delta_p !== null && data.delta_p !== undefined) ? parseFloat(data.delta_p)
                           : (pin !== null && pout !== null ? pin - pout : null);
             const pump_state = (data.pump_state !== null && data.pump_state !== undefined) ? parseFloat(data.pump_state) : null;
+            const precoat_active = data.precoat_active === true || data.precoat_active === 1 || data.precoat_active === '1';
 
             let pumpState = '--';
-            if (pump_state !== null) {
+            if (pump_state !== null && !isNaN(pump_state)) {
                 if (pump_state === 0) pumpState = 'Parado';
-                else if (pump_state === 100) pumpState = 'Em Filtração';
+                else if (precoat_active) pumpState = 'Pré-coat';
+                else if (pump_state >= 90) pumpState = 'Em Filtração';
                 else pumpState = 'Pré-coat';
             }
 
             if (data.activeFault) {
                 cardElement.classList.add('border-danger', 'animate-pulse-red-bs');
-                statusEl.classList.add('bg-danger');
-                statusEl.textContent = 'FALHA';
+                if (statusEl) { statusEl.classList.add('bg-danger'); statusEl.textContent = 'FALHA'; }
             } else {
                 cardElement.classList.add('border-success');
-                statusEl.classList.add('bg-success');
-                statusEl.textContent = 'ONLINE';
+                if (statusEl) { statusEl.classList.add('bg-success'); statusEl.textContent = 'ONLINE'; }
             }
 
-            pinEl.textContent   = pin    !== null ? pin.toFixed(2)    : '--';
-            poutEl.textContent  = pout   !== null ? pout.toFixed(2)   : '--';
-            deltaEl.textContent = deltaP !== null ? deltaP.toFixed(2) : '--';
-            document.getElementById(`filtro-pump-state-${filterId}`).textContent = pumpState;
-            
+            if (pinEl)   pinEl.textContent   = pin    !== null && !isNaN(pin)    ? pin.toFixed(2)    : '--';
+            if (poutEl)  poutEl.textContent  = pout   !== null && !isNaN(pout)   ? pout.toFixed(2)   : '--';
+            if (deltaEl) deltaEl.textContent = deltaP !== null && !isNaN(deltaP) ? deltaP.toFixed(2) : '--';
+
             const pumpStateBadge = document.getElementById(`filtro-pump-state-${filterId}`);
             if (pumpStateBadge) {
+                pumpStateBadge.textContent = pumpState;
                 pumpStateBadge.className = 'metric-value';
-                if (pump_state === 0) pumpStateBadge.classList.add('parado');
-                else if (pump_state === 100) pumpStateBadge.classList.add('filtracao');
-                else if (pump_state !== null) pumpStateBadge.classList.add('precoat');
+                if (pump_state !== null && !isNaN(pump_state)) {
+                    if (pump_state === 0) pumpStateBadge.classList.add('parado');
+                    else if (precoat_active) pumpStateBadge.classList.add('precoat');
+                    else if (pump_state >= 90) pumpStateBadge.classList.add('filtracao');
+                    else pumpStateBadge.classList.add('precoat');
+                }
             }
 
             if (metricsEl) metricsEl.style.display = '';
@@ -627,19 +633,30 @@ function createLoraCard(device) {
             if (footerEl)  footerEl.style.display  = '';
             if (alarmEl)   alarmEl.style.display   = 'none';
 
+            filtroFailCount[filterId] = 0; // reset contador de falhas consecutivas
+
         } catch (error) {
+            filtroFailCount[filterId] = (filtroFailCount[filterId] || 0) + 1;
+            const failCount = filtroFailCount[filterId];
+            console.error(`[filtro-${filterId}] updateFiltroCard error (${failCount}/${FILTRO_FAIL_THRESHOLD}):`, error);
+
+            // Só mostra alarme após atingir o threshold de falhas consecutivas
+            if (failCount < FILTRO_FAIL_THRESHOLD) return;
+
             cardElement.classList.remove('border-success', 'border-secondary', 'animate-pulse-red-bs');
             cardElement.classList.add('status-offline', 'border-danger');
-            statusEl.classList.remove('bg-success', 'bg-secondary', 'bg-warning');
-            statusEl.classList.add('bg-danger');
-            statusEl.textContent = 'OFFLINE';
+            if (statusEl) {
+                statusEl.classList.remove('bg-success', 'bg-secondary', 'bg-warning');
+                statusEl.classList.add('bg-danger');
+                statusEl.textContent = 'OFFLINE';
+            }
 
-            pinEl.textContent   = '--';
-            poutEl.textContent  = '--';
-            deltaEl.textContent = '--';
-            document.getElementById(`filtro-pump-state-${filterId}`).textContent = '--';
+            if (pinEl)   pinEl.textContent   = '--';
+            if (poutEl)  poutEl.textContent  = '--';
+            if (deltaEl) deltaEl.textContent = '--';
+
             const pumpStateBadgeErr = document.getElementById(`filtro-pump-state-${filterId}`);
-            if (pumpStateBadgeErr) pumpStateBadgeErr.className = 'metric-value';
+            if (pumpStateBadgeErr) { pumpStateBadgeErr.textContent = '--'; pumpStateBadgeErr.className = 'metric-value'; }
 
             if (metricsEl) metricsEl.style.display = 'none';
             if (stateEl)   stateEl.style.display   = 'none';
@@ -683,19 +700,26 @@ function createLoraCard(device) {
         const medidaCards = document.querySelectorAll('#dashboard-container-medida .scada-card');
         const filtroCards = document.querySelectorAll('#dashboard-container-filtros .scada-card');
 
-        const allPromises = [
+        // Pools, medidas e LoRa podem correr em paralelo (protocolos/dispositivos distintos)
+        const parallelPromises = [
             ...Array.from(poolCards).map(card => updatePoolDashboard(card)),
             ...Array.from(medidaCards).map(card => updateMedidaCard(card)),
-            ...Array.from(filtroCards).map(card => updateFiltroCard(card)),
             updateLoraDashboard()
         ];
-        
-        await Promise.all(allPromises);
-        
+
+        // Filtros Modbus TCP são serializados: a maioria dos PLCs só aceita 1 ligação de cada vez.
+        // Ligações simultâneas causam rejeição imediata e "Cabeçalho MBAP incompleto".
+        const serialFiltros = async () => {
+            for (const card of filtroCards) {
+                await updateFiltroCard(card);
+            }
+        };
+
+        await Promise.all([...parallelPromises, serialFiltros()]);
+
         updateTabAlerts();
     }
 
-    updateAllDashboards();
     let updating = false;
 
     async function safeUpdate() {
@@ -712,7 +736,8 @@ function createLoraCard(device) {
 
     }
 
-    setInterval(safeUpdate, 10000);});
+    setInterval(safeUpdate, 10000);
+    safeUpdate();});
 </script>
 
 <?php

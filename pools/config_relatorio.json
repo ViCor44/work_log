@@ -1,0 +1,22 @@
+[
+    {
+        "name": "Piscinas",
+        "tanks": []
+    },
+    {
+        "name": "Rejeitado",
+        "tanks": []
+    },
+    {
+        "name": "Consumo de Água da Rede",
+        "tanks": []
+    },
+    {
+        "name": "Rega",
+        "tanks": []
+    },
+    {
+        "name": "Reserva nos Tanques",
+        "tanks": []
+    }
+]
