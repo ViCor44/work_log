@@ -565,6 +565,9 @@ function createLoraCard(device) {
         }
     }
 
+    const filtroFailCount = {};
+    const FILTRO_FAIL_THRESHOLD = 2;
+
     async function updateFiltroCard(cardElement) {
         const filterId = cardElement.id.split('-')[2];
         const statusEl = document.getElementById(`status-filtro-${filterId}`);
@@ -630,8 +633,15 @@ function createLoraCard(device) {
             if (footerEl)  footerEl.style.display  = '';
             if (alarmEl)   alarmEl.style.display   = 'none';
 
+            filtroFailCount[filterId] = 0; // reset contador de falhas consecutivas
+
         } catch (error) {
-            console.error(`[filtro-${filterId}] updateFiltroCard error:`, error);
+            filtroFailCount[filterId] = (filtroFailCount[filterId] || 0) + 1;
+            const failCount = filtroFailCount[filterId];
+            console.error(`[filtro-${filterId}] updateFiltroCard error (${failCount}/${FILTRO_FAIL_THRESHOLD}):`, error);
+
+            // Só mostra alarme após atingir o threshold de falhas consecutivas
+            if (failCount < FILTRO_FAIL_THRESHOLD) return;
 
             cardElement.classList.remove('border-success', 'border-secondary', 'animate-pulse-red-bs');
             cardElement.classList.add('status-offline', 'border-danger');
