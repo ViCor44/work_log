@@ -1,5 +1,6 @@
 tmp/
 cron_log.txt
+login_log.txt
 logs/
 gerar_licenca.php
 pools/cache/
