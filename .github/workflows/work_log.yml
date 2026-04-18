@@ -32,7 +32,7 @@ jobs:
         run: echo "PHPStan disabled"
 
   deploy:
-    if: ${{ github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' }}
+    if: ${{ github.ref == 'refs/heads/main' }}
     needs: ci
     runs-on: self-hosted
 
