@@ -5,3 +5,4 @@ logs/
 gerar_licenca.php
 pools/cache/
 report_pdfs/*.pdf
+vendor/
