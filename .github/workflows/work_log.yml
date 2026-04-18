@@ -7,7 +7,7 @@ on:
 
 jobs:
   economato:
-    runs-on: self-hosted
+    runs-on: windows-latest
 
     steps:
       - uses: actions/checkout@v4
@@ -32,6 +32,7 @@ jobs:
 
       # DEPLOY SÓ SE PASSAR TUDO
       - name: Deploy to production
+        if: ${{ false }}
         shell: powershell
         run: |
           cd C:\xampp\htdocs\work_log
@@ -39,6 +40,7 @@ jobs:
           composer install --no-interaction --prefer-dist --no-dev
 
       - name: PHP lint (server)
+        if: ${{ false }}
         run: |
           cd C:/xampp/htdocs/work_log
           Get-ChildItem src -Recurse -Filter *.php | ForEach-Object {
