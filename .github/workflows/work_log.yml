@@ -1,4 +1,4 @@
-name: WorkLog CI + Deploy
+name: work_log CI/CD
 
 on:
   push:
@@ -37,3 +37,10 @@ jobs:
           cd C:\xampp\htdocs\work_log
           git pull origin main
           composer install --no-interaction --prefer-dist --no-dev
+
+      - name: PHP lint (server)
+        run: |
+          cd C:/xampp/htdocs/work_log
+          Get-ChildItem src -Recurse -Filter *.php | ForEach-Object {
+            php -l $_.FullName
+          }
