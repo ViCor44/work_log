@@ -1,22 +1,62 @@
-[
-    {
-        "name": "Piscinas",
-        "tanks": []
-    },
-    {
-        "name": "Rejeitado",
-        "tanks": []
-    },
-    {
-        "name": "Consumo de Água da Rede",
-        "tanks": []
-    },
-    {
-        "name": "Rega",
-        "tanks": []
-    },
-    {
-        "name": "Reserva nos Tanques",
-        "tanks": []
-    }
-]
+{
+    "sections": [
+        {
+            "name": "Piscinas (Filtro Areia)",
+            "tanks": [
+                "8",
+                "13",
+                "12",
+                "9",
+                "11",
+                "10"
+            ]
+        },
+        {
+            "name": "Piscinas (Filtro Defender)",
+            "tanks": [
+                "15",
+                "16",
+                "17",
+                "5",
+                "6",
+                "18"
+            ]
+        },
+        {
+            "name": "Consumo de Água da Rede",
+            "tanks": [
+                "22",
+                "21",
+                "31",
+                "32"
+            ]
+        },
+        {
+            "name": "Rega",
+            "tanks": [
+                "28"
+            ]
+        },
+        {
+            "name": "Reserva nos Tanques",
+            "tanks": [
+                "23",
+                "24",
+                "25",
+                "26",
+                "27"
+            ]
+        },
+        {
+            "name": "Rejeitado",
+            "tanks": [
+                "15",
+                "16",
+                "17",
+                "5",
+                "6",
+                "18"
+            ]
+        }
+    ]
+}
