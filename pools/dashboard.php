@@ -690,15 +690,23 @@ function createLoraCard(device) {
         const medidaCards = document.querySelectorAll('#dashboard-container-medida .scada-card');
         const filtroCards = document.querySelectorAll('#dashboard-container-filtros .scada-card');
 
-        const allPromises = [
+        // Pools, medidas e LoRa podem correr em paralelo (protocolos/dispositivos distintos)
+        const parallelPromises = [
             ...Array.from(poolCards).map(card => updatePoolDashboard(card)),
             ...Array.from(medidaCards).map(card => updateMedidaCard(card)),
-            ...Array.from(filtroCards).map(card => updateFiltroCard(card)),
             updateLoraDashboard()
         ];
-        
-        await Promise.all(allPromises);
-        
+
+        // Filtros Modbus TCP são serializados: a maioria dos PLCs só aceita 1 ligação de cada vez.
+        // Ligações simultâneas causam rejeição imediata e "Cabeçalho MBAP incompleto".
+        const serialFiltros = async () => {
+            for (const card of filtroCards) {
+                await updateFiltroCard(card);
+            }
+        };
+
+        await Promise.all([...parallelPromises, serialFiltros()]);
+
         updateTabAlerts();
     }
 
