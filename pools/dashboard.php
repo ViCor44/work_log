@@ -174,7 +174,7 @@ $filters = fetch_all_safe(
 
 <div class="container-fluid mt-4">
     <div class="d-flex justify-content-between align-items-center mb-4">
-        <h1 class="h2 mb-0">Dashboard de Monitorização</h1>
+        <h1 class="h2 mb-0">Painel de Monitorização</h1>
         <div class="d-flex gap-2">
             <a href="plano_pid.php?days=7" class="btn btn-warning">
                 <i class="fas fa-file-pdf me-1"></i>Plano PID (ver e aceitar)
