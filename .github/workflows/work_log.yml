@@ -4,9 +4,10 @@ on:
   push:
     branches: [ main ]
   pull_request:
+  workflow_dispatch:
 
 jobs:
-  economato:
+  ci:
     runs-on: windows-latest
 
     steps:
@@ -30,9 +31,15 @@ jobs:
       - name: Skip PHPStan
         run: echo "PHPStan disabled"
 
-      # DEPLOY SÓ SE PASSAR TUDO
+  deploy:
+    if: ${{ github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' }}
+    needs: ci
+    runs-on: self-hosted
+
+    steps:
+      - uses: actions/checkout@v4
+
       - name: Deploy to production
-        if: ${{ false }}
         shell: powershell
         run: |
           cd C:\xampp\htdocs\work_log
@@ -40,7 +47,7 @@ jobs:
           composer install --no-interaction --prefer-dist --no-dev
 
       - name: PHP lint (server)
-        if: ${{ false }}
+        shell: powershell
         run: |
           cd C:/xampp/htdocs/work_log
           Get-ChildItem src -Recurse -Filter *.php | ForEach-Object {
