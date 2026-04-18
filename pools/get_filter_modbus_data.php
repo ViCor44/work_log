@@ -46,6 +46,18 @@ const MODBUS_COUNT = 13;
 const MODBUS_PORT  = 502;
 const MODBUS_TIMEOUT = 5;
 const PRECOAT_COIL_ADDRESS = 3;
+const MODBUS_LOG_FILE = __DIR__ . '/../login_log.txt';
+
+function log_modbus_event(string $stage, array $context = []): void {
+    $entry = [
+        'ts' => date('c'),
+        'stage' => $stage,
+        'context' => $context,
+    ];
+
+    $line = '[MODBUS] ' . json_encode($entry, JSON_UNESCAPED_SLASHES) . PHP_EOL;
+    @file_put_contents(MODBUS_LOG_FILE, $line, FILE_APPEND | LOCK_EX);
+}
 
 function read_socket_bytes($sock, int $expected_len, float $deadline): array {
     $buffer = '';
@@ -275,12 +287,30 @@ if (isset($result['error'])) {
         $error_payload['details'] = $result['details'];
     }
 
+    log_modbus_event('holding_read_error', [
+        'filter_id' => $filter_id,
+        'filter_name' => $filter['name'],
+        'ip_address' => $filter['ip_address'],
+        'slave_id' => (int) $filter['slave_id'],
+        'error' => $result['error'],
+        'details' => $result['details'] ?? null,
+    ]);
+
     echo json_encode($error_payload);
     exit;
 }
 
 $regs = $result['registers'];
 if (count($regs) < 13) {
+    log_modbus_event('holding_register_count_error', [
+        'filter_id' => $filter_id,
+        'filter_name' => $filter['name'],
+        'ip_address' => $filter['ip_address'],
+        'slave_id' => (int) $filter['slave_id'],
+        'register_count' => count($regs),
+        'register_count_expected_min' => 13,
+    ]);
+
     echo json_encode(['error' => 'Registos Modbus insuficientes na resposta', 'filter_id' => $filter_id]);
     exit;
 }
@@ -311,6 +341,18 @@ $coil_result = modbus_tcp_read_coils(
 $precoat_coil = null;
 if (!isset($coil_result['error']) && isset($coil_result['coils'][0])) {
     $precoat_coil = (int) $coil_result['coils'][0];
+}
+
+if (isset($coil_result['error'])) {
+    log_modbus_event('coil_read_error', [
+        'filter_id' => $filter_id,
+        'filter_name' => $filter['name'],
+        'ip_address' => $filter['ip_address'],
+        'slave_id' => (int) $filter['slave_id'],
+        'coil_address' => PRECOAT_COIL_ADDRESS,
+        'error' => $coil_result['error'],
+        'details' => $coil_result['details'] ?? null,
+    ]);
 }
 
 $precoat_active = ($precoat_coil === 1);
