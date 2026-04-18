@@ -293,12 +293,12 @@ $filters = fetch_all_safe(
                             </div>
                             <div class="filtro-metrics">
                                 <div class="filtro-metric pin">
-                                    <div class="metric-label">Pin</div>
+                                    <div class="metric-label">P in</div>
                                     <div class="metric-value" id="filtro-pin-<?= $filter['id'] ?>">--</div>
                                     <div class="metric-unit">bar</div>
                                 </div>
                                 <div class="filtro-metric pout">
-                                    <div class="metric-label">Pout</div>
+                                    <div class="metric-label">P out</div>
                                     <div class="metric-value" id="filtro-pout-<?= $filter['id'] ?>">--</div>
                                     <div class="metric-unit">bar</div>
                                 </div>
