@@ -1,5 +1,12 @@
 <?php
+// Garantir que erros PHP não "vazam" para o JSON (display_errors ligado no XAMPP dev)
+ini_set('display_errors', '0');
+ob_start();
+
 require_once '../core.php';
+
+// Limpar qualquer output gerado pelo core.php (warnings, notices, etc.)
+ob_end_clean();
 
 header('Content-Type: application/json; charset=utf-8');
 
