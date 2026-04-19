@@ -43,15 +43,16 @@ jobs:
         shell: powershell
         run: |
           $ErrorActionPreference = 'Stop'
-          cd C:\xampp\htdocs\work_log
+          $repo = 'C:/xampp/htdocs/work_log'
+          cd $repo
 
-          git fetch --all --prune
+          git -c "safe.directory=$repo" fetch --all --prune
           if ($LASTEXITCODE -ne 0) { throw 'git fetch failed' }
 
-          git checkout main
+          git -c "safe.directory=$repo" checkout main
           if ($LASTEXITCODE -ne 0) { throw 'git checkout main failed' }
 
-          git pull --ff-only origin main
+          git -c "safe.directory=$repo" pull --ff-only origin main
           if ($LASTEXITCODE -ne 0) { throw 'git pull --ff-only failed' }
 
           composer install --no-interaction --prefer-dist --no-dev
@@ -61,17 +62,18 @@ jobs:
         shell: powershell
         run: |
           $ErrorActionPreference = 'Stop'
-          cd C:\xampp\htdocs\work_log
+          $repo = 'C:/xampp/htdocs/work_log'
+          cd $repo
 
-          git fetch origin main --prune
+          git -c "safe.directory=$repo" fetch origin main --prune
           if ($LASTEXITCODE -ne 0) { throw 'git fetch origin main failed during verification' }
 
-          $deployed = (git rev-parse HEAD).Trim()
+          $deployed = (git -c "safe.directory=$repo" rev-parse HEAD).Trim()
           $expected = "$env:GITHUB_SHA".Trim()
           Write-Host "Expected commit: $expected"
           Write-Host "Deployed commit: $deployed"
 
-          git merge-base --is-ancestor $expected $deployed
+          git -c "safe.directory=$repo" merge-base --is-ancestor $expected $deployed
           if ($LASTEXITCODE -ne 0) {
             Write-Error "Deploy mismatch: deployed commit does not contain the workflow commit."
             exit 1
