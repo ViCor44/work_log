@@ -8,10 +8,10 @@ $pdf->SetAutoPageBreak(true, 15);
 $pdf->AddPage();
 
 $pdf->SetFont('Arial', 'B', 16);
-$pdf->Cell(0, 10, 'Guia Rapido - GitHub Actions Runner (Windows)', 0, 1, 'L');
+$pdf->Cell(0, 10, 'Guia Completo - GitHub Actions Runner (Windows)', 0, 1, 'L');
 
 $pdf->SetFont('Arial', '', 11);
-$pdf->MultiCell(0, 6, 'Objetivo: aplicar o mesmo padrao de deploy automatico em outros repositorios, com diagnostico rapido quando nao atualiza no servidor.');
+$pdf->MultiCell(0, 6, 'Objetivo: ter Actions Runner a funcionar de forma consistente em varios repositorios, com deploy automatico e diagnostico rapido.');
 $pdf->Ln(2);
 
 function sectionTitle(FPDF $pdf, $text) {
@@ -24,48 +24,61 @@ function bullet(FPDF $pdf, $text) {
     $pdf->MultiCell(0, 6, '- ' . $text);
 }
 
-sectionTitle($pdf, '1) Verificacoes base no servidor');
-bullet($pdf, 'Confirmar servico do runner: Get-Service actions.runner.*');
-bullet($pdf, 'Confirmar processo ativo: Runner.Listener / RunnerService');
-bullet($pdf, 'Confirmar repositorio alvo: git remote -v e branch correta');
-bullet($pdf, 'Confirmar estado local vs remoto: git fetch --all --prune e git status -sb');
+sectionTitle($pdf, '1) Preparar a maquina runner (uma vez por servidor)');
+bullet($pdf, 'Instalar Git, PHP/Composer (se o projeto precisar) e confirmar acesso ao GitHub.');
+bullet($pdf, 'Criar uma pasta por runner (exemplo: C:/actions-runner-meurepo).');
+bullet($pdf, 'No GitHub: Settings > Actions > Runners > New self-hosted runner.');
+bullet($pdf, 'Executar os comandos de configuracao fornecidos pelo GitHub.');
+bullet($pdf, 'Instalar como servico no Windows e confirmar Running + Automatic.');
 
 $pdf->Ln(1);
-sectionTitle($pdf, '2) Workflow recomendado (.github/workflows/*.yml)');
-bullet($pdf, 'Usar labels explicitas: runs-on: [self-hosted, Windows, X64]');
-bullet($pdf, 'Deploy com fast-forward estrito: git pull --ff-only origin main');
-bullet($pdf, "Ativar falha estrita no PowerShell: \$ErrorActionPreference = 'Stop'");
-bullet($pdf, 'Validar exit code apos comandos criticos (git/composer)');
-bullet($pdf, 'Validar commit deployado no fim (merge-base --is-ancestor)');
+sectionTitle($pdf, '2) Definir estrategia de runners');
+bullet($pdf, 'Opcao A: um runner por repositorio (mais isolamento).');
+bullet($pdf, 'Opcao B: runners partilhados com labels (mais simples de gerir).');
+bullet($pdf, 'Labels consistentes: self-hosted, Windows, X64 (+ opcionais por ambiente).');
 
 $pdf->Ln(1);
-sectionTitle($pdf, '3) Erro comum: dubious ownership (Windows service account)');
-bullet($pdf, 'Sintoma: detected dubious ownership in repository');
-bullet($pdf, 'Causa: repo pertence a um utilizador, runner corre com outro (ex: Network Service)');
-bullet($pdf, 'Correcao no workflow: usar git -c "safe.directory=C:/caminho/repo" em todos os comandos git do deploy');
+sectionTitle($pdf, '3) Workflow minimo por repositorio');
+bullet($pdf, 'Usar runs-on com labels explicitas: [self-hosted, Windows, X64].');
+bullet($pdf, 'Separar CI e deploy em jobs diferentes.');
+bullet($pdf, 'No deploy: git fetch --all --prune, git checkout main, git pull --ff-only origin main.');
+bullet($pdf, "Ativar fail-fast no PowerShell com \$ErrorActionPreference = 'Stop'.");
+bullet($pdf, 'Validar o commit deployado no fim contra GITHUB_SHA.');
 
 $pdf->Ln(1);
-sectionTitle($pdf, '4) Check rapido quando Actions esta verde mas servidor nao atualiza');
-bullet($pdf, 'Ver se o job de deploy realmente correu (nao apenas CI)');
-bullet($pdf, 'Ler _diag do runner e confirmar passo Deploy/Verify');
-bullet($pdf, 'No servidor: comparar HEAD local com origin/main');
-bullet($pdf, 'Se estiver behind: validar porque deploy nao aplicou pull');
+sectionTitle($pdf, '4) Evitar erro comum: dubious ownership');
+bullet($pdf, 'Sintoma: detected dubious ownership in repository.');
+bullet($pdf, 'Causa: repo pertence a um utilizador e o runner corre com outro utilizador.');
+bullet($pdf, 'Correcao: usar git -c "safe.directory=C:/caminho/repo" nos comandos git do deploy.');
 
 $pdf->Ln(1);
-sectionTitle($pdf, '5) Comandos de diagnostico recomendados');
+sectionTitle($pdf, '5) Regras para nao ter "verde" sem atualizar servidor');
+bullet($pdf, 'Falhar o job se git/composer falhar.');
+bullet($pdf, 'Ter verificacao final de commit deployado.');
+bullet($pdf, 'Confirmar que o job de deploy correu (nao apenas CI).');
+
+$pdf->Ln(1);
+sectionTitle($pdf, '6) Checklist de diagnostico rapido');
+bullet($pdf, 'Servico runner esta Running?');
+bullet($pdf, 'Repo local esta behind? (git fetch --all --prune + git status -sb)');
+bullet($pdf, 'HEAD local bate com origin/main?');
+bullet($pdf, 'Logs do runner indicam Job completed: Failed ou Succeeded?');
+
+$pdf->Ln(1);
+sectionTitle($pdf, '7) Operacao diaria recomendada');
+bullet($pdf, 'Commit/push dispara workflow.');
+bullet($pdf, 'Runner executa CI e deploy.');
+bullet($pdf, 'Se deploy falhar, validar sempre o job de deploy em separado.');
+bullet($pdf, 'Reutilizar este mesmo padrao em todos os repositorios.');
+
+$pdf->Ln(1);
+sectionTitle($pdf, 'Comandos uteis (resumo)');
 bullet($pdf, 'git fetch --all --prune');
 bullet($pdf, 'git status -sb');
 bullet($pdf, 'git rev-parse --short HEAD');
 bullet($pdf, 'git rev-parse --short origin/main');
 bullet($pdf, 'Get-Service actions.runner.* | Select Name,Status,StartType');
 bullet($pdf, 'Get-ChildItem C:/actions-runner-*/_diag');
-
-$pdf->Ln(1);
-sectionTitle($pdf, '6) Padrao de hardening que deves replicar');
-bullet($pdf, 'Deploy step com fail-fast em todos os comandos');
-bullet($pdf, 'Verificacao final de commit esperado ou mais recente');
-bullet($pdf, 'Sem git reset --hard no deploy');
-bullet($pdf, 'Logs claros no workflow para debug rapido');
 
 $pdf->Ln(3);
 $pdf->SetFont('Arial', 'I', 10);
