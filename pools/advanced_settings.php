@@ -279,6 +279,85 @@ $stmt->close();
     const initialPidEndDate = '<?= htmlspecialchars($analysis_end_date, ENT_QUOTES, 'UTF-8') ?>';
     const pidPeriodLabelEl = document.getElementById('pid-period-label');
 
+    function numOrNA(value, decimals = 2) {
+        if (value === null || value === undefined || Number.isNaN(Number(value))) return 'N/A';
+        return Number(value).toFixed(decimals);
+    }
+
+    function confidenceBadge(level) {
+        if (level === 'alta') return 'bg-success';
+        if (level === 'media') return 'bg-warning text-dark';
+        return 'bg-danger';
+    }
+
+    function severityBadge(level) {
+        if (level === 'alta') return 'badge bg-danger';
+        if (level === 'media') return 'badge bg-warning text-dark';
+        return 'badge bg-info text-dark';
+    }
+
+    function renderWindowRows(timeWindows) {
+        if (!timeWindows) return '';
+        const labels = {
+            madrugada: 'Madrugada (00-06)',
+            manha: 'Manhã (06-12)',
+            tarde: 'Tarde (12-18)',
+            noite: 'Noite (18-24)'
+        };
+        return Object.keys(labels).map(key => {
+            const bucket = timeWindows[key] || {};
+            const st = bucket.stats;
+            return `<tr>
+                <td>${labels[key]}</td>
+                <td>${bucket.samples || 0}</td>
+                <td>${st ? numOrNA(st.mean_abs, 3) : 'N/A'}</td>
+                <td>${st ? numOrNA(st.stdev, 3) : 'N/A'}</td>
+                <td>${st ? numOrNA(st.sign_change_rate * 100, 1) + '%' : 'N/A'}</td>
+            </tr>`;
+        }).join('');
+    }
+
+    function renderActionPlan(actions) {
+        if (!actions || !actions.length) return '';
+        return actions.map((item, idx) => `
+            <div class="alert alert-light border mb-2">
+                <div class="d-flex justify-content-between align-items-center mb-1">
+                    <strong>${idx + 1}. ${item.title}</strong>
+                    <span class="${severityBadge(item.severity)}">${item.severity.toUpperCase()}</span>
+                </div>
+                <div><strong>Ação:</strong> ${item.action}</div>
+                <div><strong>Impacto esperado:</strong> ${item.expected_impact}</div>
+                <div><strong>Risco:</strong> ${item.risk}</div>
+            </div>
+        `).join('');
+    }
+
+    function renderBeforeAfter(impact) {
+        if (!impact || !impact.before || !impact.after) return '';
+        return `
+            <div class="row mb-4">
+                <div class="col-md-12">
+                    <h6 class="text-secondary"><i class="fas fa-exchange-alt"></i> Impacto da Última Alteração de PID (24h antes vs 24h depois)</h6>
+                    <table class="stats-table">
+                        <tr><th>Métrica</th><th>Antes</th><th>Depois</th><th>Delta</th></tr>
+                        <tr>
+                            <td>Erro Médio Absoluto</td>
+                            <td>${numOrNA(impact.before.mean_abs, 4)}</td>
+                            <td>${numOrNA(impact.after.mean_abs, 4)}</td>
+                            <td>${numOrNA(impact.delta.mean_abs, 4)}</td>
+                        </tr>
+                        <tr>
+                            <td>Desvio Padrão</td>
+                            <td>${numOrNA(impact.before.stdev, 4)}</td>
+                            <td>${numOrNA(impact.after.stdev, 4)}</td>
+                            <td>${numOrNA(impact.delta.stdev, 4)}</td>
+                        </tr>
+                    </table>
+                </div>
+            </div>
+        `;
+    }
+
     async function fetchPidSuggestions(days = 3, startDate = '', endDate = '') {
         if (!tankId || tankId <= 0) {
             console.error('tankId inválido em fetchPidSuggestions:', tankId);
@@ -331,6 +410,10 @@ $stmt->close();
             if (data.chlorine && data.chlorine.stats) {
                 const stats = data.chlorine.stats;
                 const suggestions = data.chlorine.suggestions;
+                const confidence = data.chlorine.confidence || { level: 'baixa', score: 0, reasons: [] };
+                const score = data.chlorine.composite_score || { total: 0, weights: {}, components: {} };
+                const contribution = data.chlorine.contribution || { controller_pct: 50, external_pct: 50 };
+                const trend = data.chlorine.error_trend || { sparkline: '' };
 
                 // Estatísticas detalhadas
                 html += `
@@ -342,6 +425,8 @@ $stmt->close();
                                 <tr><td>Amostras</td><td>${stats.samples}</td><td>Quantidade de medições analisadas</td></tr>
                                 <tr><td>Erro Médio</td><td>${stats.mean.toFixed(4)}</td><td>Viés sistemático (+ = acima do setpoint)</td></tr>
                                 <tr><td>Erro Médio Absoluto</td><td>${stats.mean_abs.toFixed(4)}</td><td>Precisão média do controle</td></tr>
+                                <tr><td>Erro Médio (%)</td><td>${stats.mean_pct !== null ? stats.mean_pct.toFixed(2) + '%' : 'N/A'}</td><td>Viés relativo ao setpoint médio</td></tr>
+                                <tr><td>Erro Médio Absoluto (%)</td><td>${stats.mean_abs_pct !== null ? stats.mean_abs_pct.toFixed(2) + '%' : 'N/A'}</td><td>Precisão relativa ao setpoint médio</td></tr>
                                 <tr><td>Desvio Padrão</td><td>${stats.stdev.toFixed(4)}</td><td>Volatilidade das medições</td></tr>
                                 <tr><td>Mínimo/Máximo</td><td>${stats.min.toFixed(4)} / ${stats.max.toFixed(4)}</td><td>Faixa de variação do erro</td></tr>
                                 <tr><td>Mudanças de Sinal</td><td>${stats.sign_changes} (${(stats.sign_change_rate * 100).toFixed(1)}%)</td><td>Frequência de oscilações</td></tr>
@@ -356,6 +441,15 @@ $stmt->close();
                         <div class="col-md-6">
                             <h6 class="text-success"><i class="fas fa-lightbulb"></i> Diagnóstico de Performance</h6>
                             <div class="pid-analysis">
+                                <p>
+                                    <strong>Confiança da Análise:</strong>
+                                    <span class="badge ${confidenceBadge(confidence.level)}">${(confidence.level || 'baixa').toUpperCase()} (${numOrNA(confidence.score, 1)}%)</span>
+                                </p>
+                                <p><strong>Score Composto:</strong> ${numOrNA(score.total, 1)}/100</p>
+                                <p><strong>Peso dos critérios:</strong> Precisão 40% | Estabilidade 25% | Recuperação 20% | Robustez 15%</p>
+                                <p><strong>Contribuição provável:</strong> Controle ${numOrNA(contribution.controller_pct, 1)}% vs Externo ${numOrNA(contribution.external_pct, 1)}%</p>
+                                <p><strong>Tendência recente do erro:</strong> <span class="font-monospace">${trend.sparkline || 'N/A'}</span></p>
+                                ${confidence.reasons && confidence.reasons.length ? `<p class="text-muted"><strong>Limitações:</strong> ${confidence.reasons.join('; ')}</p>` : ''}
                 `;
 
                 // Análise de performance (separa estado geral das dimensões técnicas)
@@ -420,6 +514,29 @@ $stmt->close();
                     </div>
                 `;
 
+                html += `
+                    <div class="row mb-4">
+                        <div class="col-md-12">
+                            <h6 class="text-info"><i class="fas fa-clock"></i> Análise por Janelas Horárias</h6>
+                            <table class="stats-table">
+                                <tr><th>Janela</th><th>Amostras</th><th>MAE</th><th>Desvio Padrão</th><th>Oscilação (%)</th></tr>
+                                ${renderWindowRows(data.chlorine.time_windows)}
+                            </table>
+                        </div>
+                    </div>
+                `;
+
+                if (data.chlorine.action_plan && data.chlorine.action_plan.length > 0) {
+                    html += `
+                        <div class="row mb-4">
+                            <div class="col-md-12">
+                                <h6 class="text-danger"><i class="fas fa-list-ol"></i> Plano Priorizado de Ações</h6>
+                                ${renderActionPlan(data.chlorine.action_plan)}
+                            </div>
+                        </div>
+                    `;
+                }
+
                 // Recomendações detalhadas
                 if (suggestions && suggestions.length > 0) {
                     html += `
@@ -483,6 +600,8 @@ $stmt->close();
                         `;
                     }
                 }
+
+                html += renderBeforeAfter(data.chlorine.before_after_impact);
             } else {
                 const noRecentMsg = data.message
                     ? data.message

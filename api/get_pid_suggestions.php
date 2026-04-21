@@ -225,6 +225,251 @@ function calcStats($errors, $times) {
     ];
 }
 
+function calcStatsFromSeries($series) {
+    $errors = [];
+    $times = [];
+    foreach ($series as $point) {
+        if (!isset($point['value']) || !isset($point['setpoint'])) {
+            continue;
+        }
+        if ($point['value'] === null || $point['setpoint'] === null) {
+            continue;
+        }
+        $errors[] = (float)$point['value'] - (float)$point['setpoint'];
+        $times[] = $point['time'];
+    }
+    return calcStats($errors, $times);
+}
+
+function clamp01($v) {
+    return max(0.0, min(1.0, (float)$v));
+}
+
+function classifyWindow($timeString) {
+    $hour = (int)date('G', strtotime($timeString));
+    if ($hour >= 0 && $hour < 6) return 'madrugada';
+    if ($hour >= 6 && $hour < 12) return 'manha';
+    if ($hour >= 12 && $hour < 18) return 'tarde';
+    return 'noite';
+}
+
+function calcTimeWindowStats($series) {
+    $buckets = [
+        'madrugada' => [],
+        'manha' => [],
+        'tarde' => [],
+        'noite' => [],
+    ];
+
+    foreach ($series as $point) {
+        if (!isset($point['time'])) continue;
+        $bucket = classifyWindow($point['time']);
+        $buckets[$bucket][] = $point;
+    }
+
+    $result = [];
+    foreach ($buckets as $name => $points) {
+        $stats = calcStatsFromSeries($points);
+        $result[$name] = [
+            'samples' => count($points),
+            'stats' => $stats,
+        ];
+    }
+    return $result;
+}
+
+function calcConfidence($stats, $rowCount, $zeroGlitchCount, $zeroObservedCount) {
+    $samples = isset($stats['samples']) ? (int)$stats['samples'] : 0;
+    $sampleScore = $samples >= 120 ? 1.0 : ($samples >= 60 ? 0.8 : ($samples >= 30 ? 0.55 : 0.30));
+    $coverage = $rowCount > 0 ? ($samples / $rowCount) : 0.0;
+    $coverageScore = clamp01($coverage);
+    $glitchRatio = $zeroObservedCount > 0 ? ($zeroGlitchCount / $zeroObservedCount) : 0.0;
+    $qualityScore = clamp01(1.0 - min(0.5, $glitchRatio));
+
+    $score = (0.50 * $sampleScore) + (0.25 * $coverageScore) + (0.25 * $qualityScore);
+    $level = $score >= 0.80 ? 'alta' : ($score >= 0.55 ? 'media' : 'baixa');
+
+    $reasons = [];
+    if ($samples < 30) $reasons[] = 'Amostragem reduzida';
+    if ($coverage < 0.6) $reasons[] = 'Cobertura parcial dos dados do período';
+    if ($glitchRatio > 0.25) $reasons[] = 'Muitas leituras espúrias de zero';
+
+    return [
+        'level' => $level,
+        'score' => round($score * 100, 1),
+        'reasons' => $reasons,
+    ];
+}
+
+function calcCompositeScore($stats, $recovery, $zeroGlitchCount, $samples) {
+    $precision = 100 - min(100, (($stats['mean_abs'] ?? 0) / 0.30) * 100);
+    $stability = 100 - min(100, (($stats['stdev'] ?? 0) / 0.40) * 100);
+    $recoveryMean = isset($recovery['mean_recovery_sec']) && $recovery['mean_recovery_sec'] !== null ? (float)$recovery['mean_recovery_sec'] : 0;
+    $recoveryScore = 100 - min(100, ($recoveryMean / 3600) * 100);
+    $robustnessPenalty = min(40, $zeroGlitchCount * 3);
+    $robustness = max(0, 100 - $robustnessPenalty);
+
+    if ($samples < 15) {
+        $precision *= 0.8;
+        $stability *= 0.8;
+        $recoveryScore *= 0.8;
+    }
+
+    $total = (0.40 * $precision) + (0.25 * $stability) + (0.20 * $recoveryScore) + (0.15 * $robustness);
+
+    return [
+        'total' => round($total, 1),
+        'weights' => ['precision' => 0.40, 'stability' => 0.25, 'recovery' => 0.20, 'robustness' => 0.15],
+        'components' => [
+            'precision' => round($precision, 1),
+            'stability' => round($stability, 1),
+            'recovery' => round($recoveryScore, 1),
+            'robustness' => round($robustness, 1),
+        ],
+    ];
+}
+
+function calcContributionSplit($stats, $recovery) {
+    $variability = isset($stats['stdev']) ? (float)$stats['stdev'] : 0.0;
+    $disturbanceCount = isset($recovery['disturbance_count']) ? (int)$recovery['disturbance_count'] : 0;
+    $unrecovered = isset($recovery['unrecovered_count']) ? (int)$recovery['unrecovered_count'] : 0;
+
+    $externalRaw = min(1.0, ($disturbanceCount * 0.12) + ($unrecovered * 0.18));
+    $controllerRaw = min(1.0, ($variability / 0.45) * 0.8 + 0.2);
+    $sum = max(0.01, $externalRaw + $controllerRaw);
+
+    $externalPct = round(($externalRaw / $sum) * 100, 1);
+    $controllerPct = round(100 - $externalPct, 1);
+
+    return [
+        'controller_pct' => $controllerPct,
+        'external_pct' => $externalPct,
+    ];
+}
+
+function buildSparkline($values) {
+    if (!$values || count($values) === 0) return '';
+    $ticks = ['▁', '▂', '▃', '▄', '▅', '▆', '▇', '█'];
+    $min = min($values);
+    $max = max($values);
+    $range = $max - $min;
+    if ($range <= 0) {
+        return str_repeat('▅', min(32, count($values)));
+    }
+
+    $spark = '';
+    foreach ($values as $v) {
+        $norm = ($v - $min) / $range;
+        $idx = (int)round($norm * 7);
+        $spark .= $ticks[max(0, min(7, $idx))];
+    }
+    return $spark;
+}
+
+function calcBeforeAfterImpact($series, $changeTime) {
+    if (!$changeTime) return null;
+    $changeTs = strtotime($changeTime);
+    if (!$changeTs) return null;
+
+    $beforeStart = $changeTs - 86400;
+    $beforeEnd = $changeTs;
+    $afterStart = $changeTs;
+    $afterEnd = $changeTs + 86400;
+
+    $before = [];
+    $after = [];
+
+    foreach ($series as $point) {
+        $ts = isset($point['ts']) ? (int)$point['ts'] : 0;
+        if ($ts >= $beforeStart && $ts < $beforeEnd) $before[] = $point;
+        if ($ts >= $afterStart && $ts <= $afterEnd) $after[] = $point;
+    }
+
+    $beforeStats = calcStatsFromSeries($before);
+    $afterStats = calcStatsFromSeries($after);
+    if (!$beforeStats || !$afterStats) {
+        return null;
+    }
+
+    $deltaMae = $afterStats['mean_abs'] - $beforeStats['mean_abs'];
+    $deltaStdev = $afterStats['stdev'] - $beforeStats['stdev'];
+
+    return [
+        'window_hours' => 24,
+        'before' => $beforeStats,
+        'after' => $afterStats,
+        'delta' => [
+            'mean_abs' => $deltaMae,
+            'stdev' => $deltaStdev,
+        ],
+    ];
+}
+
+function buildActionPlan($stats, $recovery, $confidence, $composite) {
+    $actions = [];
+
+    if (($stats['mean_abs'] ?? 0) >= 0.25) {
+        $actions[] = [
+            'priority' => 1,
+            'severity' => 'alta',
+            'title' => 'Reduzir erro médio absoluto',
+            'action' => 'Ajustar Kp de forma gradual (+10% se estável, -10% se oscilante).',
+            'expected_impact' => 'Redução de 10-20% no MAE.',
+            'risk' => 'Risco de sobrecorreção se houver perturbações externas frequentes.',
+        ];
+    }
+
+    if (($stats['stdev'] ?? 0) > 0.30) {
+        $actions[] = [
+            'priority' => 2,
+            'severity' => 'media',
+            'title' => 'Conter oscilações',
+            'action' => 'Reduzir Kp ligeiramente e aumentar Td em pequeno passo.',
+            'expected_impact' => 'Menor variabilidade e menos reversões rápidas.',
+            'risk' => 'Resposta pode ficar mais lenta.',
+        ];
+    }
+
+    if (isset($recovery['mean_recovery_sec']) && $recovery['mean_recovery_sec'] !== null && $recovery['mean_recovery_sec'] > 1800) {
+        $actions[] = [
+            'priority' => 3,
+            'severity' => 'media',
+            'title' => 'Melhorar recuperação pós-perturbação',
+            'action' => 'Ajustar Ti para acelerar retorno ao setpoint com segurança.',
+            'expected_impact' => 'Recuperação mais rápida após quedas externas.',
+            'risk' => 'Integral excessiva pode aumentar overshoot.',
+        ];
+    }
+
+    if ($confidence['level'] === 'baixa') {
+        $actions[] = [
+            'priority' => 0,
+            'severity' => 'alta',
+            'title' => 'Elevar confiança da análise antes de alterar PID',
+            'action' => 'Aguardar mais dados e validar qualidade do sensor.',
+            'expected_impact' => 'Decisão de tuning mais robusta.',
+            'risk' => 'Ajuste prematuro com base em amostra curta.',
+        ];
+    }
+
+    if (($composite['total'] ?? 100) >= 85 && count($actions) === 0) {
+        $actions[] = [
+            'priority' => 4,
+            'severity' => 'baixa',
+            'title' => 'Manter estratégia atual',
+            'action' => 'Sem necessidade de ajuste imediato; monitorizar tendência.',
+            'expected_impact' => 'Estabilidade operacional contínua.',
+            'risk' => 'Baixo.',
+        ];
+    }
+
+    usort($actions, function($a, $b) {
+        return ($a['priority'] <=> $b['priority']);
+    });
+
+    return $actions;
+}
+
 function markSpontaneousZeroRuns($series) {
     $n = count($series);
     if ($n < 3) {
@@ -569,6 +814,22 @@ foreach ($clSeries as $point) {
 
 
 $clStats = calcStats($clErrors, $times);
+$clSetpointMean = null;
+if (count($cleanSeries) > 0) {
+    $setpoints = array_column($cleanSeries, 'setpoint');
+    $setpoints = array_filter($setpoints, function($v) { return $v !== null && is_numeric($v); });
+    if (count($setpoints) > 0) {
+        $clSetpointMean = array_sum($setpoints) / count($setpoints);
+    }
+}
+
+if ($clStats && $clSetpointMean !== null && $clSetpointMean != 0) {
+    $clStats['mean_pct'] = ($clStats['mean'] / $clSetpointMean) * 100;
+    $clStats['mean_abs_pct'] = ($clStats['mean_abs'] / $clSetpointMean) * 100;
+} else if ($clStats) {
+    $clStats['mean_pct'] = null;
+    $clStats['mean_abs_pct'] = null;
+}
 
 // --- Cálculo do tempo médio de resposta do cloro (delay entre dosagem e efeito) ---
 $cl_delay_samples = [];
@@ -601,6 +862,16 @@ if (count($cl_delay_samples) > 0) {
 }
 
 $clRecovery = calcDisturbanceRecovery($cleanSeries);
+$windowStats = calcTimeWindowStats($cleanSeries);
+$confidence = calcConfidence($clStats ?: ['samples' => 0], count($history), $zeroGlitchCount, $zeroObservedCount);
+$compositeScore = calcCompositeScore($clStats ?: ['mean_abs' => 1, 'stdev' => 1], $clRecovery, $zeroGlitchCount, $clStats ? $clStats['samples'] : 0);
+$contribution = calcContributionSplit($clStats ?: ['stdev' => 0], $clRecovery);
+
+$trendValues = [];
+if ($clStats && count($clErrors) > 0) {
+    $trendValues = array_slice($clErrors, -32);
+}
+$trendSparkline = buildSparkline($trendValues);
 
 // Usa os valores atuais de PID do banco de dados (padrão) e tenta fallback em histórico se Ti inválido
 $tankPid = [
@@ -632,7 +903,19 @@ if (($tankPid['i'] === null || $tankPid['i'] <= 0) || ($tankPid['d'] === null ||
     }
 }
 
-$recommendationsResult = pidRecommendations('chlorine', $clStats, $tankPid, [
+$statsForRecommendations = $clStats ?: [
+    'samples' => 0,
+    'mean' => 0.0,
+    'mean_abs' => 0.0,
+    'min' => 0.0,
+    'max' => 0.0,
+    'stdev' => 0.0,
+    'sign_changes' => 0,
+    'sign_change_rate' => 0.0,
+    'derivative_mean' => 0.0,
+];
+
+$recommendationsResult = pidRecommendations('chlorine', $statsForRecommendations, $tankPid, [
     'mean_response_delay_sec' => $cl_mean_delay,
     'recovery' => $clRecovery,
     'zero_glitch_count' => $zeroGlitchCount,
@@ -675,6 +958,18 @@ if ($pid_change_history && count($pid_change_history) > 0) {
     }
 }
 
+$beforeAfterImpact = null;
+if (!empty($pid_change_history) && isset($pid_change_history[0]['changed_at'])) {
+    $beforeAfterImpact = calcBeforeAfterImpact($cleanSeries, $pid_change_history[0]['changed_at']);
+}
+
+$actionPlan = buildActionPlan(
+    $clStats ?: ['mean_abs' => 1, 'stdev' => 1],
+    $clRecovery,
+    $confidence,
+    $compositeScore
+);
+
 $response = [
     'tank_id' => $tank_id,
     'tank_name' => $tank['name'],
@@ -683,7 +978,7 @@ $response = [
     'end_date' => $hasRange ? $rangeEnd : date('Y-m-d'),
     'row_count' => count($history),
     'chlorine' => [
-        'stats' => $clStats,
+        'stats' => $clStats ?: $statsForRecommendations,
         'suggestions' => $recommendations['chlorine'],
         'suggested_values' => $suggestedValues,
         'can_accept_suggestion' => $canAcceptSuggestion,
@@ -691,6 +986,7 @@ $response = [
         'last_change_time' => $lastChangeTime ? date('Y-m-d H:i:s', $lastChangeTime) : null,
         'mean_response_delay_sec' => $cl_mean_delay,
         'mean_response_delay_min' => $cl_mean_delay !== null ? round($cl_mean_delay/60,1) : null,
+        'setpoint_mean' => $clSetpointMean,
         'mean_recovery_sec' => isset($clRecovery['mean_recovery_sec']) ? $clRecovery['mean_recovery_sec'] : null,
         'mean_recovery_min' => isset($clRecovery['mean_recovery_sec']) && $clRecovery['mean_recovery_sec'] !== null ? round($clRecovery['mean_recovery_sec'] / 60, 1) : null,
         'mean_stabilization_sec' => isset($clRecovery['mean_stabilization_sec']) ? $clRecovery['mean_stabilization_sec'] : null,
@@ -698,7 +994,17 @@ $response = [
         'disturbance_count' => isset($clRecovery['disturbance_count']) ? (int)$clRecovery['disturbance_count'] : 0,
         'unrecovered_count' => isset($clRecovery['unrecovered_count']) ? (int)$clRecovery['unrecovered_count'] : 0,
         'zero_observed_count' => $zeroObservedCount,
-        'zero_glitch_count' => $zeroGlitchCount
+        'zero_glitch_count' => $zeroGlitchCount,
+        'confidence' => $confidence,
+        'composite_score' => $compositeScore,
+        'contribution' => $contribution,
+        'time_windows' => $windowStats,
+        'error_trend' => [
+            'values' => $trendValues,
+            'sparkline' => $trendSparkline
+        ],
+        'before_after_impact' => $beforeAfterImpact,
+        'action_plan' => $actionPlan
     ],
     'current_pid' => $tankPid,
     'pid_change_history' => $pid_change_history,
