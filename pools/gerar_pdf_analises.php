@@ -138,7 +138,7 @@ function draw_grid_report($period_name, $tanks, $data, $techs, $report_date) {
             'pH' => ['key' => 'ph_level', 'decimals' => 2],
             'Cloro livre(mg/l)' => ['key' => 'chlorine_level', 'decimals' => 2],
             'Cloro total(mg/l)' => ['key' => 'chlorine_total', 'decimals' => 2],
-            'Dif. Cloro total-livre(mg/l)' => ['key' => 'chlorine_diff', 'decimals' => 2],
+            'Dif. Cloro total-livre' => ['key' => 'chlorine_diff', 'decimals' => 2],
             'Condutividade (mS/cm)' => ['key' => 'conductivity', 'decimals' => 2],
             'Solidos Dissolv. (mg/l)' => ['key' => 'dissolved_solids', 'decimals' => 2]
         ];
