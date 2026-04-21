@@ -83,6 +83,7 @@ $isViewer = isset($_SESSION['user_type']) && $_SESSION['user_type'] === 'viewer'
         <div class="left">
             <strong>Plano de Ajuste PID</strong>
             <span class="muted">Período: últimos <?= (int)$days ?> dias</span>
+            <span class="muted">Inclui métricas avançadas: confiança, score, janelas horárias e impacto antes/depois</span>
         </div>
         <div class="right">
             <a class="btn btn-secondary" href="glossario_analise_pid.php?days=<?= (int)$days ?>&from=plano" target="_blank" rel="noopener noreferrer">

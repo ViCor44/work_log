@@ -87,6 +87,169 @@ function calc_stats($errors, $times) {
     ];
 }
 
+function calc_stats_from_series($series) {
+    $errors = [];
+    $times = [];
+    foreach ($series as $point) {
+        if (!isset($point['value']) || !isset($point['setpoint'])) {
+            continue;
+        }
+        if ($point['value'] === null || $point['setpoint'] === null) {
+            continue;
+        }
+        $errors[] = (float)$point['value'] - (float)$point['setpoint'];
+        $times[] = $point['time'];
+    }
+    return calc_stats($errors, $times);
+}
+
+function clamp01($v) {
+    return max(0.0, min(1.0, (float)$v));
+}
+
+function classify_window($timeString) {
+    $hour = (int)date('G', strtotime($timeString));
+    if ($hour >= 0 && $hour < 6) return 'Madrugada';
+    if ($hour >= 6 && $hour < 12) return 'Manha';
+    if ($hour >= 12 && $hour < 18) return 'Tarde';
+    return 'Noite';
+}
+
+function calc_time_window_stats($series) {
+    $buckets = [
+        'Madrugada' => [],
+        'Manha' => [],
+        'Tarde' => [],
+        'Noite' => [],
+    ];
+
+    foreach ($series as $point) {
+        if (!isset($point['time'])) continue;
+        $bucket = classify_window($point['time']);
+        $buckets[$bucket][] = $point;
+    }
+
+    $result = [];
+    foreach ($buckets as $name => $points) {
+        $result[$name] = [
+            'samples' => count($points),
+            'stats' => calc_stats_from_series($points),
+        ];
+    }
+    return $result;
+}
+
+function calc_confidence($stats, $rowCount, $zeroGlitchCount) {
+    $samples = isset($stats['samples']) ? (int)$stats['samples'] : 0;
+    $sampleScore = $samples >= 120 ? 1.0 : ($samples >= 60 ? 0.8 : ($samples >= 30 ? 0.55 : 0.30));
+    $coverage = $rowCount > 0 ? ($samples / $rowCount) : 0.0;
+    $coverageScore = clamp01($coverage);
+    $qualityScore = clamp01(1.0 - min(0.5, ($zeroGlitchCount / max(1, $samples))));
+
+    $score = (0.50 * $sampleScore) + (0.25 * $coverageScore) + (0.25 * $qualityScore);
+    $level = $score >= 0.80 ? 'ALTA' : ($score >= 0.55 ? 'MEDIA' : 'BAIXA');
+
+    return [
+        'level' => $level,
+        'score' => round($score * 100, 1),
+    ];
+}
+
+function calc_composite_score($stats, $recovery, $zeroGlitches, $samples) {
+    $precision = 100 - min(100, (($stats['mean_abs'] ?? 0) / 0.30) * 100);
+    $stability = 100 - min(100, (($stats['stdev'] ?? 0) / 0.40) * 100);
+    $recoveryMean = isset($recovery['mean_recovery_sec']) && $recovery['mean_recovery_sec'] !== null ? (float)$recovery['mean_recovery_sec'] : 0;
+    $recoveryScore = 100 - min(100, ($recoveryMean / 3600) * 100);
+    $robustness = max(0, 100 - min(40, $zeroGlitches * 3));
+
+    if ($samples < 15) {
+        $precision *= 0.8;
+        $stability *= 0.8;
+        $recoveryScore *= 0.8;
+    }
+
+    return round((0.40 * $precision) + (0.25 * $stability) + (0.20 * $recoveryScore) + (0.15 * $robustness), 1);
+}
+
+function calc_contribution_split($stats, $recovery) {
+    $variability = isset($stats['stdev']) ? (float)$stats['stdev'] : 0.0;
+    $disturbanceCount = isset($recovery['disturbance_count']) ? (int)$recovery['disturbance_count'] : 0;
+    $unrecovered = isset($recovery['unrecovered_count']) ? (int)$recovery['unrecovered_count'] : 0;
+
+    $externalRaw = min(1.0, ($disturbanceCount * 0.12) + ($unrecovered * 0.18));
+    $controllerRaw = min(1.0, ($variability / 0.45) * 0.8 + 0.2);
+    $sum = max(0.01, $externalRaw + $controllerRaw);
+
+    $externalPct = round(($externalRaw / $sum) * 100, 1);
+    $controllerPct = round(100 - $externalPct, 1);
+    return ['controller_pct' => $controllerPct, 'external_pct' => $externalPct];
+}
+
+function calc_before_after_impact($conn, $tankId, $series) {
+    $stmt = $conn->prepare("SELECT changed_at FROM tank_pid_changes WHERE tank_id = ? ORDER BY changed_at DESC LIMIT 1");
+    if (!$stmt) {
+        return null;
+    }
+    $stmt->bind_param('i', $tankId);
+    if (!$stmt->execute()) {
+        $stmt->close();
+        return null;
+    }
+    $row = $stmt->get_result()->fetch_assoc();
+    $stmt->close();
+    if (!$row || empty($row['changed_at'])) {
+        return null;
+    }
+
+    $changeTs = strtotime($row['changed_at']);
+    if (!$changeTs) {
+        return null;
+    }
+
+    $beforeStart = $changeTs - 86400;
+    $beforeEnd = $changeTs;
+    $afterStart = $changeTs;
+    $afterEnd = $changeTs + 86400;
+
+    $before = [];
+    $after = [];
+    foreach ($series as $point) {
+        $ts = isset($point['ts']) ? (int)$point['ts'] : 0;
+        if ($ts >= $beforeStart && $ts < $beforeEnd) $before[] = $point;
+        if ($ts >= $afterStart && $ts <= $afterEnd) $after[] = $point;
+    }
+
+    $beforeStats = calc_stats_from_series($before);
+    $afterStats = calc_stats_from_series($after);
+    if (!$beforeStats || !$afterStats) {
+        return null;
+    }
+
+    return [
+        'delta_mean_abs' => $afterStats['mean_abs'] - $beforeStats['mean_abs'],
+    ];
+}
+
+function build_action_plan($stats, $recovery, $confidence, $compositeScore) {
+    $actions = [];
+    if (($stats['mean_abs'] ?? 0) >= 0.25) {
+        $actions[] = 'Reduzir erro medio absoluto com ajuste gradual de Kp.';
+    }
+    if (($stats['stdev'] ?? 0) > 0.30) {
+        $actions[] = 'Conter oscilacoes: reduzir Kp ligeiro e aumentar Td moderado.';
+    }
+    if (isset($recovery['mean_recovery_sec']) && $recovery['mean_recovery_sec'] !== null && $recovery['mean_recovery_sec'] > 1800) {
+        $actions[] = 'Melhorar recuperacao apos perturbacao ajustando Ti com cautela.';
+    }
+    if ($confidence['level'] === 'BAIXA') {
+        $actions[] = 'Aumentar confianca da analise antes de novo ajuste.';
+    }
+    if ($compositeScore >= 85 && count($actions) === 0) {
+        $actions[] = 'Manter estrategia atual e monitorizar tendencia.';
+    }
+    return $actions;
+}
+
 function mark_spontaneous_zero_runs($series) {
     $n = count($series);
     if ($n < 3) {
@@ -446,6 +609,20 @@ function analyze_tank($conn, $tankId, $startDate) {
         return null;
     }
 
+    $setpointMean = null;
+    $setpoints = array_column($cleanSeries, 'setpoint');
+    $setpoints = array_filter($setpoints, function($v) { return $v !== null && is_numeric($v); });
+    if (count($setpoints) > 0) {
+        $setpointMean = array_sum($setpoints) / count($setpoints);
+    }
+    if ($setpointMean !== null && $setpointMean != 0) {
+        $stats['mean_pct'] = ($stats['mean'] / $setpointMean) * 100;
+        $stats['mean_abs_pct'] = ($stats['mean_abs'] / $setpointMean) * 100;
+    } else {
+        $stats['mean_pct'] = null;
+        $stats['mean_abs_pct'] = null;
+    }
+
     $delaySamples = [];
     $doseThreshold = 0.05;
     $effectThreshold = 0.05;
@@ -480,12 +657,39 @@ function analyze_tank($conn, $tankId, $startDate) {
 
     $meanDelaySec = count($delaySamples) > 0 ? array_sum($delaySamples) / count($delaySamples) : null;
     $recovery = calc_disturbance_recovery($cleanSeries);
+    $timeWindows = calc_time_window_stats($cleanSeries);
+    $confidence = calc_confidence($stats, count($history), $zeroGlitches);
+    $compositeScore = calc_composite_score($stats, $recovery, $zeroGlitches, $stats['samples']);
+    $contribution = calc_contribution_split($stats, $recovery);
+    $beforeAfter = calc_before_after_impact($conn, $tankId, $cleanSeries);
+    $actionPlan = build_action_plan($stats, $recovery, $confidence, $compositeScore);
+
+    $worstWindow = null;
+    $worstMae = -1;
+    foreach ($timeWindows as $windowName => $windowData) {
+        if (!isset($windowData['stats']) || !$windowData['stats']) {
+            continue;
+        }
+        $windowMae = $windowData['stats']['mean_abs'];
+        if ($windowMae > $worstMae) {
+            $worstMae = $windowMae;
+            $worstWindow = $windowName;
+        }
+    }
 
     return [
         'stats' => $stats,
+        'setpoint_mean' => $setpointMean,
         'mean_delay_sec' => $meanDelaySec,
         'zero_glitches' => $zeroGlitches,
         'recovery' => $recovery,
+        'confidence' => $confidence,
+        'composite_score' => $compositeScore,
+        'contribution' => $contribution,
+        'time_windows' => $timeWindows,
+        'worst_window' => $worstWindow,
+        'before_after_impact' => $beforeAfter,
+        'action_plan' => $actionPlan,
         'row_count' => count($history),
     ];
 }
@@ -532,7 +736,16 @@ foreach ($tanks as $tank) {
         'tank_name' => $tank['name'],
         'samples' => $analysis['stats']['samples'],
         'mean_abs' => $analysis['stats']['mean_abs'],
+        'mean_abs_pct' => isset($analysis['stats']['mean_abs_pct']) ? $analysis['stats']['mean_abs_pct'] : null,
         'stdev' => $analysis['stats']['stdev'],
+        'confidence_level' => isset($analysis['confidence']['level']) ? $analysis['confidence']['level'] : 'BAIXA',
+        'confidence_score' => isset($analysis['confidence']['score']) ? $analysis['confidence']['score'] : 0,
+        'composite_score' => isset($analysis['composite_score']) ? $analysis['composite_score'] : null,
+        'controller_pct' => isset($analysis['contribution']['controller_pct']) ? $analysis['contribution']['controller_pct'] : null,
+        'external_pct' => isset($analysis['contribution']['external_pct']) ? $analysis['contribution']['external_pct'] : null,
+        'worst_window' => isset($analysis['worst_window']) ? $analysis['worst_window'] : '-',
+        'delta_mae_after_change' => isset($analysis['before_after_impact']['delta_mean_abs']) ? $analysis['before_after_impact']['delta_mean_abs'] : null,
+        'top_action' => (isset($analysis['action_plan']) && count($analysis['action_plan']) > 0) ? $analysis['action_plan'][0] : 'Sem acao prioritaria',
         'mean_delay_min' => $analysis['mean_delay_sec'] !== null ? round($analysis['mean_delay_sec'] / 60, 1) : null,
         'mean_recovery_min' => isset($analysis['recovery']['mean_recovery_sec']) && $analysis['recovery']['mean_recovery_sec'] !== null
             ? round($analysis['recovery']['mean_recovery_sec'] / 60, 1)
@@ -639,6 +852,57 @@ foreach ($rows as $row) {
 $pdf->Ln(3);
 $pdf->SetFont('Arial', '', 7.5);
 $pdf->MultiCell(0, 5, utf8_decode('Nota: Ti está na unidade do controlador (segundos). Ajustes devem ser aplicados de forma gradual e validados durante a semana.'), 0, 'L');
+
+$pdf->Ln(2);
+$pdf->SetFont('Arial', 'B', 9);
+$pdf->Cell(0, 6, utf8_decode('Métricas Avançadas (7 dias)'), 0, 1, 'L');
+$pdf->SetFont('Arial', 'B', 7);
+$pdf->SetFillColor(230, 230, 230);
+$pdf->Cell(32, 6, utf8_decode('Controlador'), 1, 0, 'C', true);
+$pdf->Cell(14, 6, utf8_decode('MAE%'), 1, 0, 'C', true);
+$pdf->Cell(24, 6, utf8_decode('Confianca'), 1, 0, 'C', true);
+$pdf->Cell(14, 6, utf8_decode('Score'), 1, 0, 'C', true);
+$pdf->Cell(18, 6, utf8_decode('Ctrl/Ext'), 1, 0, 'C', true);
+$pdf->Cell(20, 6, utf8_decode('Janela'), 1, 0, 'C', true);
+$pdf->Cell(20, 6, utf8_decode('Delta MAE'), 1, 0, 'C', true);
+$pdf->Cell(48, 6, utf8_decode('Acao Prioritaria'), 1, 1, 'C', true);
+$pdf->SetFont('Arial', '', 6.8);
+
+foreach ($rows as $row) {
+    if ($pdf->GetY() > 128) {
+        $pdf->AddPage();
+        $pdf->SetFont('Arial', 'B', 9);
+        $pdf->Cell(0, 6, utf8_decode('Métricas Avançadas (continuação)'), 0, 1, 'L');
+        $pdf->SetFont('Arial', 'B', 7);
+        $pdf->SetFillColor(230, 230, 230);
+        $pdf->Cell(32, 6, utf8_decode('Controlador'), 1, 0, 'C', true);
+        $pdf->Cell(14, 6, utf8_decode('MAE%'), 1, 0, 'C', true);
+        $pdf->Cell(24, 6, utf8_decode('Confianca'), 1, 0, 'C', true);
+        $pdf->Cell(14, 6, utf8_decode('Score'), 1, 0, 'C', true);
+        $pdf->Cell(18, 6, utf8_decode('Ctrl/Ext'), 1, 0, 'C', true);
+        $pdf->Cell(20, 6, utf8_decode('Janela'), 1, 0, 'C', true);
+        $pdf->Cell(20, 6, utf8_decode('Delta MAE'), 1, 0, 'C', true);
+        $pdf->Cell(48, 6, utf8_decode('Acao Prioritaria'), 1, 1, 'C', true);
+        $pdf->SetFont('Arial', '', 6.8);
+    }
+
+    $confidenceText = (isset($row['confidence_level']) ? $row['confidence_level'] : 'BAIXA')
+        . ' (' . (isset($row['confidence_score']) ? number_format((float)$row['confidence_score'], 1, '.', '') : '0.0') . '%)';
+    $contributionText = '-';
+    if (isset($row['controller_pct']) && isset($row['external_pct']) && $row['controller_pct'] !== null && $row['external_pct'] !== null) {
+        $contributionText = number_format((float)$row['controller_pct'], 0, '.', '') . '/' . number_format((float)$row['external_pct'], 0, '.', '');
+    }
+    $actionText = isset($row['top_action']) ? $row['top_action'] : 'Sem acao prioritaria';
+
+    $pdf->Cell(32, 5, utf8_decode(substr($row['tank_name'], 0, 20)), 1, 0, 'L');
+    $pdf->Cell(14, 5, ($row['mean_abs_pct'] !== null ? number_format((float)$row['mean_abs_pct'], 1, '.', '') . '%' : '-'), 1, 0, 'C');
+    $pdf->Cell(24, 5, utf8_decode(substr($confidenceText, 0, 18)), 1, 0, 'C');
+    $pdf->Cell(14, 5, ($row['composite_score'] !== null ? number_format((float)$row['composite_score'], 1, '.', '') : '-'), 1, 0, 'C');
+    $pdf->Cell(18, 5, utf8_decode($contributionText), 1, 0, 'C');
+    $pdf->Cell(20, 5, utf8_decode(isset($row['worst_window']) ? $row['worst_window'] : '-'), 1, 0, 'C');
+    $pdf->Cell(20, 5, ($row['delta_mae_after_change'] !== null ? number_format((float)$row['delta_mae_after_change'], 3, '.', '') : '-'), 1, 0, 'C');
+    $pdf->Cell(48, 5, utf8_decode(substr($actionText, 0, 54)), 1, 1, 'L');
+}
 
 $totalDisturbances = 0;
 $totalUnrecovered = 0;
