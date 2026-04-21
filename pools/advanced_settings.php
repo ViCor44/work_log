@@ -77,6 +77,7 @@ $stmt->close();
     <div class="d-flex justify-content-between align-items-center mb-4">
         <h1 class="h3 mb-0">Análise Inteligente de Controle PID: <?= htmlspecialchars($tank_name) ?></h1>
         <div>
+            <a href="glossario_analise_pid.php?tank_id=<?= (int)$tank_id ?>&days=<?= (int)$analysis_days ?>&from=advanced" class="btn btn-info">Glossário da Análise</a>
             <a href="view_pool_details.php?id=<?= $tank_id ?>" class="btn btn-secondary">Voltar à Monitorização</a>
             <a href="dashboard.php" class="btn btn-secondary">Voltar ao Dashboard</a>
         </div>

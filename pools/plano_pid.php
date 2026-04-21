@@ -85,6 +85,9 @@ $isViewer = isset($_SESSION['user_type']) && $_SESSION['user_type'] === 'viewer'
             <span class="muted">Período: últimos <?= (int)$days ?> dias</span>
         </div>
         <div class="right">
+            <a class="btn btn-secondary" href="glossario_analise_pid.php?days=<?= (int)$days ?>&from=plano" target="_blank" rel="noopener noreferrer">
+                <i class="fas fa-book"></i> Glossário da Análise
+            </a>
             <a class="btn btn-warning" href="gerar_pdf_pid_semanal.php?days=<?= (int)$days ?>" target="_blank" rel="noopener noreferrer">
                 <i class="fas fa-print"></i> Abrir PDF em nova aba
             </a>

@@ -125,6 +125,7 @@ if (isset($_SESSION['user_type']) && $_SESSION['user_type'] === 'viewer') {
         'dashboard.php',          // O dashboard principal
         'view_pool_details.php',  // A página de detalhes de uma piscina
         'plano_pid.php',          // Pré-visualização do plano PID
+        'glossario_analise_pid.php', // Glossário dos termos da análise PID
         'gerar_pdf_pid_semanal.php', // Relatório semanal de sugestões PID
         'get_controller_data.php',// A API para os dados em tempo real
         'get_filter_modbus_data.php', // API Modbus dos filtros no dashboard
