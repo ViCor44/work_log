@@ -26,6 +26,7 @@ foreach ($results as $row) {
 function render_analysis_card($tank, $period, $data) {
     $ph = isset($data['ph_level']) ? $data['ph_level'] : '';
     $cl = isset($data['chlorine_level']) ? $data['chlorine_level'] : '';
+    $cl_total = isset($data['chlorine_total']) ? $data['chlorine_total'] : '';
     $temp = isset($data['temperature']) ? $data['temperature'] : '';
     $cond = isset($data['conductivity']) ? $data['conductivity'] : '';
     $solids = isset($data['dissolved_solids']) ? $data['dissolved_solids'] : '';
@@ -38,6 +39,9 @@ function render_analysis_card($tank, $period, $data) {
     echo '        <input type="hidden" name="analysis_id['.$period.']['.$tank['id'].']" value="'.$id.'">';
     echo '        <div class="mb-2"><label class="form-label">pH</label><input type="number" step="0.01" class="form-control" name="ph_level['.$period.']['.$tank['id'].']" value="'.$ph.'"></div>';
     echo '        <div class="mb-2"><label class="form-label">Cloro (ppm)</label><input type="number" step="0.01" class="form-control" name="chlorine_level['.$period.']['.$tank['id'].']" value="'.$cl.'"></div>';
+    if ($period === 'manha') {
+        echo '        <div class="mb-2"><label class="form-label">Cloro Total (ppm)</label><input type="number" step="0.01" class="form-control" name="chlorine_total['.$period.']['.$tank['id'].']" value="'.$cl_total.'"></div>';
+    }
     echo '        <div class="mb-2"><label class="form-label">Temp. (°C)</label><input type="number" step="0.1" class="form-control" name="temperature['.$period.']['.$tank['id'].']" value="'.$temp.'"></div>';
     echo '        <div class="mb-2"><label class="form-label">Condutividade (mS/cm)</label><input type="number" step="0.01" class="form-control" name="conductivity['.$period.']['.$tank['id'].']" value="'.$cond.'"></div>';
     echo '        <div class="mb-2"><label class="form-label">Sólidos Dissolv. (mg/l)</label><input type="number" step="0.01" class="form-control" name="dissolved_solids['.$period.']['.$tank['id'].']" value="'.$solids.'"></div>';

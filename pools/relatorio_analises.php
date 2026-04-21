@@ -47,6 +47,13 @@ function print_value($value, $decimals = 2) {
     }
     return '';
 }
+
+function print_chlorine_diff($total, $free, $decimals = 2) {
+    if ($total !== null && $free !== null && $total !== '' && $free !== '') {
+        return number_format(((float)$total - (float)$free), $decimals, ',', '.');
+    }
+    return '';
+}
 ?>
 <style>
     /* Estilos para o ecrã (sem alterações) */
@@ -138,6 +145,8 @@ function print_value($value, $decimals = 2) {
                             <tr><td>Temperatura (°C)</td><td><?= print_value(isset($analysis_data['manha'][$tank['id']]['temperature']) ? $analysis_data['manha'][$tank['id']]['temperature'] : null, 1) ?></td></tr>
                             <tr><td>pH</td><td><?= print_value(isset($analysis_data['manha'][$tank['id']]['ph_level']) ? $analysis_data['manha'][$tank['id']]['ph_level'] : null) ?></td></tr>
                             <tr><td>Cloro livre(mg/l)</td><td><?= print_value(isset($analysis_data['manha'][$tank['id']]['chlorine_level']) ? $analysis_data['manha'][$tank['id']]['chlorine_level'] : null) ?></td></tr>
+                            <tr><td>Cloro total(mg/l)</td><td><?= print_value(isset($analysis_data['manha'][$tank['id']]['chlorine_total']) ? $analysis_data['manha'][$tank['id']]['chlorine_total'] : null) ?></td></tr>
+                            <tr><td>Dif. Cloro total-livre(mg/l)</td><td><?= print_chlorine_diff(isset($analysis_data['manha'][$tank['id']]['chlorine_total']) ? $analysis_data['manha'][$tank['id']]['chlorine_total'] : null, isset($analysis_data['manha'][$tank['id']]['chlorine_level']) ? $analysis_data['manha'][$tank['id']]['chlorine_level'] : null) ?></td></tr>
                             <tr><td>Condutividade (mS/cm)</td><td><?= print_value(isset($analysis_data['manha'][$tank['id']]['conductivity']) ? $analysis_data['manha'][$tank['id']]['conductivity'] : null) ?></td></tr>
                             <tr><td>Sólidos Dissolv. (mg/l)</td><td><?= print_value(isset($analysis_data['manha'][$tank['id']]['dissolved_solids']) ? $analysis_data['manha'][$tank['id']]['dissolved_solids'] : null) ?></td></tr>
                         </table>

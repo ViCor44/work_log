@@ -72,6 +72,12 @@ $tanks = $stmt->fetch_all(MYSQLI_ASSOC);
                             <label class="form-label">Cloro (ppm)</label>
                             <input type="number" step="0.01" class="form-control" name="chlorine_level[<?= $tank['id'] ?>]">
                         </div>
+                        <?php if ($periodo === 'manha'): ?>
+                        <div class="mb-2">
+                            <label class="form-label">Cloro Total (ppm)</label>
+                            <input type="number" step="0.01" class="form-control" name="chlorine_total[<?= $tank['id'] ?>]">
+                        </div>
+                        <?php endif; ?>
                         <div class="mb-2">
                             <label class="form-label">Temp. (°C)</label>
                             <input type="number" step="0.1" class="form-control" name="temperature[<?= $tank['id'] ?>]">
@@ -106,7 +112,7 @@ document.addEventListener('DOMContentLoaded', function() {
     if (form) {
         // --- Lógica de Navegação por Teclado (Enter e Setas) ---
         const inputs = Array.from(form.querySelectorAll('input[type="number"]'));
-        const fieldsPerCard = 5; // pH, Cloro, Temp, Condutividade, Sólidos
+        const fieldsPerCard = <?= ($periodo === 'manha') ? 6 : 5 ?>; // pH, Cloro, (Cloro Total), Temp, Condutividade, Sólidos
 
         if (inputs.length > 0) {
             inputs.forEach((input, index) => {

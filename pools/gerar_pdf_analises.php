@@ -132,6 +132,17 @@ function draw_grid_report($period_name, $tanks, $data, $techs, $report_date) {
         'Condutividade (mS/cm)' => ['key' => 'conductivity', 'decimals' => 2],
         'Solidos Dissolv. (mg/l)' => ['key' => 'dissolved_solids', 'decimals' => 2]
     ];
+    if (strtolower($period_name) === 'manha') {
+        $params = [
+            'Temperatura (C)' => ['key' => 'temperature', 'decimals' => 1],
+            'pH' => ['key' => 'ph_level', 'decimals' => 2],
+            'Cloro livre(mg/l)' => ['key' => 'chlorine_level', 'decimals' => 2],
+            'Cloro total(mg/l)' => ['key' => 'chlorine_total', 'decimals' => 2],
+            'Dif. Cloro total-livre(mg/l)' => ['key' => 'chlorine_diff', 'decimals' => 2],
+            'Condutividade (mS/cm)' => ['key' => 'conductivity', 'decimals' => 2],
+            'Solidos Dissolv. (mg/l)' => ['key' => 'dissolved_solids', 'decimals' => 2]
+        ];
+    }
     $param_cell_height = 6;
     $tank_chunks = array_chunk($tanks, $num_columns);
     foreach ($tank_chunks as $row_of_tanks) {
@@ -150,7 +161,15 @@ function draw_grid_report($period_name, $tanks, $data, $techs, $report_date) {
                 $param_value_width = $card_width * 0.3;
                 $pdf->SetFont('Arial', '', 8);
                 $pdf->Cell($param_name_width, $param_cell_height, utf8_decode($param_name), 1, 0, 'L');
-                $value = isset($data[$tank['id']][$param_info['key']]) ? $data[$tank['id']][$param_info['key']] : null;
+                if ($param_info['key'] === 'chlorine_diff') {
+                    $chlorine_total = isset($data[$tank['id']]['chlorine_total']) ? $data[$tank['id']]['chlorine_total'] : null;
+                    $chlorine_free = isset($data[$tank['id']]['chlorine_level']) ? $data[$tank['id']]['chlorine_level'] : null;
+                    $value = ($chlorine_total !== null && $chlorine_free !== null && $chlorine_total !== '' && $chlorine_free !== '')
+                        ? ((float)$chlorine_total - (float)$chlorine_free)
+                        : null;
+                } else {
+                    $value = isset($data[$tank['id']][$param_info['key']]) ? $data[$tank['id']][$param_info['key']] : null;
+                }
                 $formatted_value = print_value($value, $param_info['decimals']);
                 $pdf->SetFont('Arial', 'B', 8);
                 $pdf->Cell($param_value_width, $param_cell_height, $formatted_value, 1, 1, 'C');

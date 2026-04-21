@@ -21,13 +21,14 @@ try {
         
 case 'analise':
             $nome_do_registo = "análise";
-            $stmt_insert = $conn->prepare("INSERT INTO analyses (tank_id, user_id, analysis_datetime, period, ph_level, chlorine_level, temperature, conductivity, dissolved_solids) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)");
+            $stmt_insert = $conn->prepare("INSERT INTO analyses (tank_id, user_id, analysis_datetime, period, ph_level, chlorine_level, chlorine_total, temperature, conductivity, dissolved_solids) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
             
             if (isset($_POST['ph_level'])) { 
                 $periodo = $_POST['periodo'];
                 foreach ($_POST['ph_level'] as $tank_id => $ph_value) {
                     
                     $cloro_val = !empty($_POST['chlorine_level'][$tank_id]) ? $_POST['chlorine_level'][$tank_id] : null;
+                    $cloro_total_val = ($periodo === 'manha' && !empty($_POST['chlorine_total'][$tank_id])) ? $_POST['chlorine_total'][$tank_id] : null;
                     $temp_val = !empty($_POST['temperature'][$tank_id]) ? $_POST['temperature'][$tank_id] : null;
                     $cond_val = !empty($_POST['conductivity'][$tank_id]) ? $_POST['conductivity'][$tank_id] : null;
                     
@@ -43,7 +44,7 @@ case 'analise':
                     
                     if (!empty($ph_value) || $cloro_val || $temp_val || $cond_val) { // O $solidos_val já não precisa de estar na condição
                         
-                        $stmt_insert->bind_param("isssddddd", $tank_id, $user_id, $now, $periodo, $ph_value, $cloro_val, $temp_val, $cond_val, $solidos_val);
+                        $stmt_insert->bind_param("isssdddddd", $tank_id, $user_id, $now, $periodo, $ph_value, $cloro_val, $cloro_total_val, $temp_val, $cond_val, $solidos_val);
                         $stmt_insert->execute();
                         $registos_inseridos++;
                     }

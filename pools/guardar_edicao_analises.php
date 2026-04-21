@@ -15,7 +15,7 @@ $conn->begin_transaction();
 
 try {
     // Prepara as queries uma vez para reutilização
-    $stmt_update = $conn->prepare("UPDATE analyses SET ph_level=?, chlorine_level=?, temperature=?, conductivity=?, dissolved_solids=? WHERE id=?");
+    $stmt_update = $conn->prepare("UPDATE analyses SET ph_level=?, chlorine_level=?, chlorine_total=?, temperature=?, conductivity=?, dissolved_solids=? WHERE id=?");
     $stmt_fetch = $conn->prepare("SELECT * FROM analyses WHERE id = ?");
     
     // Busca os nomes de todos os tanques uma vez e guarda num mapa para fácil acesso
@@ -36,6 +36,7 @@ try {
                     // Vai buscar os novos valores do formulário
                     $ph_new = $_POST['ph_level'][$periodo][$tank_id];
                     $cl_new = $_POST['chlorine_level'][$periodo][$tank_id];
+                    $cl_total_new = isset($_POST['chlorine_total'][$periodo][$tank_id]) ? $_POST['chlorine_total'][$periodo][$tank_id] : null;
                     $temp_new = $_POST['temperature'][$periodo][$tank_id];
                     $cond_new = $_POST['conductivity'][$periodo][$tank_id];
                     $solids_new = !empty($cond_new) ? $cond_new / 2 : null;
@@ -44,6 +45,7 @@ try {
                     $current_log_details = [];
                     if ($old_data['ph_level'] != $ph_new) $current_log_details[] = "pH alterado de ".$old_data['ph_level']." para ".$ph_new;
                     if ($old_data['chlorine_level'] != $cl_new) $current_log_details[] = "Cloro alterado de ".$old_data['chlorine_level']." para ".$cl_new;
+                    if ($old_data['chlorine_total'] != $cl_total_new) $current_log_details[] = "Cloro total alterado de ".$old_data['chlorine_total']." para ".$cl_total_new;
                     // (Pode adicionar a mesma lógica para os outros campos)
 
                     // Se houve alterações para este tanque, regista no log
@@ -54,7 +56,7 @@ try {
                     }
 
                     // 2. Fazer o UPDATE
-                    $stmt_update->bind_param("dddddi", $ph_new, $cl_new, $temp_new, $cond_new, $solids_new, $analysis_id);
+                    $stmt_update->bind_param("ddddddi", $ph_new, $cl_new, $cl_total_new, $temp_new, $cond_new, $solids_new, $analysis_id);
                     $stmt_update->execute();
                     if ($stmt_update->affected_rows > 0) {
                         $updates_made++;
