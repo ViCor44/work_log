@@ -202,6 +202,7 @@ $stmt->close();
 document.addEventListener('DOMContentLoaded', function() {
     const tankId = <?= $tank_id ?>;
     const controllerIp = '<?= $controller_ip ?>';
+    const defaultHistoryDate = '<?= date('Y-m-d') ?>';
     const pidAnalysisBtn = document.getElementById('btn-pid-analysis');
     const startDateInput = document.getElementById('start_date');
     const endDateInput = document.getElementById('end_date');
@@ -210,7 +211,8 @@ document.addEventListener('DOMContentLoaded', function() {
         pidAnalysisBtn.addEventListener('click', function(event) {
             const startDate = startDateInput ? startDateInput.value : '';
             const endDate = endDateInput ? endDateInput.value : '';
-            if (startDate && endDate) {
+            const usingDefaultTodayRange = startDate === defaultHistoryDate && endDate === defaultHistoryDate;
+            if (startDate && endDate && !usingDefaultTodayRange) {
                 event.preventDefault();
                 window.location.href = `advanced_settings.php?id=${tankId}&start_date=${encodeURIComponent(startDate)}&end_date=${encodeURIComponent(endDate)}`;
             }
