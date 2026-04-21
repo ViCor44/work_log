@@ -157,8 +157,6 @@ $stmt_ot->close();
 </head>
 <body>
 
-<?php include 'navbar.php'; ?>
-
     <div class="container mt-4">
 	<section id="realtime-dashboard" class="mb-5">
         <h2 class="mb-3">Ultimas Contagens</h2>
