@@ -173,8 +173,15 @@ foreach ($tanks as $tank) {
                         foreach ($tanks as $tank) {
                             $tank_id = $tank['id'];
                             $tank_volume = isset($tank['volume_m3']) ? (float)$tank['volume_m3'] : 0.0;
+                            $dailyData = null;
                             if (isset($report_data[$day][$tank_id]['manha'])) {
-                                $data = $report_data[$day][$tank_id]['manha'];
+                                $dailyData = $report_data[$day][$tank_id]['manha'];
+                            } elseif (isset($report_data[$day][$tank_id]['tarde'])) {
+                                $dailyData = $report_data[$day][$tank_id]['tarde'];
+                            }
+
+                            if ($dailyData !== null) {
+                                $data = $dailyData;
                                 $percentage = $tank_volume > 0 ? (($data['consumo'] / $tank_volume) * 100) : null;
                                 echo '<td>' . number_format($data['leitura'], 0, ',', '.') . '</td>';
                                 echo '<td class="col-gasto">' . number_format($data['consumo'], 2, ',', '.') . '</td>';

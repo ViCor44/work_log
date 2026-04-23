@@ -10,8 +10,8 @@ if (!$edit_date || !preg_match('/^\d{4}-\d{2}-\d{2}$/', $edit_date)) {
 $tanks_stmt = $conn->query("SELECT id, name, volume_m3 FROM tanks WHERE type = 'piscina' AND has_reject_counter = 1 ORDER BY name ASC");
 $tanks = $tanks_stmt->fetch_all(MYSQLI_ASSOC);
 
-// Busca registos existentes para a data
-$sql = "SELECT * FROM rejected_water_readings WHERE DATE(reading_datetime) = ?";
+// Busca registos existentes para a data (ordenado para manter leitura diária consistente)
+$sql = "SELECT * FROM rejected_water_readings WHERE DATE(reading_datetime) = ? ORDER BY reading_datetime ASC, id ASC";
 $stmt = $conn->prepare($sql);
 $stmt->bind_param("s", $edit_date);
 $stmt->execute();
@@ -20,7 +20,10 @@ $stmt->close();
 
 $existing_data = [];
 foreach ($results as $row) {
-    $existing_data[$row['tank_id']] = $row;
+    // Mantém apenas a primeira leitura do dia por tanque (normalmente a da manhã)
+    if (!isset($existing_data[$row['tank_id']])) {
+        $existing_data[$row['tank_id']] = $row;
+    }
 }
 ?>
 
