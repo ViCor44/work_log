@@ -179,6 +179,17 @@ $stmt_ot->close();
 		            </div>
 		        </div>
 		    </div>
+            <div class="col-md-4 mb-4">
+                <div class="card card-link text-center h-100">
+                    <div class="card-body d-flex flex-column">
+                        <h5 class="card-title"><i class="fas fa-network-wired text-info"></i> Controle de Equipamentos</h5>
+                        <p class="card-text text-muted">Monitorizar equipamentos remotos em tempo real (modo apenas leitura).</p>
+                        <div class="mt-auto">
+                            <a href="dashboard_scada.php" class="btn btn-info text-white stretched-link">Aceder ao Dashboard</a>
+                        </div>
+                    </div>
+                </div>
+            </div>
 			 <?php if ($_SESSION['user_type'] === 'admin'): ?>
 			<div class="col-md-4 mb-4">
 			    <div class="card card-link text-center h-100">

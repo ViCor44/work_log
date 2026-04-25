@@ -1,5 +1,13 @@
 <?php
 require_once 'db.php'; 
+session_start();
+
+if (!isset($_SESSION['user_id'])) {
+    header('Location: login.php');
+    exit;
+}
+
+$is_read_only_user = isset($_SESSION['user_type']) && $_SESSION['user_type'] === 'user';
 
 $all_equipment = [];
 $sql = "SELECT rem.id, rem.name, rem.ip_address, rem.slave_id, cat.name AS category_name FROM remote_equipment AS rem LEFT JOIN categories AS cat ON rem.category_id = cat.id ORDER BY cat.name, rem.name";
@@ -61,6 +69,7 @@ if ($result) {
 
 <script>
     const allEquipmentFromServer = <?php echo json_encode($all_equipment); ?>;
+    const isReadOnlyUser = <?php echo json_encode($is_read_only_user); ?>;
     const UPDATE_INTERVAL = 15000;
     let onlineEquipments = [];
 
@@ -97,18 +106,115 @@ if ($result) {
                 </div>
                 <div class="mt-auto grid gap-2">
                     <div id="runStopContainer-${equipment.slave_id}" class="grid grid-cols-2 gap-2">
-                        <button id="runBtn-${equipment.slave_id}" onclick="sendCommand('/run', ${equipment.slave_id}, '${equipment.ip_address}')" class="py-2 px-2 rounded-md text-white font-semibold text-base bg-green-600 hover:bg-green-700 disabled:opacity-40 disabled:cursor-not-allowed">RUN</button>
-                        <button id="stopBtn-${equipment.slave_id}" onclick="sendCommand('/stop', ${equipment.slave_id}, '${equipment.ip_address}')" class="py-2 px-2 rounded-md text-white font-semibold text-base bg-yellow-500 hover:bg-yellow-600" style="display: none;">STOP</button>
+                        <button id="runBtn-${equipment.slave_id}" onclick="sendCommand('/run', ${equipment.slave_id}, '${equipment.ip_address}')" class="py-2 px-2 rounded-md text-white font-semibold text-base bg-green-600 hover:bg-green-700 disabled:opacity-40 disabled:cursor-not-allowed" ${isReadOnlyUser ? 'disabled title="Apenas monitorização para este perfil"' : ''}>RUN</button>
+                        <button id="stopBtn-${equipment.slave_id}" onclick="sendCommand('/stop', ${equipment.slave_id}, '${equipment.ip_address}')" class="py-2 px-2 rounded-md text-white font-semibold text-base bg-yellow-500 hover:bg-yellow-600 disabled:opacity-40 disabled:cursor-not-allowed" style="display: none;" ${isReadOnlyUser ? 'disabled title="Apenas monitorização para este perfil"' : ''}>STOP</button>
                     </div>
-                    <button id="clearFaultButton-${equipment.slave_id}" onclick="sendCommand('/clear_fault', ${equipment.slave_id}, '${equipment.ip_address}')" class="py-2 px-2 rounded-md text-white font-semibold text-base bg-blue-600 hover:bg-blue-700" style="display: none;">LIMPAR FALHA</button>
+                    <button id="clearFaultButton-${equipment.slave_id}" onclick="sendCommand('/clear_fault', ${equipment.slave_id}, '${equipment.ip_address}')" class="py-2 px-2 rounded-md text-white font-semibold text-base bg-blue-600 hover:bg-blue-700 disabled:opacity-40 disabled:cursor-not-allowed" style="display: none;" ${isReadOnlyUser ? 'disabled title="Apenas monitorização para este perfil"' : ''}>LIMPAR FALHA</button>
+                    ${isReadOnlyUser ? '<div class="text-xs text-slate-400 text-center">Modo monitorização: comandos desativados</div>' : ''}
                 </div>
             </div>
         `;
     }
     
-    function updateCardUI(slaveId, data) { const card = document.getElementById(`statusCard-${slaveId}`); const onlineStatus = document.getElementById(`onlineStatus-${slaveId}`); const equipmentState = document.getElementById(`equipmentState-${slaveId}`); const iconContainer = document.getElementById(`icon-container-${slaveId}`); const runBtn = document.getElementById(`runBtn-${slaveId}`); const stopBtn = document.getElementById(`stopBtn-${slaveId}`); const runStopContainer = document.getElementById(`runStopContainer-${slaveId}`); const clearFaultBtn = document.getElementById(`clearFaultButton-${slaveId}`); const faultContainer = document.getElementById(`fault-container-${slaveId}`); const faultDesc = document.getElementById(`faultDesc-${slaveId}`); const measurements = document.getElementById(`measurements-${slaveId}`); card.classList.remove('border-green-500', 'border-yellow-500', 'border-red-500', 'border-blue-500', 'border-slate-600', 'animate-pulse-red'); equipmentState.classList.remove('text-green-400', 'text-yellow-400', 'text-red-400', 'text-blue-400'); onlineStatus.classList.remove('bg-green-800', 'text-green-400'); onlineStatus.textContent = 'Online'; onlineStatus.classList.add('bg-green-800', 'text-green-400'); faultContainer.style.display = 'none'; clearFaultBtn.style.display = 'none'; runStopContainer.style.display = 'grid'; runStopContainer.classList.remove('grid-cols-1', 'grid-cols-2'); if (data.activeFault) { card.classList.add('border-red-500', 'animate-pulse-red'); equipmentState.textContent = 'FALHA ATIVA'; equipmentState.classList.add('text-red-400'); iconContainer.innerHTML = iconFault; faultContainer.style.display = 'block'; clearFaultBtn.style.display = 'block'; runStopContainer.style.display = 'none'; } else if (data.isTBS) { card.classList.add('border-blue-500'); equipmentState.textContent = 'PARADO (TBS)'; equipmentState.classList.add('text-blue-400'); iconContainer.innerHTML = iconTBS; runStopContainer.classList.add('grid-cols-2'); } else if (data.isRunning) { card.classList.add('border-green-500'); equipmentState.textContent = 'A FUNCIONAR'; equipmentState.classList.add('text-green-400'); iconContainer.innerHTML = iconRunning; runStopContainer.classList.add('grid-cols-1'); } else { card.classList.add('border-yellow-500'); equipmentState.textContent = 'PARADO'; equipmentState.classList.add('text-yellow-400'); iconContainer.innerHTML = iconStopped; runStopContainer.classList.add('grid-cols-2'); } const currentA = (data.currentRaw !== undefined) ? data.currentRaw.toFixed(1) : '-'; const V_LL = 400, SQRT3 = Math.sqrt(3), PF = 0.8; let powerCalc = '-'; if (currentA !== '-' && parseFloat(currentA) > 0) { powerCalc = ((V_LL * parseFloat(currentA) * SQRT3 * PF) / 1000).toFixed(2); } measurements.textContent = `${currentA} A / ${powerCalc} kW`; runBtn.style.display = data.isRunning ? 'none' : 'block'; stopBtn.style.display = data.isRunning ? 'block' : 'none'; if (data.isRunning) { runStopContainer.classList.add('grid-cols-1'); runStopContainer.classList.remove('grid-cols-2'); } else { runStopContainer.classList.add('grid-cols-2'); runStopContainer.classList.remove('grid-cols-1'); runBtn.style.display = 'block'; stopBtn.style.display = 'none'; } runBtn.disabled = data.activeFault || data.isTBS; const faultNum = parseInt(data.faultHex, 16); faultDesc.textContent = faultMap[faultNum] || `Código: ${faultNum}`; }
+    function updateCardUI(slaveId, data) {
+        const card = document.getElementById(`statusCard-${slaveId}`);
+        const onlineStatus = document.getElementById(`onlineStatus-${slaveId}`);
+        const equipmentState = document.getElementById(`equipmentState-${slaveId}`);
+        const iconContainer = document.getElementById(`icon-container-${slaveId}`);
+        const runBtn = document.getElementById(`runBtn-${slaveId}`);
+        const stopBtn = document.getElementById(`stopBtn-${slaveId}`);
+        const runStopContainer = document.getElementById(`runStopContainer-${slaveId}`);
+        const clearFaultBtn = document.getElementById(`clearFaultButton-${slaveId}`);
+        const faultContainer = document.getElementById(`fault-container-${slaveId}`);
+        const faultDesc = document.getElementById(`faultDesc-${slaveId}`);
+        const measurements = document.getElementById(`measurements-${slaveId}`);
+
+        card.classList.remove('border-green-500', 'border-yellow-500', 'border-red-500', 'border-blue-500', 'border-slate-600', 'animate-pulse-red');
+        equipmentState.classList.remove('text-green-400', 'text-yellow-400', 'text-red-400', 'text-blue-400');
+        onlineStatus.classList.remove('bg-green-800', 'text-green-400');
+        onlineStatus.textContent = 'Online';
+        onlineStatus.classList.add('bg-green-800', 'text-green-400');
+
+        faultContainer.style.display = 'none';
+        clearFaultBtn.style.display = 'none';
+        runStopContainer.style.display = 'grid';
+        runStopContainer.classList.remove('grid-cols-1', 'grid-cols-2');
+
+        if (data.activeFault) {
+            card.classList.add('border-red-500', 'animate-pulse-red');
+            equipmentState.textContent = 'FALHA ATIVA';
+            equipmentState.classList.add('text-red-400');
+            iconContainer.innerHTML = iconFault;
+            faultContainer.style.display = 'block';
+            clearFaultBtn.style.display = 'block';
+            runStopContainer.style.display = 'none';
+        } else if (data.isTBS) {
+            card.classList.add('border-blue-500');
+            equipmentState.textContent = 'PARADO (TBS)';
+            equipmentState.classList.add('text-blue-400');
+            iconContainer.innerHTML = iconTBS;
+            runStopContainer.classList.add('grid-cols-2');
+        } else if (data.isRunning) {
+            card.classList.add('border-green-500');
+            equipmentState.textContent = 'A FUNCIONAR';
+            equipmentState.classList.add('text-green-400');
+            iconContainer.innerHTML = iconRunning;
+            runStopContainer.classList.add('grid-cols-1');
+        } else {
+            card.classList.add('border-yellow-500');
+            equipmentState.textContent = 'PARADO';
+            equipmentState.classList.add('text-yellow-400');
+            iconContainer.innerHTML = iconStopped;
+            runStopContainer.classList.add('grid-cols-2');
+        }
+
+        const currentA = (data.currentRaw !== undefined) ? data.currentRaw.toFixed(1) : '-';
+        const V_LL = 400, SQRT3 = Math.sqrt(3), PF = 0.8;
+        let powerCalc = '-';
+        if (currentA !== '-' && parseFloat(currentA) > 0) {
+            powerCalc = ((V_LL * parseFloat(currentA) * SQRT3 * PF) / 1000).toFixed(2);
+        }
+        measurements.textContent = `${currentA} A / ${powerCalc} kW`;
+
+        runBtn.style.display = data.isRunning ? 'none' : 'block';
+        stopBtn.style.display = data.isRunning ? 'block' : 'none';
+        if (data.isRunning) {
+            runStopContainer.classList.add('grid-cols-1');
+            runStopContainer.classList.remove('grid-cols-2');
+        } else {
+            runStopContainer.classList.add('grid-cols-2');
+            runStopContainer.classList.remove('grid-cols-1');
+            runBtn.style.display = 'block';
+            stopBtn.style.display = 'none';
+        }
+
+        if (isReadOnlyUser) {
+            runBtn.disabled = true;
+            stopBtn.disabled = true;
+            clearFaultBtn.disabled = true;
+        } else {
+            runBtn.disabled = data.activeFault || data.isTBS;
+            stopBtn.disabled = false;
+            clearFaultBtn.disabled = false;
+        }
+
+        const faultNum = parseInt(data.faultHex, 16);
+        faultDesc.textContent = faultMap[faultNum] || `Código: ${faultNum}`;
+    }
     function handleUpdateError(slaveId) { const card=document.getElementById(`statusCard-${slaveId}`); if(card) { card.style.borderTopColor = '#64748b'; card.style.opacity = '0.7'; const onlineStatus = document.getElementById(`onlineStatus-${slaveId}`); onlineStatus.textContent = 'Offline'; onlineStatus.classList.remove('bg-green-800', 'text-green-400'); onlineStatus.classList.add('bg-red-800', 'text-red-400'); document.getElementById(`equipmentState-${slaveId}`).textContent = "SEM COMUNICAÇÃO"; }}
-    async function sendCommand(path, slaveId, ipAddress) { try { await fetch(`remote_command_api.php?command=${path.substring(1)}&slave_id=${slaveId}&ip=${ipAddress}`); setTimeout(() => updateStatus({ slave_id: slaveId, ip_address: ipAddress }), 250); } catch(e) { alert(`Erro: ${e.message}`); handleUpdateError(slaveId); } }
+    async function sendCommand(path, slaveId, ipAddress) {
+        if (isReadOnlyUser) {
+            alert('Perfil em modo monitorização. Não tem permissão para enviar comandos.');
+            return;
+        }
+        try {
+            await fetch(`remote_command_api.php?command=${path.substring(1)}&slave_id=${slaveId}&ip=${ipAddress}`);
+            setTimeout(() => updateStatus({ slave_id: slaveId, ip_address: ipAddress }), 250);
+        } catch(e) {
+            alert(`Erro: ${e.message}`);
+            handleUpdateError(slaveId);
+        }
+    }
     async function updateStatus(equipment) { try { const response = await fetch(`http://${equipment.ip_address}/api/status/${equipment.slave_id}`); if (!response.ok) throw new Error("Network"); const data = await response.json(); updateCardUI(equipment.slave_id, data); } catch(error) { handleUpdateError(equipment.slave_id); } }
     
     async function updateAllStatuses() {

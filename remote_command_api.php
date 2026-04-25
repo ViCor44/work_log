@@ -15,10 +15,23 @@ if (!isset($_GET['command']) || !isset($_GET['slave_id']) || !isset($_GET['ip'])
     exit;
 }
 
+if (isset($_SESSION['user_type']) && $_SESSION['user_type'] === 'user') {
+    http_response_code(403);
+    echo json_encode(['success' => false, 'message' => 'Perfil em modo monitorização. Comandos não permitidos.']);
+    exit;
+}
+
 $user_id = $_SESSION['user_id'];
 $command = $_GET['command'];
 $slave_id = (int)$_GET['slave_id'];
 $ip_address = $_GET['ip'];
+
+$allowed_commands = ['run', 'stop', 'clear_fault'];
+if (!in_array($command, $allowed_commands, true)) {
+    http_response_code(400);
+    echo json_encode(['success' => false, 'message' => 'Comando inválido.']);
+    exit;
+}
 
 // --- Lógica de Registo (Logging) ---
 $stmt = $conn->prepare("SELECT id FROM remote_equipment WHERE slave_id = ? AND ip_address = ?");
