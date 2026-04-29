@@ -144,60 +144,52 @@ if ($ctrl !== 1) {
 $key = dynamic_setting_key($tank_id);
 $value = (string)$enabled;
 
-$stmt_check = null;
+// Estratégia robusta e compatível: tenta UPDATE primeiro; se não existir registo, faz INSERT.
 try {
-    $stmt_check = $conn->prepare('SELECT id FROM settings WHERE setting_key = ? LIMIT 1');
+    $stmt_update = $conn->prepare('UPDATE settings SET setting_value = ? WHERE setting_key = ?');
 } catch (Throwable $e) {
-    $stmt_check = null;
+    $stmt_update = null;
 }
-if (!$stmt_check) {
-    return_json_response(['error' => 'Erro ao preparar verificacao de configuracao'], 500);
+if (!$stmt_update) {
+    return_json_response(['error' => 'Erro ao preparar update de configuracao'], 500);
 }
-$res_check = null;
-try {
-    $stmt_check->bind_param('s', $key);
-    $stmt_check->execute();
-    $res_check = $stmt_check->get_result();
-} catch (Throwable $e) {
-    $stmt_check->close();
-    return_json_response(['error' => 'Erro ao consultar configuracao atual'], 500);
-}
-$exists = $res_check && $res_check->num_rows > 0;
-$stmt_check->close();
 
-if ($exists) {
+try {
+    $stmt_update->bind_param('ss', $value, $key);
+    $okUpdate = $stmt_update->execute();
+    $updatedRows = $stmt_update->affected_rows;
+} catch (Throwable $e) {
+    $okUpdate = false;
+    $updatedRows = 0;
+}
+$stmt_update->close();
+
+if (!$okUpdate) {
+    return_json_response(['error' => 'Falha ao atualizar configuracao de setpoint dinamico'], 500);
+}
+
+if ($updatedRows === 0) {
     try {
-        $stmt_save = $conn->prepare('UPDATE settings SET setting_value = ? WHERE setting_key = ?');
+        $stmt_insert = $conn->prepare('INSERT INTO settings (setting_key, setting_value) VALUES (?, ?)');
     } catch (Throwable $e) {
-        $stmt_save = null;
+        $stmt_insert = null;
     }
-    if (!$stmt_save) {
-        return_json_response(['error' => 'Erro ao preparar update de configuracao'], 500);
-    }
-    $stmt_save->bind_param('ss', $value, $key);
-} else {
-    try {
-        $stmt_save = $conn->prepare('INSERT INTO settings (setting_key, setting_value) VALUES (?, ?)');
-    } catch (Throwable $e) {
-        $stmt_save = null;
-    }
-    if (!$stmt_save) {
+    if (!$stmt_insert) {
         return_json_response(['error' => 'Erro ao preparar insert de configuracao'], 500);
     }
-    $stmt_save->bind_param('ss', $key, $value);
-}
 
-try {
-    $okSave = $stmt_save->execute();
-} catch (Throwable $e) {
-    $okSave = false;
-}
+    try {
+        $stmt_insert->bind_param('ss', $key, $value);
+        $okInsert = $stmt_insert->execute();
+    } catch (Throwable $e) {
+        $okInsert = false;
+    }
+    $stmt_insert->close();
 
-if (!$okSave) {
-    $stmt_save->close();
-    return_json_response(['error' => 'Falha ao gravar configuracao de setpoint dinamico'], 500);
+    if (!$okInsert) {
+        return_json_response(['error' => 'Falha ao inserir configuracao de setpoint dinamico'], 500);
+    }
 }
-$stmt_save->close();
 
 $user_id = (int)$_SESSION['user_id'];
 $description = sprintf('Setpoint dinamico (ctrl=1) %s | tank_id=%d', $enabled ? 'ATIVADO' : 'DESATIVADO', $tank_id);
