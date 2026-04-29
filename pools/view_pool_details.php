@@ -106,16 +106,22 @@ $stmt->close();
         color: #ecf0f1;
         font-weight: bold;
     }
-    .setpoint-panel {
-        background-color: #3f4b57;
+    .gauge-setpoint-form {
+        margin-top: 0.75rem;
+        padding: 0.65rem;
         border: 1px solid #6c757d;
-        border-radius: 6px;
-        padding: 12px;
-        margin-bottom: 1rem;
+        border-radius: 5px;
+        background-color: rgba(33, 37, 41, 0.35);
     }
-    .setpoint-status {
-        margin-top: 10px;
+    .gauge-setpoint-form .form-label {
+        font-size: 0.8rem;
+        margin-bottom: 0.35rem;
+    }
+    .gauge-setpoint-status {
+        margin-top: 0.5rem;
         margin-bottom: 0;
+        padding: 0.35rem 0.5rem;
+        font-size: 0.78rem;
     }
 </style>
 
@@ -136,6 +142,16 @@ $stmt->close();
                         <h5>Cloro Livre (mg/L)</h5>
                         <canvas id="cloroGauge" height="150"></canvas>
                         <div id="cloro-details" class="details-box"></div>
+                        <?php if (!isset($_SESSION['user_type']) || $_SESSION['user_type'] !== 'viewer'): ?>
+                        <form id="cloro-setpoint-form" class="gauge-setpoint-form">
+                            <label for="cloro-setpoint-val" class="form-label">Setpoint remoto (Controlador 1)</label>
+                            <div class="d-flex gap-2">
+                                <input type="number" step="0.01" class="form-control form-control-sm" id="cloro-setpoint-val" placeholder="Ex.: 1.50" required>
+                                <button type="submit" class="btn btn-warning btn-sm" id="cloro-setpoint-submit">Aplicar</button>
+                            </div>
+                            <div id="cloro-setpoint-status" class="alert d-none gauge-setpoint-status" role="alert"></div>
+                        </form>
+                        <?php endif; ?>
                     </div>
                 </div>
                 <div class="col-12 mb-3">
@@ -143,6 +159,16 @@ $stmt->close();
                         <h5>pH</h5>
                         <canvas id="phGauge" height="150"></canvas>
                         <div id="ph-details" class="details-box"></div>
+                        <?php if (!isset($_SESSION['user_type']) || $_SESSION['user_type'] !== 'viewer'): ?>
+                        <form id="ph-setpoint-form" class="gauge-setpoint-form">
+                            <label for="ph-setpoint-val" class="form-label">Setpoint remoto (Controlador 2)</label>
+                            <div class="d-flex gap-2">
+                                <input type="number" step="0.01" class="form-control form-control-sm" id="ph-setpoint-val" placeholder="Ex.: 7.20" required>
+                                <button type="submit" class="btn btn-warning btn-sm" id="ph-setpoint-submit">Aplicar</button>
+                            </div>
+                            <div id="ph-setpoint-status" class="alert d-none gauge-setpoint-status" role="alert"></div>
+                        </form>
+                        <?php endif; ?>
                     </div>
                 </div>
                 <div class="col-12 mb-3">
@@ -156,29 +182,6 @@ $stmt->close();
         </div>
         <div class="col-lg-9 mb-4">
             <div class="chart-container">
-                <?php if (!isset($_SESSION['user_type']) || $_SESSION['user_type'] !== 'viewer'): ?>
-                <div class="setpoint-panel">
-                    <h5 class="mb-3 text-center">Alteracao Remota de Setpoint</h5>
-                    <form class="row g-3 align-items-end" id="setpoint-form">
-                        <div class="col-md-3">
-                            <label for="setpoint_ctrl" class="form-label">Controlador</label>
-                            <select class="form-control" id="setpoint_ctrl" required>
-                                <option value="1" selected>Controlador 1</option>
-                                <option value="2">Controlador 2</option>
-                                <option value="3">Controlador 3</option>
-                            </select>
-                        </div>
-                        <div class="col-md-3">
-                            <label for="setpoint_val" class="form-label">Novo valor (val)</label>
-                            <input type="number" step="0.01" class="form-control" id="setpoint_val" placeholder="Ex.: 1.50" required>
-                        </div>
-                        <div class="col-md-3">
-                            <button type="submit" class="btn btn-warning w-100" id="setpoint-submit-btn">Aplicar Setpoint</button>
-                        </div>
-                    </form>
-                    <div id="setpoint-status" class="alert d-none setpoint-status" role="alert"></div>
-                </div>
-                <?php endif; ?>
                 <form class="row g-3 mb-3" id="date-range-form">
                     <div class="col-md-4">
                         <label for="start_date" class="form-label">Data Início</label>
@@ -240,9 +243,14 @@ document.addEventListener('DOMContentLoaded', function() {
     const pidAnalysisBtn = document.getElementById('btn-pid-analysis');
     const startDateInput = document.getElementById('start_date');
     const endDateInput = document.getElementById('end_date');
-    const setpointForm = document.getElementById('setpoint-form');
-    const setpointStatus = document.getElementById('setpoint-status');
-    const setpointSubmitBtn = document.getElementById('setpoint-submit-btn');
+    const cloroSetpointForm = document.getElementById('cloro-setpoint-form');
+    const cloroSetpointInput = document.getElementById('cloro-setpoint-val');
+    const cloroSetpointBtn = document.getElementById('cloro-setpoint-submit');
+    const cloroSetpointStatus = document.getElementById('cloro-setpoint-status');
+    const phSetpointForm = document.getElementById('ph-setpoint-form');
+    const phSetpointInput = document.getElementById('ph-setpoint-val');
+    const phSetpointBtn = document.getElementById('ph-setpoint-submit');
+    const phSetpointStatus = document.getElementById('ph-setpoint-status');
 
     if (pidAnalysisBtn) {
         pidAnalysisBtn.addEventListener('click', function(event) {
@@ -256,58 +264,66 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     }
 
-    function showSetpointStatus(message, ok) {
-        if (!setpointStatus) return;
-        setpointStatus.classList.remove('d-none', 'alert-success', 'alert-danger');
-        setpointStatus.classList.add(ok ? 'alert-success' : 'alert-danger');
-        setpointStatus.textContent = message;
+    function showGaugeSetpointStatus(statusEl, message, ok) {
+        if (!statusEl) return;
+        statusEl.classList.remove('d-none', 'alert-success', 'alert-danger');
+        statusEl.classList.add(ok ? 'alert-success' : 'alert-danger');
+        statusEl.textContent = message;
     }
 
-    if (setpointForm) {
-        setpointForm.addEventListener('submit', async function(event) {
+    async function applyRemoteSetpoint(ctrl, inputEl, buttonEl, statusEl, idleLabel) {
+        const valInput = inputEl ? inputEl.value.trim().replace(',', '.') : '';
+        const val = parseFloat(valInput);
+
+        if (!Number.isFinite(val)) {
+            showGaugeSetpointStatus(statusEl, 'Valor invalido. Introduza um numero valido.', false);
+            return;
+        }
+
+        if (buttonEl) {
+            buttonEl.disabled = true;
+            buttonEl.textContent = 'A aplicar...';
+        }
+
+        try {
+            const response = await fetch('../api/set_controller_setpoint.php', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    tank_id: tankId,
+                    ctrl,
+                    val
+                })
+            });
+
+            const data = await response.json();
+            if (!response.ok || !data.success) {
+                throw new Error(data.error || 'Falha ao aplicar setpoint remoto.');
+            }
+
+            showGaugeSetpointStatus(statusEl, data.message || 'Setpoint aplicado com sucesso.', true);
+            updateGauges();
+        } catch (error) {
+            showGaugeSetpointStatus(statusEl, error.message, false);
+        } finally {
+            if (buttonEl) {
+                buttonEl.disabled = false;
+                buttonEl.textContent = idleLabel;
+            }
+        }
+    }
+
+    if (cloroSetpointForm) {
+        cloroSetpointForm.addEventListener('submit', function(event) {
             event.preventDefault();
+            applyRemoteSetpoint(1, cloroSetpointInput, cloroSetpointBtn, cloroSetpointStatus, 'Aplicar');
+        });
+    }
 
-            const ctrl = parseInt(document.getElementById('setpoint_ctrl').value, 10);
-            const valInput = document.getElementById('setpoint_val').value.trim().replace(',', '.');
-            const val = parseFloat(valInput);
-
-            if (![1, 2, 3].includes(ctrl)) {
-                showSetpointStatus('Controlador invalido. Escolha entre 1 e 3.', false);
-                return;
-            }
-
-            if (!Number.isFinite(val)) {
-                showSetpointStatus('Valor invalido. Introduza um numero valido para val.', false);
-                return;
-            }
-
-            setpointSubmitBtn.disabled = true;
-            setpointSubmitBtn.textContent = 'A aplicar...';
-
-            try {
-                const response = await fetch('../api/set_controller_setpoint.php', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        tank_id: tankId,
-                        ctrl,
-                        val
-                    })
-                });
-
-                const data = await response.json();
-                if (!response.ok || !data.success) {
-                    throw new Error(data.error || 'Falha ao aplicar setpoint remoto.');
-                }
-
-                showSetpointStatus(data.message || 'Setpoint aplicado com sucesso.', true);
-                updateGauges();
-            } catch (error) {
-                showSetpointStatus(error.message, false);
-            } finally {
-                setpointSubmitBtn.disabled = false;
-                setpointSubmitBtn.textContent = 'Aplicar Setpoint';
-            }
+    if (phSetpointForm) {
+        phSetpointForm.addEventListener('submit', function(event) {
+            event.preventDefault();
+            applyRemoteSetpoint(2, phSetpointInput, phSetpointBtn, phSetpointStatus, 'Aplicar');
         });
     }
     let phHistoryChart, cloroHistoryChart;
@@ -408,7 +424,7 @@ document.addEventListener('DOMContentLoaded', function() {
 	        } else {
 				tempGauge.data.datasets[0].value = tempValue;
                 tempGauge.options.valueLabel.formatter = () => parseFloat(tempValue).toFixed(1);
-                cloroGauge.update();	        }
+                    tempGauge.update();	        }
 	        
 	        // Update pH Gauge and its Details Box
 	        const phValue = data.pH;
@@ -433,6 +449,10 @@ document.addEventListener('DOMContentLoaded', function() {
 	            <div class="detail-row"><span>Dosagem:</span> <strong>${ph_formattedState}</strong></div>
 	            <div class="detail-row"><span>Distúrbio:</span> <strong>${ph_disturbance || 'N/A'}</strong></div>
 	        `;
+
+            if (phSetpointInput && document.activeElement !== phSetpointInput && phSetpointInput.value.trim() === '' && phSetpoint !== null && phSetpoint !== undefined) {
+                phSetpointInput.value = phSetpoint;
+            }
 	        
 	        // Update Chlorine Gauge and its Details Box
 	        const cloroValue = data.freeChlorine;
@@ -459,6 +479,10 @@ document.addEventListener('DOMContentLoaded', function() {
 	            <div class="detail-row"><span>Dosagem:</span> <strong>${cl_formattedState}</strong></div>
 	            <div class="detail-row"><span>Distúrbio:</span> <strong>${cl_disturbance || 'N/A'}</strong></div>
 	        `;
+
+            if (cloroSetpointInput && document.activeElement !== cloroSetpointInput && cloroSetpointInput.value.trim() === '' && cloroSetpoint !== null && cloroSetpoint !== undefined) {
+                cloroSetpointInput.value = cloroSetpoint;
+            }
 	
 	    } catch (error) {
 	        console.error("Error updating gauges:", error);
