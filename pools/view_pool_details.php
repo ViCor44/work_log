@@ -294,6 +294,26 @@ document.addEventListener('DOMContentLoaded', function() {
         statusEl.textContent = message;
     }
 
+    async function readApiResponse(response) {
+        const raw = await response.text();
+        if (!raw || raw.trim() === '') {
+            throw new Error(`Servidor respondeu vazio (HTTP ${response.status}).`);
+        }
+
+        let data = null;
+        try {
+            data = JSON.parse(raw);
+        } catch (e) {
+            throw new Error(`Resposta invalida do servidor (HTTP ${response.status}).`);
+        }
+
+        if (!response.ok) {
+            throw new Error(data.error || `Erro HTTP ${response.status}.`);
+        }
+
+        return data;
+    }
+
     function setManualSetpointEnabled(ctrl, enabled) {
         if (ctrl === 1) {
             if (cloroSetpointInput) cloroSetpointInput.disabled = !enabled;
@@ -306,8 +326,8 @@ document.addEventListener('DOMContentLoaded', function() {
 
         try {
             const response = await fetch(`../api/dynamic_setpoint_config.php?tank_id=${tankId}`);
-            const data = await response.json();
-            if (!response.ok || !data.success) {
+            const data = await readApiResponse(response);
+            if (!data.success) {
                 throw new Error(data.error || 'Falha ao carregar estado do setpoint dinâmico.');
             }
 
@@ -332,9 +352,9 @@ document.addEventListener('DOMContentLoaded', function() {
                     enabled
                 })
             });
-            const data = await response.json();
+            const data = await readApiResponse(response);
 
-            if (!response.ok || !data.success) {
+            if (!data.success) {
                 throw new Error(data.error || 'Falha ao alterar modo dinâmico.');
             }
 
@@ -372,8 +392,8 @@ document.addEventListener('DOMContentLoaded', function() {
                 })
             });
 
-            const data = await response.json();
-            if (!response.ok || !data.success) {
+            const data = await readApiResponse(response);
+            if (!data.success) {
                 throw new Error(data.error || 'Falha ao aplicar setpoint remoto.');
             }
 
