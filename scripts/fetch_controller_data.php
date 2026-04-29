@@ -154,15 +154,25 @@ function send_remote_setpoint(int $ctrl, float $value): array
     ];
 }
 
+/**
+ * Algoritmo de setpoint dinâmico assimétrico por antecipação de tendência:
+ *
+ *  • PV > SP_base E A DESCER  → envia SP_enviado = PV + anticipation_offset
+ *    (controlador vê PV < SP_enviado → começa a dosear na descida, antes de cair abaixo da base)
+ *
+ *  • PV < SP_base E A SUBIR   → envia SP_enviado = PV - anticipation_offset
+ *    (controlador vê PV > SP_enviado → reduz/para a doseagem na subida, evitando sobre-dosagem)
+ *
+ *  • Qualquer outro caso       → restaura SP_enviado = SP_base (funcionamento normal)
+ */
 function run_dynamic_setpoint_for_chlorine(mysqli $conn, array $pool, float $chlorine, float $baseSetpoint): void
 {
-    $tankId = (int)$pool['id'];
+    $tankId   = (int)$pool['id'];
     $tankName = isset($pool['name']) ? $pool['name'] : ('tanque_' . $tankId);
 
-    $keyPrefix = 'dynamic_setpoint_tank_' . $tankId . '_ctrl_1_';
-    $enabledKey = $keyPrefix . 'enabled';
-    $prevPvKey = $keyPrefix . 'prev_pv';
-    $lastDynKey = $keyPrefix . 'last_dyn_sp';
+    $keyPrefix    = 'dynamic_setpoint_tank_' . $tankId . '_ctrl_1_';
+    $enabledKey   = $keyPrefix . 'enabled';
+    $prevPvKey    = $keyPrefix . 'prev_pv';
     $lastSentAtKey = $keyPrefix . 'last_sent_at';
     $lastSentSpKey = $keyPrefix . 'last_sent_sp';
 
@@ -171,45 +181,56 @@ function run_dynamic_setpoint_for_chlorine(mysqli $conn, array $pool, float $chl
         return;
     }
 
-    $deadband = 0.03;
-    $kp = 0.40;
-    $maxOffset = 0.15;
-    $maxStepPerCycle = 0.03;
-    $cooldownSec = 120;
-    $minSendDelta = 0.02;
+    // ── Parâmetros de ajuste ─────────────────────────────────────────────────
+    $anticipationOffset = 0.10;  // quão acima/abaixo do PV atual colocamos o SP enviado
+    $trendDeadband      = 0.01;  // delta mínimo para considerar tendência real (filtra ruído)
+    $maxDeviation       = 0.50;  // limite máximo de afastamento do SP base (segurança)
+    $cooldownSec        = 120;   // segundos mínimos entre envios consecutivos
+    $minSendDelta       = 0.02;  // só envia se o novo SP diferir do último enviado por este valor
+    // ────────────────────────────────────────────────────────────────────────
 
-    $prevPv = float_or_null(get_setting_value($conn, $prevPvKey, null));
-    $lastDynSp = float_or_null(get_setting_value($conn, $lastDynKey, null));
+    $prevPv     = float_or_null(get_setting_value($conn, $prevPvKey, null));
     $lastSentSp = float_or_null(get_setting_value($conn, $lastSentSpKey, null));
     $lastSentAt = (int)(get_setting_value($conn, $lastSentAtKey, '0') ?? '0');
 
-    if ($lastDynSp === null) {
-        $lastDynSp = $baseSetpoint;
-    }
-
-    $error = $chlorine - $baseSetpoint;
-    $deltaPv = ($prevPv !== null) ? ($chlorine - $prevPv) : null;
-
-    $targetSp = $baseSetpoint;
-    if (abs($error) > $deadband) {
-        // Regra de segurança: se está acima do SP e ainda a subir, não atua já.
-        if (!($chlorine > $baseSetpoint && $deltaPv !== null && $deltaPv >= 0)) {
-            $targetSp = $baseSetpoint - ($kp * $error);
-        }
-    }
-
-    $targetSp = clamp($targetSp, $baseSetpoint - $maxOffset, $baseSetpoint + $maxOffset);
-    $newDynSp = $lastDynSp + clamp($targetSp - $lastDynSp, -$maxStepPerCycle, $maxStepPerCycle);
-    $newDynSp = round($newDynSp, 2);
-
+    // Guarda PV atual para o próximo ciclo antes de qualquer retorno antecipado
     set_setting_value($conn, $prevPvKey, (string)$chlorine);
-    set_setting_value($conn, $lastDynKey, (string)$newDynSp);
 
+    // Precisa de pelo menos uma leitura anterior para calcular tendência
+    if ($prevPv === null) {
+        return;
+    }
+
+    $deltaPv = $chlorine - $prevPv;
+
+    // ── Decisão de setpoint ──────────────────────────────────────────────────
+    $reason = '';
+    if ($chlorine > $baseSetpoint && $deltaPv < -$trendDeadband) {
+        // Acima da base e a descer → antecipar doseagem
+        $newDynSp = $chlorine + $anticipationOffset;
+        $reason   = "acima_base_a_descer PV={$chlorine} delta={$deltaPv}";
+    } elseif ($chlorine < $baseSetpoint && $deltaPv > $trendDeadband) {
+        // Abaixo da base e a subir → reduzir doseagem
+        $newDynSp = $chlorine - $anticipationOffset;
+        $reason   = "abaixo_base_a_subir PV={$chlorine} delta={$deltaPv}";
+    } else {
+        // Sem tendência relevante ou já cruzou a base → restaurar SP base
+        $newDynSp = $baseSetpoint;
+        $reason   = "restaurar_base PV={$chlorine} delta={$deltaPv}";
+    }
+
+    // Garante que o SP enviado não se afasta excessivamente da base (segurança)
+    $newDynSp = clamp($newDynSp, $baseSetpoint - $maxDeviation, $baseSetpoint + $maxDeviation);
+    $newDynSp = round($newDynSp, 2);
+    // ────────────────────────────────────────────────────────────────────────
+
+    // Cooldown entre envios
     $now = time();
     if ($now - $lastSentAt < $cooldownSec) {
         return;
     }
 
+    // Só envia se o valor mudou de forma significativa
     if ($lastSentSp !== null && abs($newDynSp - $lastSentSp) < $minSendDelta) {
         return;
     }
@@ -219,7 +240,7 @@ function run_dynamic_setpoint_for_chlorine(mysqli $conn, array $pool, float $chl
         log_system_action(
             $conn,
             'DYNAMIC_SETPOINT_APPLY_FAIL',
-            "Tanque {$tankName} ({$tankId}) ctrl=1 val={$newDynSp} falhou HTTP {$send['http_code']} erro={$send['error']}"
+            "Tanque {$tankName} ({$tankId}) ctrl=1 val={$newDynSp} ({$reason}) falhou HTTP {$send['http_code']} erro={$send['error']}"
         );
         return;
     }
@@ -229,7 +250,7 @@ function run_dynamic_setpoint_for_chlorine(mysqli $conn, array $pool, float $chl
     log_system_action(
         $conn,
         'DYNAMIC_SETPOINT_APPLY_OK',
-        "Tanque {$tankName} ({$tankId}) ctrl=1 val={$newDynSp} aplicado com sucesso"
+        "Tanque {$tankName} ({$tankId}) ctrl=1 val={$newDynSp} ({$reason}) aplicado com sucesso"
     );
 }
 
