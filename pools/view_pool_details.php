@@ -106,6 +106,17 @@ $stmt->close();
         color: #ecf0f1;
         font-weight: bold;
     }
+    .setpoint-panel {
+        background-color: #3f4b57;
+        border: 1px solid #6c757d;
+        border-radius: 6px;
+        padding: 12px;
+        margin-bottom: 1rem;
+    }
+    .setpoint-status {
+        margin-top: 10px;
+        margin-bottom: 0;
+    }
 </style>
 
 <div class="container-fluid mt-4">
@@ -145,6 +156,29 @@ $stmt->close();
         </div>
         <div class="col-lg-9 mb-4">
             <div class="chart-container">
+                <?php if (!isset($_SESSION['user_type']) || $_SESSION['user_type'] !== 'viewer'): ?>
+                <div class="setpoint-panel">
+                    <h5 class="mb-3 text-center">Alteracao Remota de Setpoint</h5>
+                    <form class="row g-3 align-items-end" id="setpoint-form">
+                        <div class="col-md-3">
+                            <label for="setpoint_ctrl" class="form-label">Controlador</label>
+                            <select class="form-control" id="setpoint_ctrl" required>
+                                <option value="1" selected>Controlador 1</option>
+                                <option value="2">Controlador 2</option>
+                                <option value="3">Controlador 3</option>
+                            </select>
+                        </div>
+                        <div class="col-md-3">
+                            <label for="setpoint_val" class="form-label">Novo valor (val)</label>
+                            <input type="number" step="0.01" class="form-control" id="setpoint_val" placeholder="Ex.: 1.50" required>
+                        </div>
+                        <div class="col-md-3">
+                            <button type="submit" class="btn btn-warning w-100" id="setpoint-submit-btn">Aplicar Setpoint</button>
+                        </div>
+                    </form>
+                    <div id="setpoint-status" class="alert d-none setpoint-status" role="alert"></div>
+                </div>
+                <?php endif; ?>
                 <form class="row g-3 mb-3" id="date-range-form">
                     <div class="col-md-4">
                         <label for="start_date" class="form-label">Data Início</label>
@@ -206,6 +240,9 @@ document.addEventListener('DOMContentLoaded', function() {
     const pidAnalysisBtn = document.getElementById('btn-pid-analysis');
     const startDateInput = document.getElementById('start_date');
     const endDateInput = document.getElementById('end_date');
+    const setpointForm = document.getElementById('setpoint-form');
+    const setpointStatus = document.getElementById('setpoint-status');
+    const setpointSubmitBtn = document.getElementById('setpoint-submit-btn');
 
     if (pidAnalysisBtn) {
         pidAnalysisBtn.addEventListener('click', function(event) {
@@ -215,6 +252,61 @@ document.addEventListener('DOMContentLoaded', function() {
             if (startDate && endDate && !usingDefaultTodayRange) {
                 event.preventDefault();
                 window.location.href = `advanced_settings.php?id=${tankId}&start_date=${encodeURIComponent(startDate)}&end_date=${encodeURIComponent(endDate)}`;
+            }
+        });
+    }
+
+    function showSetpointStatus(message, ok) {
+        if (!setpointStatus) return;
+        setpointStatus.classList.remove('d-none', 'alert-success', 'alert-danger');
+        setpointStatus.classList.add(ok ? 'alert-success' : 'alert-danger');
+        setpointStatus.textContent = message;
+    }
+
+    if (setpointForm) {
+        setpointForm.addEventListener('submit', async function(event) {
+            event.preventDefault();
+
+            const ctrl = parseInt(document.getElementById('setpoint_ctrl').value, 10);
+            const valInput = document.getElementById('setpoint_val').value.trim().replace(',', '.');
+            const val = parseFloat(valInput);
+
+            if (![1, 2, 3].includes(ctrl)) {
+                showSetpointStatus('Controlador invalido. Escolha entre 1 e 3.', false);
+                return;
+            }
+
+            if (!Number.isFinite(val)) {
+                showSetpointStatus('Valor invalido. Introduza um numero valido para val.', false);
+                return;
+            }
+
+            setpointSubmitBtn.disabled = true;
+            setpointSubmitBtn.textContent = 'A aplicar...';
+
+            try {
+                const response = await fetch('../api/set_controller_setpoint.php', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        tank_id: tankId,
+                        ctrl,
+                        val
+                    })
+                });
+
+                const data = await response.json();
+                if (!response.ok || !data.success) {
+                    throw new Error(data.error || 'Falha ao aplicar setpoint remoto.');
+                }
+
+                showSetpointStatus(data.message || 'Setpoint aplicado com sucesso.', true);
+                updateGauges();
+            } catch (error) {
+                showSetpointStatus(error.message, false);
+            } finally {
+                setpointSubmitBtn.disabled = false;
+                setpointSubmitBtn.textContent = 'Aplicar Setpoint';
             }
         });
     }
