@@ -123,6 +123,21 @@ $stmt->close();
         padding: 0.35rem 0.5rem;
         font-size: 0.78rem;
     }
+    .dynamic-switch-row {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        margin-bottom: 0.45rem;
+        padding: 0.25rem 0.4rem;
+        background: rgba(108, 117, 125, 0.2);
+        border-radius: 4px;
+    }
+    .dynamic-switch-row .form-check {
+        margin-bottom: 0;
+    }
+    .dynamic-switch-row .form-check-label {
+        font-size: 0.78rem;
+    }
 </style>
 
 <div class="container-fluid mt-4">
@@ -144,6 +159,13 @@ $stmt->close();
                         <div id="cloro-details" class="details-box"></div>
                         <?php if (!isset($_SESSION['user_type']) || $_SESSION['user_type'] !== 'viewer'): ?>
                         <form id="cloro-setpoint-form" class="gauge-setpoint-form">
+                            <div class="dynamic-switch-row">
+                                <span class="small">Setpoint dinâmico</span>
+                                <div class="form-check form-switch">
+                                    <input class="form-check-input" type="checkbox" id="cloro-dynamic-toggle">
+                                    <label class="form-check-label" for="cloro-dynamic-toggle">Ativo</label>
+                                </div>
+                            </div>
                             <label for="cloro-setpoint-val" class="form-label">Setpoint remoto (Controlador 1)</label>
                             <div class="d-flex gap-2">
                                 <input type="number" step="0.01" class="form-control form-control-sm" id="cloro-setpoint-val" placeholder="Ex.: 1.50" required>
@@ -251,6 +273,7 @@ document.addEventListener('DOMContentLoaded', function() {
     const phSetpointInput = document.getElementById('ph-setpoint-val');
     const phSetpointBtn = document.getElementById('ph-setpoint-submit');
     const phSetpointStatus = document.getElementById('ph-setpoint-status');
+    const cloroDynamicToggle = document.getElementById('cloro-dynamic-toggle');
 
     if (pidAnalysisBtn) {
         pidAnalysisBtn.addEventListener('click', function(event) {
@@ -269,6 +292,59 @@ document.addEventListener('DOMContentLoaded', function() {
         statusEl.classList.remove('d-none', 'alert-success', 'alert-danger');
         statusEl.classList.add(ok ? 'alert-success' : 'alert-danger');
         statusEl.textContent = message;
+    }
+
+    function setManualSetpointEnabled(ctrl, enabled) {
+        if (ctrl === 1) {
+            if (cloroSetpointInput) cloroSetpointInput.disabled = !enabled;
+            if (cloroSetpointBtn) cloroSetpointBtn.disabled = !enabled;
+        }
+    }
+
+    async function loadDynamicSetpointStatus() {
+        if (!tankId) return;
+
+        try {
+            const response = await fetch(`../api/dynamic_setpoint_config.php?tank_id=${tankId}`);
+            const data = await response.json();
+            if (!response.ok || !data.success) {
+                throw new Error(data.error || 'Falha ao carregar estado do setpoint dinâmico.');
+            }
+
+            const ctrl1Enabled = !!(data.states && data.states['1']);
+
+            if (cloroDynamicToggle) cloroDynamicToggle.checked = ctrl1Enabled;
+
+            setManualSetpointEnabled(1, !ctrl1Enabled);
+        } catch (error) {
+            console.error(error.message);
+        }
+    }
+
+    async function saveDynamicSetpointStatus(ctrl, enabled, statusEl) {
+        try {
+            const response = await fetch('../api/dynamic_setpoint_config.php', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    tank_id: tankId,
+                    ctrl,
+                    enabled
+                })
+            });
+            const data = await response.json();
+
+            if (!response.ok || !data.success) {
+                throw new Error(data.error || 'Falha ao alterar modo dinâmico.');
+            }
+
+            setManualSetpointEnabled(ctrl, !enabled);
+            showGaugeSetpointStatus(statusEl, enabled ? 'Setpoint dinâmico ativado.' : 'Setpoint dinâmico desativado.', true);
+        } catch (error) {
+            setManualSetpointEnabled(ctrl, true);
+            if (ctrl === 1 && cloroDynamicToggle) cloroDynamicToggle.checked = false;
+            showGaugeSetpointStatus(statusEl, error.message, false);
+        }
     }
 
     async function applyRemoteSetpoint(ctrl, inputEl, buttonEl, statusEl, idleLabel) {
@@ -324,6 +400,12 @@ document.addEventListener('DOMContentLoaded', function() {
         phSetpointForm.addEventListener('submit', function(event) {
             event.preventDefault();
             applyRemoteSetpoint(2, phSetpointInput, phSetpointBtn, phSetpointStatus, 'Aplicar');
+        });
+    }
+
+    if (cloroDynamicToggle) {
+        cloroDynamicToggle.addEventListener('change', function() {
+            saveDynamicSetpointStatus(1, cloroDynamicToggle.checked, cloroSetpointStatus);
         });
     }
     let phHistoryChart, cloroHistoryChart;
@@ -649,6 +731,7 @@ document.addEventListener('DOMContentLoaded', function() {
     });
 
     // Carga inicial
+    loadDynamicSetpointStatus();
     updateGauges();
     fetchHistory(document.getElementById('start_date').value, document.getElementById('end_date').value);
     // Inicia o ciclo de atualização para os gauges a cada 10 segundos
