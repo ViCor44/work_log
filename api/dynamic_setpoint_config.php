@@ -136,6 +136,39 @@ function read_manual_base_setpoint($conn, $tank_id) {
     return $value;
 }
 
+function send_remote_setpoint($ctrl, $value) {
+    $endpoint = 'http://191.188.127.30/';
+    $postFields = http_build_query([
+        'ctrl' => (int)$ctrl,
+        'val' => number_format((float)$value, 2, '.', ''),
+    ]);
+
+    $ch = curl_init();
+    curl_setopt_array($ch, [
+        CURLOPT_URL => $endpoint,
+        CURLOPT_POST => true,
+        CURLOPT_POSTFIELDS => $postFields,
+        CURLOPT_HTTPHEADER => ['Content-Type: application/x-www-form-urlencoded'],
+        CURLOPT_RETURNTRANSFER => true,
+        CURLOPT_CONNECTTIMEOUT => 4,
+        CURLOPT_TIMEOUT => 10,
+    ]);
+
+    $response = curl_exec($ch);
+    $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    $curlError = curl_error($ch);
+    curl_close($ch);
+
+    $ok = ($response !== false && $httpCode >= 200 && $httpCode < 300);
+
+    return [
+        'ok' => $ok,
+        'http_code' => (int)$httpCode,
+        'error' => $curlError,
+        'response' => is_string($response) ? $response : '',
+    ];
+}
+
 if ($_SERVER['REQUEST_METHOD'] === 'GET') {
     $tank_id = isset($_GET['tank_id']) ? (int)$_GET['tank_id'] : 0;
     if ($tank_id <= 0) {
@@ -234,9 +267,59 @@ $user_id = (int)$_SESSION['user_id'];
 $description = sprintf('Setpoint dinamico (ctrl=1) %s | tank_id=%d', $enabled ? 'ATIVADO' : 'DESATIVADO', $tank_id);
 log_action($conn, $user_id, 'DYNAMIC_SETPOINT_TOGGLE', $description);
 
+$restoreMessage = '';
+$manualBaseSetpoint = read_manual_base_setpoint($conn, $tank_id);
+$restoredManualBase = false;
+
+// Ao desligar o modo dinâmico, repõe automaticamente o SP manual no controlador.
+if ($enabled === 0) {
+    if ($manualBaseSetpoint === null) {
+        $restoreMessage = 'Modo dinamico desativado. SP manual nao encontrado para reposicao automatica.';
+    } else {
+        $send = send_remote_setpoint(1, $manualBaseSetpoint);
+        if (!$send['ok']) {
+            log_action(
+                $conn,
+                $user_id,
+                'DYNAMIC_SETPOINT_RESTORE_FAIL',
+                sprintf(
+                    'Reposicao SP manual falhou | tank_id=%d | ctrl=1 | val=%.2f | http=%d | erro=%s',
+                    $tank_id,
+                    $manualBaseSetpoint,
+                    $send['http_code'],
+                    $send['error']
+                )
+            );
+            return_json_response([
+                'error' => 'Modo dinamico desativado, mas falhou ao repor SP manual no controlador.',
+                'tank_id' => $tank_id,
+                'ctrl' => 1,
+                'enabled' => false,
+                'manual_base_setpoint' => $manualBaseSetpoint,
+            ], 502);
+        }
+
+        $restoredManualBase = true;
+        $restoreMessage = sprintf('Modo dinamico desativado e SP manual %.2f reposto no controlador.', $manualBaseSetpoint);
+        log_action(
+            $conn,
+            $user_id,
+            'DYNAMIC_SETPOINT_RESTORE_OK',
+            sprintf('Reposicao SP manual com sucesso | tank_id=%d | ctrl=1 | val=%.2f', $tank_id, $manualBaseSetpoint)
+        );
+    }
+}
+
+if ($enabled === 1) {
+    $restoreMessage = 'Setpoint dinamico ativado.';
+}
+
 return_json_response([
     'success' => true,
     'tank_id' => $tank_id,
     'ctrl' => 1,
     'enabled' => (bool)$enabled,
+    'manual_base_setpoint' => $manualBaseSetpoint,
+    'restored_manual_base' => $restoredManualBase,
+    'message' => $restoreMessage,
 ]);

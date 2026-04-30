@@ -393,8 +393,13 @@ document.addEventListener('DOMContentLoaded', function() {
                 throw new Error(data.error || 'Falha ao alterar modo dinâmico.');
             }
 
+            if (data.manual_base_setpoint !== null && data.manual_base_setpoint !== undefined && Number.isFinite(parseFloat(data.manual_base_setpoint))) {
+                cloroManualTargetSetpoint = parseFloat(data.manual_base_setpoint);
+            }
+
             setManualSetpointEnabled(ctrl, !enabled);
-            showGaugeSetpointStatus(statusEl, enabled ? 'Setpoint dinâmico ativado.' : 'Setpoint dinâmico desativado.', true);
+            showGaugeSetpointStatus(statusEl, data.message || (enabled ? 'Setpoint dinâmico ativado.' : 'Setpoint dinâmico desativado.'), true);
+            updateGauges();
         } catch (error) {
             setManualSetpointEnabled(ctrl, true);
             if (ctrl === 1 && cloroDynamicToggle) cloroDynamicToggle.checked = false;
