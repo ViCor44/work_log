@@ -12,6 +12,25 @@ if ($result->num_rows === 0) { die("Tanque não encontrado."); }
 $tank_info = $result->fetch_assoc();
 $tank_name = $tank_info['name'];
 $stmt->close();
+
+// Carrega parâmetros actuais da DB (fallback para defaults se não existirem)
+$pPrefix = 'dynamic_setpoint_tank_' . $tank_id . '_ctrl_1_param_';
+$defaults = [
+    'anticipation_offset' => 0.06,
+    'min_follow_offset'   => 0.03,
+    'max_follow_offset'   => 0.18,
+    'pump_min_target'     => 20.0,
+    'pump_max_target'     => 35.0,
+    'pump_adjust_step'    => 0.02,
+    'trend_deadband'      => 0.01,
+    'cooldown_sec'        => 60.0,
+    'min_send_delta'      => 0.01,
+];
+$params = [];
+foreach ($defaults as $name => $default) {
+    $val = get_setting_value($conn, $pPrefix . $name, null);
+    $params[$name] = ($val !== null) ? (float)$val : $default;
+}
 ?>
 
 <style>
@@ -59,6 +78,21 @@ $stmt->close();
     color: #95a5a6;
     margin-left: 6px;
 }
+.params-card label .info-icon {
+    display: inline-block;
+    width: 15px;
+    height: 15px;
+    background: #4a6278;
+    border-radius: 50%;
+    color: #aed6f1;
+    font-size: 0.7rem;
+    font-weight: 700;
+    text-align: center;
+    line-height: 15px;
+    margin-left: 5px;
+    cursor: help;
+    vertical-align: middle;
+}
 #toast-params {
     position: fixed;
     bottom: 1.5rem;
@@ -90,18 +124,18 @@ $stmt->close();
                     <div class="section-title mt-3">Offsets de Antecipação</div>
                     <div class="row g-3 mb-3">
                         <div class="col-md-4">
-                            <label>Offset de antecipação <span class="default-badge">(padrão: 0.06)</span></label>
-                            <input type="number" step="0.01" class="form-control" name="anticipation_offset" id="f_anticipation_offset">
+                            <label data-bs-toggle="tooltip" data-bs-placement="top" title="Quando o cloro desce abaixo da base, o SP enviado ao controlador é PV + este offset, forçando doseagem antes da queda. Na subida, SP = PV − offset, reduzindo doseagem. Valores maiores reagem mais cedo mas são mais agressivos.">Offset de antecipação <span class="default-badge">(padrão: 0.06)</span> <span class="info-icon">?</span></label>
+                            <input type="number" step="0.01" class="form-control" name="anticipation_offset" id="f_anticipation_offset" value="<?= $params['anticipation_offset'] ?>">
                             <div class="param-hint">Offset base aplicado ao PV na descida/subida.</div>
                         </div>
                         <div class="col-md-4">
-                            <label>Offset mínimo <span class="default-badge">(padrão: 0.03)</span></label>
-                            <input type="number" step="0.01" class="form-control" name="min_follow_offset" id="f_min_follow_offset">
+                            <label data-bs-toggle="tooltip" data-bs-placement="top" title="O offset real é ajustado pela % da bomba, mas nunca desce abaixo deste valor mínimo. Garante que o controlador recebe sempre um SP com diferença significativa, mesmo quando a bomba está a trabalhar bem.">Offset mínimo <span class="default-badge">(padrão: 0.03)</span> <span class="info-icon">?</span></label>
+                            <input type="number" step="0.01" class="form-control" name="min_follow_offset" id="f_min_follow_offset" value="<?= $params['min_follow_offset'] ?>">
                             <div class="param-hint">Limite inferior do offset ajustado pela bomba.</div>
                         </div>
                         <div class="col-md-4">
-                            <label>Offset máximo <span class="default-badge">(padrão: 0.18)</span></label>
-                            <input type="number" step="0.01" class="form-control" name="max_follow_offset" id="f_max_follow_offset">
+                            <label data-bs-toggle="tooltip" data-bs-placement="top" title="Mesmo que a bomba esteja muito abaixo do alvo mínimo, o offset não ultrapassa este valor. Evita que o SP seja empurrado demasiado longe do PV, o que poderia causar sobre-doseagem.">Offset máximo <span class="default-badge">(padrão: 0.18)</span> <span class="info-icon">?</span></label>
+                            <input type="number" step="0.01" class="form-control" name="max_follow_offset" id="f_max_follow_offset" value="<?= $params['max_follow_offset'] ?>">
                             <div class="param-hint">Limite superior do offset — evita sobre-ajuste.</div>
                         </div>
                     </div>
@@ -110,18 +144,18 @@ $stmt->close();
                     <div class="section-title mt-3">Controlo por % de Bomba</div>
                     <div class="row g-3 mb-3">
                         <div class="col-md-4">
-                            <label>% Bomba mínima desejada <span class="default-badge">(padrão: 20)</span></label>
-                            <input type="number" step="0.5" class="form-control" name="pump_min_target" id="f_pump_min_target">
+                            <label data-bs-toggle="tooltip" data-bs-placement="top" title="Se a % da bomba estiver abaixo deste valor, o algoritmo aumenta o offset para tornar o SP mais exigente, forçando o controlador a dosear mais. Exemplo: bomba a 10% e mínimo 20% → offset aumenta para compensar a doseagem insuficiente.">% Bomba mínima desejada <span class="default-badge">(padrão: 20)</span> <span class="info-icon">?</span></label>
+                            <input type="number" step="0.5" class="form-control" name="pump_min_target" id="f_pump_min_target" value="<?= $params['pump_min_target'] ?>">
                             <div class="param-hint">Se bomba &lt; mínimo, aumenta o offset para forçar mais doseagem.</div>
                         </div>
                         <div class="col-md-4">
-                            <label>% Bomba máxima desejada <span class="default-badge">(padrão: 35)</span></label>
-                            <input type="number" step="0.5" class="form-control" name="pump_max_target" id="f_pump_max_target">
+                            <label data-bs-toggle="tooltip" data-bs-placement="top" title="Se a % da bomba estiver acima deste valor, o algoritmo reduz o offset para aliviar o SP, travando doseagem excessiva. Exemplo: bomba a 50% e máximo 35% → offset diminui para deixar o controlador relaxar.">% Bomba máxima desejada <span class="default-badge">(padrão: 35)</span> <span class="info-icon">?</span></label>
+                            <input type="number" step="0.5" class="form-control" name="pump_max_target" id="f_pump_max_target" value="<?= $params['pump_max_target'] ?>">
                             <div class="param-hint">Se bomba &gt; máximo, reduz o offset para travar doseagem.</div>
                         </div>
                         <div class="col-md-4">
-                            <label>Passo de ajuste por bomba <span class="default-badge">(padrão: 0.02)</span></label>
-                            <input type="number" step="0.005" class="form-control" name="pump_adjust_step" id="f_pump_adjust_step">
+                            <label data-bs-toggle="tooltip" data-bs-placement="top" title="Por cada 1% de desvio da bomba em relação ao intervalo desejado, o offset é ajustado por este valor. Exemplo com passo=0.02: bomba 10% abaixo do mínimo → offset +0.20. Valores maiores tornam o sistema mais reactivo à bomba.">Passo de ajuste por bomba <span class="default-badge">(padrão: 0.02)</span> <span class="info-icon">?</span></label>
+                            <input type="number" step="0.005" class="form-control" name="pump_adjust_step" id="f_pump_adjust_step" value="<?= $params['pump_adjust_step'] ?>">
                             <div class="param-hint">Quanto o offset sobe/desce por cada % de desvio da bomba.</div>
                         </div>
                     </div>
@@ -130,18 +164,18 @@ $stmt->close();
                     <div class="section-title mt-3">Filtros e Cooldown</div>
                     <div class="row g-3 mb-3">
                         <div class="col-md-4">
-                            <label>Deadband de tendência (mg/L) <span class="default-badge">(padrão: 0.01)</span></label>
-                            <input type="number" step="0.001" class="form-control" name="trend_deadband" id="f_trend_deadband">
+                            <label data-bs-toggle="tooltip" data-bs-placement="top" title="Diferença mínima entre a leitura actual e a anterior para o algoritmo considerar que há uma tendência real (subida ou descida). Abaixo deste valor, o sistema restaura o SP base para evitar reacções a flutuações de sensor. Aumente se o sensor for ruidoso.">Deadband de tendência (mg/L) <span class="default-badge">(padrão: 0.01)</span> <span class="info-icon">?</span></label>
+                            <input type="number" step="0.001" class="form-control" name="trend_deadband" id="f_trend_deadband" value="<?= $params['trend_deadband'] ?>">
                             <div class="param-hint">Delta mínimo entre leituras para considerar tendência real. Filtra ruído.</div>
                         </div>
                         <div class="col-md-4">
-                            <label>Cooldown entre envios (seg) <span class="default-badge">(padrão: 60)</span></label>
-                            <input type="number" step="1" class="form-control" name="cooldown_sec" id="f_cooldown_sec">
+                            <label data-bs-toggle="tooltip" data-bs-placement="top" title="Tempo mínimo em segundos entre dois envios consecutivos de setpoint ao controlador. Evita flooding de comandos em ciclos rápidos. Como o worker corre de 5 em 5 min (300s), valores abaixo de 60s têm pouco impacto prático.">Cooldown entre envios (seg) <span class="default-badge">(padrão: 60)</span> <span class="info-icon">?</span></label>
+                            <input type="number" step="1" class="form-control" name="cooldown_sec" id="f_cooldown_sec" value="<?= $params['cooldown_sec'] ?>">
                             <div class="param-hint">Segundos mínimos entre dois envios consecutivos ao controlador.</div>
                         </div>
                         <div class="col-md-4">
-                            <label>Delta mínimo para enviar (mg/L) <span class="default-badge">(padrão: 0.01)</span></label>
-                            <input type="number" step="0.001" class="form-control" name="min_send_delta" id="f_min_send_delta">
+                            <label data-bs-toggle="tooltip" data-bs-placement="top" title="Mesmo após o cooldown expirar, o algoritmo só envia um novo SP se este diferir do último enviado por pelo menos este valor. Evita envios redundantes quando o cálculo resulta num valor praticamente igual ao anterior.">Delta mínimo para enviar (mg/L) <span class="default-badge">(padrão: 0.01)</span> <span class="info-icon">?</span></label>
+                            <input type="number" step="0.001" class="form-control" name="min_send_delta" id="f_min_send_delta" value="<?= $params['min_send_delta'] ?>">
                             <div class="param-hint">Só envia ao controlador se o novo SP diferir pelo menos este valor do último enviado.</div>
                         </div>
                     </div>
@@ -191,16 +225,12 @@ function fillForm(params) {
     });
 }
 
-// Carrega valores actuais
-async function loadParams() {
-    try {
-        const r = await fetch(`${API}?tank_id=${TANK_ID}`);
-        const data = await r.json();
-        if (data.params) fillForm(data.params);
-    } catch (e) {
-        showToast('Erro ao carregar parâmetros.', 'danger');
-    }
-}
+// Inicializa tooltips Bootstrap
+document.addEventListener('DOMContentLoaded', function () {
+    document.querySelectorAll('[data-bs-toggle="tooltip"]').forEach(el => {
+        new bootstrap.Tooltip(el, { trigger: 'hover focus' });
+    });
+});
 
 // Guardar
 document.getElementById('params-form').addEventListener('submit', async function(e) {
@@ -242,7 +272,6 @@ document.getElementById('btn-reset-defaults').addEventListener('click', async fu
     }
 });
 
-loadParams();
 </script>
 
 <?php require_once '../footer.php'; ?>
