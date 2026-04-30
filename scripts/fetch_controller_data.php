@@ -182,16 +182,17 @@ function run_dynamic_setpoint_for_chlorine(mysqli $conn, array $pool, float $chl
         return;
     }
 
-    // ── Parâmetros de ajuste ─────────────────────────────────────────────────
-    $anticipationOffset = 0.06;  // offset base mais leve para ficar ligeiramente acima/abaixo do PV
-    $minFollowOffset    = 0.03;  // mínimo acima/abaixo do PV para atuar
-    $maxFollowOffset    = 0.18;  // máximo de follow offset para não exagerar
-    $pumpMinTarget      = 20.0;  // % mínima desejada da bomba durante descida
-    $pumpMaxTarget      = 35.0;  // % máxima desejada da bomba durante descida
-    $pumpAdjustStep     = 0.02;  // ajuste de offset com base na % da bomba
-    $trendDeadband      = 0.01;  // delta mínimo para considerar tendência real (filtra ruído)
-    $cooldownSec        = 60;    // segundos mínimos entre envios consecutivos
-    $minSendDelta       = 0.01;  // só envia se o novo SP diferir do último enviado por este valor
+    // ── Parâmetros de ajuste (lidos da DB; fallback para os valores padrão) ──
+    $pPrefix = 'dynamic_setpoint_tank_' . $tankId . '_ctrl_1_param_';
+    $anticipationOffset = (float)(get_setting_value($conn, $pPrefix . 'anticipation_offset', null) ?? 0.06);
+    $minFollowOffset    = (float)(get_setting_value($conn, $pPrefix . 'min_follow_offset',   null) ?? 0.03);
+    $maxFollowOffset    = (float)(get_setting_value($conn, $pPrefix . 'max_follow_offset',   null) ?? 0.18);
+    $pumpMinTarget      = (float)(get_setting_value($conn, $pPrefix . 'pump_min_target',     null) ?? 20.0);
+    $pumpMaxTarget      = (float)(get_setting_value($conn, $pPrefix . 'pump_max_target',     null) ?? 35.0);
+    $pumpAdjustStep     = (float)(get_setting_value($conn, $pPrefix . 'pump_adjust_step',    null) ?? 0.02);
+    $trendDeadband      = (float)(get_setting_value($conn, $pPrefix . 'trend_deadband',      null) ?? 0.01);
+    $cooldownSec        = (float)(get_setting_value($conn, $pPrefix . 'cooldown_sec',        null) ?? 60.0);
+    $minSendDelta       = (float)(get_setting_value($conn, $pPrefix . 'min_send_delta',      null) ?? 0.01);
     // ────────────────────────────────────────────────────────────────────────
 
     // SP base fixo: usa o valor guardado pelo utilizador; se ainda não existir,

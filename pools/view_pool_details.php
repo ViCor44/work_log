@@ -145,6 +145,7 @@ $stmt->close();
     <h1 class="h3 mb-0">Monitorização Detalhada: <?= htmlspecialchars($tank_name) ?></h1>
 	    <div>
                 <a href="advanced_settings.php?id=<?= $tank_id ?>" class="btn btn-warning" id="btn-pid-analysis">Análise PID Inteligente</a>
+                <a href="dynamic_setpoint_params.php?id=<?= $tank_id ?>" class="btn btn-outline-info" title="Configurar parâmetros do setpoint dinâmico">⚙ Parâmetros Dinâmicos</a>
 	        <a href="dashboard.php" class="btn btn-secondary">Voltar ao Dashboard</a>
 	    </div>
 	</div>
