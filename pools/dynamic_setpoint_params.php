@@ -13,6 +13,20 @@ $tank_info = $result->fetch_assoc();
 $tank_name = $tank_info['name'];
 $stmt->close();
 
+// Helper local para ler settings (mesmo padrão do worker)
+if (!function_exists('get_setting_value')) {
+    function get_setting_value(mysqli $conn, string $key, ?string $default = null): ?string {
+        $stmt = $conn->prepare("SELECT setting_value FROM settings WHERE setting_key = ? LIMIT 1");
+        if (!$stmt) return $default;
+        $stmt->bind_param("s", $key);
+        $stmt->execute();
+        $result = $stmt->get_result();
+        $row = $result->fetch_assoc();
+        $stmt->close();
+        return ($row !== null) ? $row['setting_value'] : $default;
+    }
+}
+
 // Carrega parâmetros actuais da DB (fallback para defaults se não existirem)
 $pPrefix = 'dynamic_setpoint_tank_' . $tank_id . '_ctrl_1_param_';
 $defaults = [
