@@ -363,10 +363,14 @@ document.addEventListener('DOMContentLoaded', function() {
             }
 
             const ctrl1Enabled = !!(data.states && data.states['1']);
+            cloroManualTargetSetpoint = (data.manual_base_setpoint !== null && data.manual_base_setpoint !== undefined && Number.isFinite(parseFloat(data.manual_base_setpoint)))
+                ? parseFloat(data.manual_base_setpoint)
+                : null;
 
             if (cloroDynamicToggle) cloroDynamicToggle.checked = ctrl1Enabled;
 
             setManualSetpointEnabled(1, !ctrl1Enabled);
+            updateGauges();
         } catch (error) {
             console.error(error.message);
         }
@@ -428,6 +432,10 @@ document.addEventListener('DOMContentLoaded', function() {
                 throw new Error(data.error || 'Falha ao aplicar setpoint remoto.');
             }
 
+            if (ctrl === 1) {
+                cloroManualTargetSetpoint = val;
+            }
+
             showGaugeSetpointStatus(statusEl, data.message || 'Setpoint aplicado com sucesso.', true);
             updateGauges();
         } catch (error) {
@@ -464,6 +472,13 @@ document.addEventListener('DOMContentLoaded', function() {
     let cloroNotes = [];
     let cloroHistoryTimestamps = [];
     let cloroHistoryValues = [];
+    let cloroManualTargetSetpoint = null;
+
+    function formatNumberOrNA(value, decimals = 2) {
+        const n = parseFloat(value);
+        if (!Number.isFinite(n)) return 'N/A';
+        return n.toFixed(decimals);
+    }
 
     // Função para criar um manómetro (gauge)
     function createGauge(ctx, label, min, max, lim_min, lim_max, value) {
@@ -608,7 +623,8 @@ document.addEventListener('DOMContentLoaded', function() {
 	        }
 	        // This will be updated with PID data from the database by the fetchHistory function
 	        document.getElementById('cloro-details').innerHTML = `
-	            <div class="detail-row"><span>Setpoint:</span> <strong>${cloroSetpoint || 'N/A'}</strong></div>
+                <div class="detail-row"><span>Setpoint (controlador):</span> <strong>${formatNumberOrNA(cloroSetpoint)}</strong></div>
+                <div class="detail-row"><span>SP alvo (manual):</span> <strong>${formatNumberOrNA(cloroManualTargetSetpoint)}</strong></div>
 	            <div class="detail-row"><span>Dosagem:</span> <strong>${cl_formattedState}</strong></div>
 	            <div class="detail-row"><span>Distúrbio:</span> <strong>${cl_disturbance || 'N/A'}</strong></div>
 	        `;

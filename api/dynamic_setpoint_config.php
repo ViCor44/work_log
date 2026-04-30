@@ -73,6 +73,10 @@ function dynamic_setting_key($tank_id) {
     return 'dynamic_setpoint_tank_' . (int)$tank_id . '_ctrl_1_enabled';
 }
 
+function manual_base_setpoint_key($tank_id) {
+    return 'dynamic_setpoint_tank_' . (int)$tank_id . '_ctrl_1_base_sp';
+}
+
 function read_dynamic_state($conn, $tank_id) {
     $key = dynamic_setting_key($tank_id);
     try {
@@ -100,6 +104,38 @@ function read_dynamic_state($conn, $tank_id) {
     return $state;
 }
 
+function read_manual_base_setpoint($conn, $tank_id) {
+    $key = manual_base_setpoint_key($tank_id);
+    try {
+        $stmt = $conn->prepare('SELECT setting_value FROM settings WHERE setting_key = ? LIMIT 1');
+    } catch (Throwable $e) {
+        return null;
+    }
+    if (!$stmt) {
+        return null;
+    }
+
+    try {
+        $stmt->bind_param('s', $key);
+        $stmt->execute();
+        $res = $stmt->get_result();
+    } catch (Throwable $e) {
+        $stmt->close();
+        return null;
+    }
+
+    $value = null;
+    if ($res && $res->num_rows > 0) {
+        $row = $res->fetch_assoc();
+        if (isset($row['setting_value']) && is_numeric($row['setting_value'])) {
+            $value = (float)$row['setting_value'];
+        }
+    }
+
+    $stmt->close();
+    return $value;
+}
+
 if ($_SERVER['REQUEST_METHOD'] === 'GET') {
     $tank_id = isset($_GET['tank_id']) ? (int)$_GET['tank_id'] : 0;
     if ($tank_id <= 0) {
@@ -111,12 +147,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
         return_json_response(['error' => 'Erro ao ler configuracao de setpoint dinamico'], 500);
     }
 
+    $manualBaseSetpoint = read_manual_base_setpoint($conn, $tank_id);
+
     return_json_response([
         'success' => true,
         'tank_id' => $tank_id,
         'states' => [
             '1' => $enabled,
         ],
+        'manual_base_setpoint' => $manualBaseSetpoint,
     ]);
 }
 
