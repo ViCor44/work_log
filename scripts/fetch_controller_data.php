@@ -170,11 +170,12 @@ function run_dynamic_setpoint_for_chlorine(mysqli $conn, array $pool, float $chl
     $tankId   = (int)$pool['id'];
     $tankName = isset($pool['name']) ? $pool['name'] : ('tanque_' . $tankId);
 
-    $keyPrefix    = 'dynamic_setpoint_tank_' . $tankId . '_ctrl_1_';
-    $enabledKey   = $keyPrefix . 'enabled';
-    $prevPvKey    = $keyPrefix . 'prev_pv';
+    $keyPrefix     = 'dynamic_setpoint_tank_' . $tankId . '_ctrl_1_';
+    $enabledKey    = $keyPrefix . 'enabled';
+    $prevPvKey     = $keyPrefix . 'prev_pv';
     $lastSentAtKey = $keyPrefix . 'last_sent_at';
     $lastSentSpKey = $keyPrefix . 'last_sent_sp';
+    $baseSpKey     = $keyPrefix . 'base_sp';   // SP base fixo definido pelo utilizador
 
     $enabled = get_setting_value($conn, $enabledKey, '0') === '1';
     if (!$enabled) {
@@ -188,6 +189,14 @@ function run_dynamic_setpoint_for_chlorine(mysqli $conn, array $pool, float $chl
     $cooldownSec        = 120;   // segundos mínimos entre envios consecutivos
     $minSendDelta       = 0.02;  // só envia se o novo SP diferir do último enviado por este valor
     // ────────────────────────────────────────────────────────────────────────
+
+    // SP base fixo: usa o valor guardado pelo utilizador; se ainda não existir,
+    // regista o C1SetPoint atual do controlador uma única vez como ponto de referência.
+    $lockedBaseSp = float_or_null(get_setting_value($conn, $baseSpKey, null));
+    if ($lockedBaseSp === null) {
+        $lockedBaseSp = $baseSetpoint;
+        set_setting_value($conn, $baseSpKey, (string)$lockedBaseSp);
+    }
 
     $prevPv     = float_or_null(get_setting_value($conn, $prevPvKey, null));
     $lastSentSp = float_or_null(get_setting_value($conn, $lastSentSpKey, null));
@@ -204,23 +213,24 @@ function run_dynamic_setpoint_for_chlorine(mysqli $conn, array $pool, float $chl
     $deltaPv = $chlorine - $prevPv;
 
     // ── Decisão de setpoint ──────────────────────────────────────────────────
+    // Usa sempre $lockedBaseSp como referência fixa — nunca o SP dinâmico atual do controlador.
     $reason = '';
-    if ($chlorine > $baseSetpoint && $deltaPv < -$trendDeadband) {
+    if ($chlorine > $lockedBaseSp && $deltaPv < -$trendDeadband) {
         // Acima da base e a descer → antecipar doseagem
         $newDynSp = $chlorine + $anticipationOffset;
-        $reason   = "acima_base_a_descer PV={$chlorine} delta={$deltaPv}";
-    } elseif ($chlorine < $baseSetpoint && $deltaPv > $trendDeadband) {
+        $reason   = "acima_base_a_descer PV={$chlorine} base={$lockedBaseSp} delta={$deltaPv}";
+    } elseif ($chlorine < $lockedBaseSp && $deltaPv > $trendDeadband) {
         // Abaixo da base e a subir → reduzir doseagem
         $newDynSp = $chlorine - $anticipationOffset;
-        $reason   = "abaixo_base_a_subir PV={$chlorine} delta={$deltaPv}";
+        $reason   = "abaixo_base_a_subir PV={$chlorine} base={$lockedBaseSp} delta={$deltaPv}";
     } else {
         // Sem tendência relevante ou já cruzou a base → restaurar SP base
-        $newDynSp = $baseSetpoint;
-        $reason   = "restaurar_base PV={$chlorine} delta={$deltaPv}";
+        $newDynSp = $lockedBaseSp;
+        $reason   = "restaurar_base PV={$chlorine} base={$lockedBaseSp} delta={$deltaPv}";
     }
 
     // Garante que o SP enviado não se afasta excessivamente da base (segurança)
-    $newDynSp = clamp($newDynSp, $baseSetpoint - $maxDeviation, $baseSetpoint + $maxDeviation);
+    $newDynSp = clamp($newDynSp, $lockedBaseSp - $maxDeviation, $lockedBaseSp + $maxDeviation);
     $newDynSp = round($newDynSp, 2);
     // ────────────────────────────────────────────────────────────────────────
 

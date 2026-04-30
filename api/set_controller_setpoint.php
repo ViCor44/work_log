@@ -96,6 +96,22 @@ if ($curl_error !== '') {
 }
 log_action($conn, $user_id, 'SETPOINT_REMOTE_UPDATE', $description);
 
+// Quando o utilizador altera manualmente o setpoint do cloro (ctrl=1),
+// atualiza o SP base fixo usado pelo algoritmo dinâmico para evitar drift.
+if ($ctrl === 1 && $tank_id > 0 && $status_label === 'SUCESSO') {
+    $baseSpKey = 'dynamic_setpoint_tank_' . $tank_id . '_ctrl_1_base_sp';
+    $stmt_sp = $conn->prepare(
+        "INSERT INTO settings (setting_key, setting_value) VALUES (?, ?)
+         ON DUPLICATE KEY UPDATE setting_value = VALUES(setting_value)"
+    );
+    if ($stmt_sp) {
+        $val_str = number_format($val, 2, '.', '');
+        $stmt_sp->bind_param('ss', $baseSpKey, $val_str);
+        $stmt_sp->execute();
+        $stmt_sp->close();
+    }
+}
+
 if ($remote_response === false) {
     http_response_code(502);
     echo json_encode(['error' => 'Erro de comunicacao com o controlador: ' . $curl_error]);
