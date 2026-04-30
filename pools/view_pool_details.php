@@ -660,6 +660,9 @@ document.addEventListener('DOMContentLoaded', function() {
             const cloroDatasetLine = data.history.map(rec => ({ x: rec.log_datetime, y: rec.chlorine_value }));
             const cloroDatasetDosagem = data.history.map(rec => ({ x: rec.log_datetime, y: parseFloat(rec.cl_controller_state) || 0 }));
             const cloroDatasetSetpoint = data.history.map(rec => ({ x: rec.log_datetime, y: rec.chlorine_setpoint }));
+            const cloroDatasetBaseSetpoint = (cloroManualTargetSetpoint !== null)
+                ? data.history.map(rec => ({ x: rec.log_datetime, y: cloroManualTargetSetpoint }))
+                : [];
 
             // 2. Buscar notas deste tanque
             const notesResp = await fetch(`../api/get_controller_notes.php?tank_id=${tankId}`);
@@ -691,7 +694,20 @@ document.addEventListener('DOMContentLoaded', function() {
             const cloroDatasets = [
                 { type: 'line', label: 'Cloro (Valor)', data: cloroDatasetLine, borderColor: 'rgba(75, 192, 192, 1)', yAxisID: 'y-axis-line', fill: false, tension: 0.1 },
                 { type: 'bar', label: 'Dosagem', data: cloroDatasetDosagem, backgroundColor: 'rgba(75, 192, 192, 0.2)', yAxisID: 'y-axis-bar' },
-                { type: 'line', label: 'Setpoint', data: cloroDatasetSetpoint, borderColor: 'rgba(255, 99, 132, 0.8)', borderWidth: 2, yAxisID: 'y-axis-line', fill: false, pointRadius: 0 }
+                { type: 'line', label: 'Setpoint', data: cloroDatasetSetpoint, borderColor: 'rgba(255, 99, 132, 0.8)', borderWidth: 2, yAxisID: 'y-axis-line', fill: false, pointRadius: 0 },
+                {
+                    type: 'line',
+                    label: 'SP base (manual)',
+                    data: cloroDatasetBaseSetpoint,
+                    borderColor: 'rgba(255, 214, 10, 1)',
+                    backgroundColor: 'rgba(255, 214, 10, 0.15)',
+                    borderWidth: 3,
+                    borderDash: [8, 4],
+                    yAxisID: 'y-axis-line',
+                    fill: false,
+                    pointRadius: 0,
+                    hidden: cloroDatasetBaseSetpoint.length === 0
+                }
             ];
             // Adiciona o dataset das notas por último para garantir que fique na frente
             cloroDatasets.push({
