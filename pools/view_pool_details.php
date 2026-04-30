@@ -217,6 +217,7 @@ $stmt->close();
                         <button type="submit" class="btn btn-primary">Filtrar Histórico</button>
                     </div>
                 </form>
+                <div id="history-stale-warning" class="alert alert-warning py-2 px-3 d-none" role="alert"></div>
                <div class="row">
                    <div class="col-12">
                        <h5 class="text-center">Histórico de Cloro Livre (mg/L)</h5>
@@ -274,6 +275,7 @@ document.addEventListener('DOMContentLoaded', function() {
     const phSetpointBtn = document.getElementById('ph-setpoint-submit');
     const phSetpointStatus = document.getElementById('ph-setpoint-status');
     const cloroDynamicToggle = document.getElementById('cloro-dynamic-toggle');
+    const historyStaleWarning = document.getElementById('history-stale-warning');
 
     if (pidAnalysisBtn) {
         pidAnalysisBtn.addEventListener('click', function(event) {
@@ -319,6 +321,35 @@ document.addEventListener('DOMContentLoaded', function() {
             if (cloroSetpointInput) cloroSetpointInput.disabled = !enabled;
             if (cloroSetpointBtn) cloroSetpointBtn.disabled = !enabled;
         }
+    }
+
+    function updateHistoryFreshnessWarning(historyRows) {
+        if (!historyStaleWarning) return;
+        if (!Array.isArray(historyRows) || historyRows.length === 0) {
+            historyStaleWarning.classList.remove('d-none');
+            historyStaleWarning.textContent = 'Sem registos no histórico para o período selecionado.';
+            return;
+        }
+
+        const latestTs = historyRows[historyRows.length - 1].log_datetime;
+        const latestDate = latestTs ? new Date(String(latestTs).replace(' ', 'T')) : null;
+        if (!latestDate || Number.isNaN(latestDate.getTime())) {
+            historyStaleWarning.classList.remove('d-none');
+            historyStaleWarning.textContent = 'Não foi possível validar a data do último registo do histórico.';
+            return;
+        }
+
+        const now = new Date();
+        const ageMinutes = Math.floor((now.getTime() - latestDate.getTime()) / 60000);
+
+        if (ageMinutes > 15) {
+            historyStaleWarning.classList.remove('d-none');
+            historyStaleWarning.textContent = `Histórico desatualizado: último registo há ${ageMinutes} min (${latestTs}). O gauge mostra dados ao vivo.`;
+            return;
+        }
+
+        historyStaleWarning.classList.add('d-none');
+        historyStaleWarning.textContent = '';
     }
 
     async function loadDynamicSetpointStatus() {
@@ -601,6 +632,8 @@ document.addEventListener('DOMContentLoaded', function() {
             const data = await response.json();
             if (data.error) throw new Error(data.error);
 
+            updateHistoryFreshnessWarning(data.history);
+
             // Prepara os dados para os gráficos
             cloroHistoryTimestamps = data.history.map(rec => rec.log_datetime);
             cloroHistoryValues = data.history.map(rec => rec.chlorine_value);
@@ -756,6 +789,10 @@ document.addEventListener('DOMContentLoaded', function() {
     fetchHistory(document.getElementById('start_date').value, document.getElementById('end_date').value);
     // Inicia o ciclo de atualização para os gauges a cada 10 segundos
     setInterval(updateGauges, 10000);
+    // Atualiza também o histórico periodicamente para reduzir discrepância visual com os gauges.
+    setInterval(() => {
+        fetchHistory(document.getElementById('start_date').value, document.getElementById('end_date').value);
+    }, 60000);
 });
 </script>
 

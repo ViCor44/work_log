@@ -165,7 +165,7 @@ function send_remote_setpoint(int $ctrl, float $value): array
  *
  *  • Qualquer outro caso       → restaura SP_enviado = SP_base (funcionamento normal)
  */
-function run_dynamic_setpoint_for_chlorine(mysqli $conn, array $pool, float $chlorine, float $baseSetpoint): void
+function run_dynamic_setpoint_for_chlorine(mysqli $conn, array $pool, float $chlorine, float $baseSetpoint, ?float $pumpPercent = null): void
 {
     $tankId   = (int)$pool['id'];
     $tankName = isset($pool['name']) ? $pool['name'] : ('tanque_' . $tankId);
@@ -183,11 +183,16 @@ function run_dynamic_setpoint_for_chlorine(mysqli $conn, array $pool, float $chl
     }
 
     // ── Parâmetros de ajuste ─────────────────────────────────────────────────
-    $anticipationOffset = 0.10;  // quão acima/abaixo do PV atual colocamos o SP enviado
+    $anticipationOffset = 0.06;  // offset base mais leve para ficar ligeiramente acima/abaixo do PV
+    $minFollowOffset    = 0.03;  // mínimo acima/abaixo do PV para atuar
+    $maxFollowOffset    = 0.18;  // máximo de follow offset para não exagerar
+    $pumpMinTarget      = 20.0;  // % mínima desejada da bomba durante descida
+    $pumpMaxTarget      = 35.0;  // % máxima desejada da bomba durante descida
+    $pumpAdjustStep     = 0.02;  // ajuste de offset com base na % da bomba
     $trendDeadband      = 0.01;  // delta mínimo para considerar tendência real (filtra ruído)
-    $maxDeviation       = 0.50;  // limite máximo de afastamento do SP base (segurança)
-    $cooldownSec        = 120;   // segundos mínimos entre envios consecutivos
-    $minSendDelta       = 0.02;  // só envia se o novo SP diferir do último enviado por este valor
+    $maxDeviation       = 0.30;  // limite máximo de afastamento do SP base (segurança)
+    $cooldownSec        = 60;    // segundos mínimos entre envios consecutivos
+    $minSendDelta       = 0.01;  // só envia se o novo SP diferir do último enviado por este valor
     // ────────────────────────────────────────────────────────────────────────
 
     // SP base fixo: usa o valor guardado pelo utilizador; se ainda não existir,
@@ -216,17 +221,32 @@ function run_dynamic_setpoint_for_chlorine(mysqli $conn, array $pool, float $chl
     // Usa sempre $lockedBaseSp como referência fixa — nunca o SP dinâmico atual do controlador.
     $reason = '';
     if ($chlorine > $lockedBaseSp && $deltaPv < -$trendDeadband) {
-        // Acima da base e a descer → antecipar doseagem
-        $newDynSp = $chlorine + $anticipationOffset;
-        $reason   = "acima_base_a_descer PV={$chlorine} base={$lockedBaseSp} delta={$deltaPv}";
+        // Acima da base e a descer: manter SP ligeiramente acima do PV e acompanhar a descida.
+        // Se a bomba estiver baixa, sobe offset; se estiver alta, reduz offset.
+        $followOffset = $anticipationOffset;
+        if ($pumpPercent !== null) {
+            if ($pumpPercent < $pumpMinTarget) {
+                $followOffset += $pumpAdjustStep;
+            } elseif ($pumpPercent > $pumpMaxTarget) {
+                $followOffset -= $pumpAdjustStep;
+            }
+        }
+        $followOffset = clamp($followOffset, $minFollowOffset, $maxFollowOffset);
+        $newDynSp = $chlorine + $followOffset;
+        $reason   = "acima_base_a_descer PV={$chlorine} base={$lockedBaseSp} delta={$deltaPv} bomba=" . ($pumpPercent === null ? 'N/A' : $pumpPercent) . " offset={$followOffset}";
     } elseif ($chlorine < $lockedBaseSp && $deltaPv > $trendDeadband) {
         // Abaixo da base e a subir → reduzir doseagem
-        $newDynSp = $chlorine - $anticipationOffset;
-        $reason   = "abaixo_base_a_subir PV={$chlorine} base={$lockedBaseSp} delta={$deltaPv}";
+        $followOffset = $anticipationOffset;
+        if ($pumpPercent !== null && $pumpPercent > $pumpMaxTarget) {
+            $followOffset += ($pumpAdjustStep / 2);
+        }
+        $followOffset = clamp($followOffset, $minFollowOffset, $maxFollowOffset);
+        $newDynSp = $chlorine - $followOffset;
+        $reason   = "abaixo_base_a_subir PV={$chlorine} base={$lockedBaseSp} delta={$deltaPv} bomba=" . ($pumpPercent === null ? 'N/A' : $pumpPercent) . " offset={$followOffset}";
     } else {
         // Sem tendência relevante ou já cruzou a base → restaurar SP base
         $newDynSp = $lockedBaseSp;
-        $reason   = "restaurar_base PV={$chlorine} base={$lockedBaseSp} delta={$deltaPv}";
+        $reason   = "restaurar_base PV={$chlorine} base={$lockedBaseSp} delta={$deltaPv} bomba=" . ($pumpPercent === null ? 'N/A' : $pumpPercent);
     }
 
     // Garante que o SP enviado não se afasta excessivamente da base (segurança)
@@ -335,8 +355,9 @@ foreach ($pools_with_controllers as $pool) {
 
                 $chlorineValue = float_or_null($cloro);
                 $chlorineSetpoint = float_or_null($cloro_sp);
+                $chlorinePumpPercent = float_or_null($cl_estado);
                 if ($settingsReady && $chlorineValue !== null && $chlorineSetpoint !== null) {
-                    run_dynamic_setpoint_for_chlorine($conn, $pool, $chlorineValue, $chlorineSetpoint);
+                    run_dynamic_setpoint_for_chlorine($conn, $pool, $chlorineValue, $chlorineSetpoint, $chlorinePumpPercent);
                 }
 
             } catch (Exception $e) {
