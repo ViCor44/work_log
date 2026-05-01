@@ -42,22 +42,34 @@ if (!is_finite($val)) {
     exit;
 }
 
-$tank_name = 'N/A';
-if ($tank_id > 0) {
-    $stmt_tank = $conn->prepare('SELECT name FROM tanks WHERE id = ? LIMIT 1');
-    if ($stmt_tank) {
-        $stmt_tank->bind_param('i', $tank_id);
-        $stmt_tank->execute();
-        $res_tank = $stmt_tank->get_result();
-        if ($res_tank && $res_tank->num_rows > 0) {
-            $tank_row = $res_tank->fetch_assoc();
-            $tank_name = $tank_row['name'];
-        }
-        $stmt_tank->close();
-    }
+if ($tank_id <= 0) {
+    http_response_code(400);
+    echo json_encode(['error' => 'Parametro tank_id invalido.']);
+    exit;
 }
 
-$endpoint_url = 'http://191.188.127.30/';
+$tank_name = 'N/A';
+$controller_ip = null;
+$stmt_tank = $conn->prepare('SELECT name, controller_ip FROM tanks WHERE id = ? LIMIT 1');
+if ($stmt_tank) {
+    $stmt_tank->bind_param('i', $tank_id);
+    $stmt_tank->execute();
+    $res_tank = $stmt_tank->get_result();
+    if ($res_tank && $res_tank->num_rows > 0) {
+        $tank_row = $res_tank->fetch_assoc();
+        $tank_name = $tank_row['name'];
+        $controller_ip = isset($tank_row['controller_ip']) ? trim((string)$tank_row['controller_ip']) : null;
+    }
+    $stmt_tank->close();
+}
+
+if ($controller_ip === null || $controller_ip === '') {
+    http_response_code(422);
+    echo json_encode(['error' => 'Tanque sem controller_ip configurado.']);
+    exit;
+}
+
+$endpoint_url = 'http://' . $controller_ip . '/';
 $post_fields = http_build_query([
     'ctrl' => $ctrl,
     'val' => $val_raw

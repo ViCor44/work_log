@@ -136,8 +136,41 @@ function read_manual_base_setpoint($conn, $tank_id) {
     return $value;
 }
 
-function send_remote_setpoint($ctrl, $value) {
-    $endpoint = 'http://191.188.127.30/';
+function read_tank_controller_ip($conn, $tank_id) {
+    try {
+        $stmt = $conn->prepare('SELECT controller_ip FROM tanks WHERE id = ? LIMIT 1');
+    } catch (Throwable $e) {
+        return null;
+    }
+    if (!$stmt) {
+        return null;
+    }
+
+    try {
+        $stmt->bind_param('i', $tank_id);
+        $stmt->execute();
+        $res = $stmt->get_result();
+    } catch (Throwable $e) {
+        $stmt->close();
+        return null;
+    }
+
+    $ip = null;
+    if ($res && $res->num_rows > 0) {
+        $row = $res->fetch_assoc();
+        if (isset($row['controller_ip'])) {
+            $candidate = trim((string)$row['controller_ip']);
+            if ($candidate !== '') {
+                $ip = $candidate;
+            }
+        }
+    }
+    $stmt->close();
+
+    return $ip;
+}
+
+function send_remote_setpoint($ctrl, $value, $endpoint) {
     $postFields = http_build_query([
         'ctrl' => (int)$ctrl,
         'val' => number_format((float)$value, 2, '.', ''),
@@ -269,23 +302,34 @@ log_action($conn, $user_id, 'DYNAMIC_SETPOINT_TOGGLE', $description);
 
 $restoreMessage = '';
 $manualBaseSetpoint = read_manual_base_setpoint($conn, $tank_id);
+$controllerIp = read_tank_controller_ip($conn, $tank_id);
 $restoredManualBase = false;
 
 // Ao desligar o modo dinâmico, repõe automaticamente o SP manual no controlador.
 if ($enabled === 0) {
     if ($manualBaseSetpoint === null) {
         $restoreMessage = 'Modo dinamico desativado. SP manual nao encontrado para reposicao automatica.';
+    } elseif ($controllerIp === null) {
+        return_json_response([
+            'error' => 'Modo dinamico desativado, mas o tanque nao tem controller_ip configurado para repor o SP manual.',
+            'tank_id' => $tank_id,
+            'ctrl' => 1,
+            'enabled' => false,
+            'manual_base_setpoint' => $manualBaseSetpoint,
+        ], 422);
     } else {
-        $send = send_remote_setpoint(1, $manualBaseSetpoint);
+        $endpoint = 'http://' . $controllerIp . '/';
+        $send = send_remote_setpoint(1, $manualBaseSetpoint, $endpoint);
         if (!$send['ok']) {
             log_action(
                 $conn,
                 $user_id,
                 'DYNAMIC_SETPOINT_RESTORE_FAIL',
                 sprintf(
-                    'Reposicao SP manual falhou | tank_id=%d | ctrl=1 | val=%.2f | http=%d | erro=%s',
+                    'Reposicao SP manual falhou | tank_id=%d | ctrl=1 | val=%.2f | endpoint=%s | http=%d | erro=%s',
                     $tank_id,
                     $manualBaseSetpoint,
+                    $endpoint,
                     $send['http_code'],
                     $send['error']
                 )
@@ -305,7 +349,7 @@ if ($enabled === 0) {
             $conn,
             $user_id,
             'DYNAMIC_SETPOINT_RESTORE_OK',
-            sprintf('Reposicao SP manual com sucesso | tank_id=%d | ctrl=1 | val=%.2f', $tank_id, $manualBaseSetpoint)
+            sprintf('Reposicao SP manual com sucesso | tank_id=%d | ctrl=1 | val=%.2f | endpoint=%s', $tank_id, $manualBaseSetpoint, $endpoint)
         );
     }
 }

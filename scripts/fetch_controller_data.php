@@ -120,9 +120,8 @@ function log_system_action(mysqli $conn, string $action, string $description): v
     $stmt->close();
 }
 
-function send_remote_setpoint(int $ctrl, float $value): array
+function send_remote_setpoint(int $ctrl, float $value, string $endpoint): array
 {
-    $endpoint = 'http://191.188.127.30/';
     $postFields = http_build_query([
         'ctrl' => $ctrl,
         'val' => number_format($value, 2, '.', ''),
@@ -169,6 +168,18 @@ function run_dynamic_setpoint_for_chlorine(mysqli $conn, array $pool, float $chl
 {
     $tankId   = (int)$pool['id'];
     $tankName = isset($pool['name']) ? $pool['name'] : ('tanque_' . $tankId);
+    $controllerIp = isset($pool['controller_ip']) ? trim((string)$pool['controller_ip']) : '';
+
+    if ($controllerIp === '') {
+        log_system_action(
+            $conn,
+            'DYNAMIC_SETPOINT_SKIP_NO_CONTROLLER_IP',
+            "Tanque {$tankName} ({$tankId}) sem controller_ip configurado; setpoint dinâmico ignorado"
+        );
+        return;
+    }
+
+    $endpoint = 'http://' . $controllerIp . '/';
 
     $keyPrefix     = 'dynamic_setpoint_tank_' . $tankId . '_ctrl_1_';
     $enabledKey    = $keyPrefix . 'enabled';
@@ -306,12 +317,12 @@ function run_dynamic_setpoint_for_chlorine(mysqli $conn, array $pool, float $chl
         return;
     }
 
-    $send = send_remote_setpoint(1, $newDynSp);
+    $send = send_remote_setpoint(1, $newDynSp, $endpoint);
     if (!$send['ok']) {
         log_system_action(
             $conn,
             'DYNAMIC_SETPOINT_APPLY_FAIL',
-            "Tanque {$tankName} ({$tankId}) ctrl=1 val={$newDynSp} ({$reason}) {$calculationSummary} falhou HTTP {$send['http_code']} erro={$send['error']}"
+            "Tanque {$tankName} ({$tankId}) ctrl=1 val={$newDynSp} endpoint={$endpoint} ({$reason}) {$calculationSummary} falhou HTTP {$send['http_code']} erro={$send['error']}"
         );
         return;
     }
@@ -321,7 +332,7 @@ function run_dynamic_setpoint_for_chlorine(mysqli $conn, array $pool, float $chl
     log_system_action(
         $conn,
         'DYNAMIC_SETPOINT_APPLY_OK',
-        "Tanque {$tankName} ({$tankId}) ctrl=1 val={$newDynSp} ({$reason}) {$calculationSummary} aplicado com sucesso"
+        "Tanque {$tankName} ({$tankId}) ctrl=1 val={$newDynSp} endpoint={$endpoint} ({$reason}) {$calculationSummary} aplicado com sucesso"
     );
 }
 
