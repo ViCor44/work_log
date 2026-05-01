@@ -39,6 +39,12 @@ $defaults = [
     'trend_deadband'      => 0.01,
     'cooldown_sec'        => 60.0,
     'min_send_delta'      => 0.01,
+    'night_anticipation_offset' => 0.03,
+    'night_min_follow_offset'   => 0.015,
+    'night_max_follow_offset'   => 0.09,
+    'night_pump_min_target'     => 10.0,
+    'night_pump_max_target'     => 17.5,
+    'night_pump_adjust_step'    => 0.01,
     'night_start_hour'    => 22.0,
     'night_end_hour'      => 7.0,
     'night_min_excess_over_base' => 0.25,
@@ -206,6 +212,40 @@ foreach ($defaults as $name => $default) {
 
                     <div class="section-title mt-3">Modo Noturno (mais conservador)</div>
                     <div class="row g-3 mb-3">
+                        <div class="col-md-4">
+                            <label data-bs-toggle="tooltip" data-bs-placement="top" title="Offset de antecipação noturno. Por padrão é metade do normal para uma atuação mais suave durante baixo consumo.">Offset antecipação (noite) <span class="default-badge">(padrão: 0.03)</span> <span class="info-icon">?</span></label>
+                            <input type="number" step="0.01" class="form-control" name="night_anticipation_offset" id="f_night_anticipation_offset" value="<?= $params['night_anticipation_offset'] ?>">
+                            <div class="param-hint">Perfil noturno: 50% do default normal.</div>
+                        </div>
+                        <div class="col-md-4">
+                            <label data-bs-toggle="tooltip" data-bs-placement="top" title="Offset mínimo noturno. Mantém atuação mais conservadora durante a noite.">Offset mínimo (noite) <span class="default-badge">(padrão: 0.015)</span> <span class="info-icon">?</span></label>
+                            <input type="number" step="0.001" class="form-control" name="night_min_follow_offset" id="f_night_min_follow_offset" value="<?= $params['night_min_follow_offset'] ?>">
+                            <div class="param-hint">Perfil noturno: 50% do default normal.</div>
+                        </div>
+                        <div class="col-md-4">
+                            <label data-bs-toggle="tooltip" data-bs-placement="top" title="Offset máximo noturno. Limita agressividade da compensação durante a noite.">Offset máximo (noite) <span class="default-badge">(padrão: 0.09)</span> <span class="info-icon">?</span></label>
+                            <input type="number" step="0.01" class="form-control" name="night_max_follow_offset" id="f_night_max_follow_offset" value="<?= $params['night_max_follow_offset'] ?>">
+                            <div class="param-hint">Perfil noturno: 50% do default normal.</div>
+                        </div>
+                    </div>
+                    <div class="row g-3 mb-3">
+                        <div class="col-md-4">
+                            <label data-bs-toggle="tooltip" data-bs-placement="top" title="Alvo mínimo da bomba no período noturno. Metade do valor normal por defeito.">% Bomba mínima (noite) <span class="default-badge">(padrão: 10)</span> <span class="info-icon">?</span></label>
+                            <input type="number" step="0.5" class="form-control" name="night_pump_min_target" id="f_night_pump_min_target" value="<?= $params['night_pump_min_target'] ?>">
+                            <div class="param-hint">Perfil noturno: 50% do default normal.</div>
+                        </div>
+                        <div class="col-md-4">
+                            <label data-bs-toggle="tooltip" data-bs-placement="top" title="Alvo máximo da bomba no período noturno. Metade do valor normal por defeito.">% Bomba máxima (noite) <span class="default-badge">(padrão: 17.5)</span> <span class="info-icon">?</span></label>
+                            <input type="number" step="0.5" class="form-control" name="night_pump_max_target" id="f_night_pump_max_target" value="<?= $params['night_pump_max_target'] ?>">
+                            <div class="param-hint">Perfil noturno: 50% do default normal.</div>
+                        </div>
+                        <div class="col-md-4">
+                            <label data-bs-toggle="tooltip" data-bs-placement="top" title="Passo de ajuste da bomba no período noturno. Metade do normal por defeito.">Passo ajuste bomba (noite) <span class="default-badge">(padrão: 0.01)</span> <span class="info-icon">?</span></label>
+                            <input type="number" step="0.005" class="form-control" name="night_pump_adjust_step" id="f_night_pump_adjust_step" value="<?= $params['night_pump_adjust_step'] ?>">
+                            <div class="param-hint">Perfil noturno: 50% do default normal.</div>
+                        </div>
+                    </div>
+                    <div class="row g-3 mb-3">
                         <div class="col-md-3">
                             <label data-bs-toggle="tooltip" data-bs-placement="top" title="Hora de início do modo noturno. Dentro desta janela, o algoritmo só acompanha a descida quando o cloro estiver bem acima da base e com queda mais evidente.">Início noite (hora) <span class="default-badge">(padrão: 22)</span> <span class="info-icon">?</span></label>
                             <input type="number" min="0" max="23" step="1" class="form-control" name="night_start_hour" id="f_night_start_hour" value="<?= $params['night_start_hour'] ?>">
@@ -291,6 +331,8 @@ const FIELD_NAMES = [
     'anticipation_offset','min_follow_offset','max_follow_offset',
     'pump_min_target','pump_max_target','pump_adjust_step',
     'trend_deadband','cooldown_sec','min_send_delta',
+    'night_anticipation_offset','night_min_follow_offset','night_max_follow_offset',
+    'night_pump_min_target','night_pump_max_target','night_pump_adjust_step',
     'night_start_hour','night_end_hour','night_min_excess_over_base','night_min_drop_delta',
     'ha_anticipation_offset','ha_min_follow_offset','ha_max_follow_offset',
     'ha_pump_min_target','ha_pump_max_target','ha_pump_adjust_step'

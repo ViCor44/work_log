@@ -206,6 +206,12 @@ function run_dynamic_setpoint_for_chlorine(mysqli $conn, array $pool, float $chl
     $trendDeadband      = (float)(get_setting_value($conn, $pPrefix . 'trend_deadband',      null) ?? 0.01);
     $cooldownSec        = (float)(get_setting_value($conn, $pPrefix . 'cooldown_sec',        null) ?? 60.0);
     $minSendDelta       = (float)(get_setting_value($conn, $pPrefix . 'min_send_delta',      null) ?? 0.01);
+    $nightAnticipationOffset = (float)(get_setting_value($conn, $pPrefix . 'night_anticipation_offset', null) ?? 0.03);
+    $nightMinFollowOffset    = (float)(get_setting_value($conn, $pPrefix . 'night_min_follow_offset',   null) ?? 0.015);
+    $nightMaxFollowOffset    = (float)(get_setting_value($conn, $pPrefix . 'night_max_follow_offset',   null) ?? 0.09);
+    $nightPumpMinTarget      = (float)(get_setting_value($conn, $pPrefix . 'night_pump_min_target',     null) ?? 10.0);
+    $nightPumpMaxTarget      = (float)(get_setting_value($conn, $pPrefix . 'night_pump_max_target',     null) ?? 17.5);
+    $nightPumpAdjustStep     = (float)(get_setting_value($conn, $pPrefix . 'night_pump_adjust_step',    null) ?? 0.01);
     $nightStartHour     = (int)(float)(get_setting_value($conn, $pPrefix . 'night_start_hour', null) ?? 22.0);
     $nightEndHour       = (int)(float)(get_setting_value($conn, $pPrefix . 'night_end_hour',   null) ?? 7.0);
     $nightMinExcessOverBase = (float)(get_setting_value($conn, $pPrefix . 'night_min_excess_over_base', null) ?? 0.25);
@@ -284,6 +290,35 @@ function run_dynamic_setpoint_for_chlorine(mysqli $conn, array $pool, float $chl
     $requiredExcessOverBase = $isNight ? $nightMinExcessOverBase : 0.0;
     $requiredDropDelta = $isNight ? max($trendDeadband, $nightMinDropDelta) : $trendDeadband;
 
+    // Seleção de perfil ativo:
+    // noite -> perfil noturno (50% defaults por padrão)
+    // dia + HA -> perfil HA
+    // dia normal -> perfil base
+    $activeAnticipationOffset = $anticipationOffset;
+    $activeMinFollowOffset    = $minFollowOffset;
+    $activeMaxFollowOffset    = $maxFollowOffset;
+    $activePumpMinTarget      = $pumpMinTarget;
+    $activePumpMaxTarget      = $pumpMaxTarget;
+    $activePumpAdjustStep     = $pumpAdjustStep;
+    $profileMode = 'normal';
+    if ($isNight) {
+        $activeAnticipationOffset = $nightAnticipationOffset;
+        $activeMinFollowOffset    = $nightMinFollowOffset;
+        $activeMaxFollowOffset    = $nightMaxFollowOffset;
+        $activePumpMinTarget      = $nightPumpMinTarget;
+        $activePumpMaxTarget      = $nightPumpMaxTarget;
+        $activePumpAdjustStep     = $nightPumpAdjustStep;
+        $profileMode = 'night';
+    } elseif ($isHighAttendance) {
+        $activeAnticipationOffset = $haAnticipationOffset;
+        $activeMinFollowOffset    = $haMinFollowOffset;
+        $activeMaxFollowOffset    = $haMaxFollowOffset;
+        $activePumpMinTarget      = $haPumpMinTarget;
+        $activePumpMaxTarget      = $haPumpMaxTarget;
+        $activePumpAdjustStep     = $haPumpAdjustStep;
+        $profileMode = 'ha';
+    }
+
     $isConfirmedRising = $trendAvg > $trendDeadband;
     $isConfirmedFalling = $trendAvg < -$requiredDropDelta;
 
@@ -306,33 +341,33 @@ function run_dynamic_setpoint_for_chlorine(mysqli $conn, array $pool, float $chl
         } else {
             $decision = 'acima_base_' . $trendLabel;
         }
-        $followOffset = $haAnticipationOffset;
+        $followOffset = $activeAnticipationOffset;
         if ($pumpPercent !== null) {
-            if ($pumpPercent < $haPumpMinTarget) {
-                $followOffset += $haPumpAdjustStep;
+            if ($pumpPercent < $activePumpMinTarget) {
+                $followOffset += $activePumpAdjustStep;
                 if ($pumpPercent < 5.0) {
-                    $followOffset += $haPumpAdjustStep;
+                    $followOffset += $activePumpAdjustStep;
                 }
-            } elseif ($pumpPercent > $haPumpMaxTarget) {
-                $followOffset -= $haPumpAdjustStep;
+            } elseif ($pumpPercent > $activePumpMaxTarget) {
+                $followOffset -= $activePumpAdjustStep;
                 if ($pumpPercent > 60.0) {
-                    $followOffset -= $haPumpAdjustStep;
+                    $followOffset -= $activePumpAdjustStep;
                 }
             }
         }
-        $followOffset = clamp($followOffset, $haMinFollowOffset, $haMaxFollowOffset);
+        $followOffset = clamp($followOffset, $activeMinFollowOffset, $activeMaxFollowOffset);
         $newDynSp = $chlorine + $followOffset;
-        $reason   = $decision . " PV={$chlorine} base={$lockedBaseSp} delta={$deltaPv} trendAvg={$trendAvg} conf={$trendConfidence} bomba=" . ($pumpPercent === null ? 'N/A' : $pumpPercent) . " offset={$followOffset}";
+        $reason   = $decision . " PV={$chlorine} base={$lockedBaseSp} delta={$deltaPv} trendAvg={$trendAvg} conf={$trendConfidence} profile={$profileMode} bomba=" . ($pumpPercent === null ? 'N/A' : $pumpPercent) . " offset={$followOffset}";
     } elseif ($chlorine < $lockedBaseSp && $isConfirmedRising) {
         // Abaixo da base e subida confirmada → reduzir doseagem
         $decision = 'abaixo_base_a_subir';
-        $followOffset = $anticipationOffset;
-        if ($pumpPercent !== null && $pumpPercent > $pumpMaxTarget) {
-            $followOffset += ($pumpAdjustStep / 2);
+        $followOffset = $activeAnticipationOffset;
+        if ($pumpPercent !== null && $pumpPercent > $activePumpMaxTarget) {
+            $followOffset += ($activePumpAdjustStep / 2);
         }
-        $followOffset = clamp($followOffset, $minFollowOffset, $maxFollowOffset);
+        $followOffset = clamp($followOffset, $activeMinFollowOffset, $activeMaxFollowOffset);
         $newDynSp = $chlorine - $followOffset;
-        $reason   = "abaixo_base_a_subir PV={$chlorine} base={$lockedBaseSp} delta={$deltaPv} trendAvg={$trendAvg} conf={$trendConfidence} bomba=" . ($pumpPercent === null ? 'N/A' : $pumpPercent) . " offset={$followOffset}";
+        $reason   = "abaixo_base_a_subir PV={$chlorine} base={$lockedBaseSp} delta={$deltaPv} trendAvg={$trendAvg} conf={$trendConfidence} profile={$profileMode} bomba=" . ($pumpPercent === null ? 'N/A' : $pumpPercent) . " offset={$followOffset}";
     } else {
         // Tendência inconclusiva, subida acima da base, descida abaixo da base ou já cruzou a base
         // -> restaurar SP base
@@ -345,7 +380,7 @@ function run_dynamic_setpoint_for_chlorine(mysqli $conn, array $pool, float $chl
     // ao SP manual. Apenas garantimos um domínio físico plausível.
     $newDynSp = clamp($newDynSp, 0.00, 10.00);
     $newDynSp = round($newDynSp, 2);
-    $calculationSummary = "decision={$decision} mode=" . ($isNight ? 'night' : 'day') . " ha=" . ($isHighAttendance ? '1' : '0') . " hour={$hourNow} reqExcess=" . round($requiredExcessOverBase, 3) . " reqDrop=" . round($requiredDropDelta, 4) . " PV=" . round($chlorine, 2) . " prevPV=" . round($prevPv ?? 0.0, 2) . " delta=" . round($deltaPv, 4) . " trendAvg=" . round($trendAvg, 4) . " trendConf={$trendConfidence} base=" . round($lockedBaseSp, 2) . " pump=" . ($pumpPercent === null ? 'N/A' : round($pumpPercent, 2)) . " offset=" . round($followOffset, 4) . " newSP={$newDynSp}";
+    $calculationSummary = "decision={$decision} mode=" . ($isNight ? 'night' : 'day') . " profile={$profileMode} ha=" . ($isHighAttendance ? '1' : '0') . " hour={$hourNow} reqExcess=" . round($requiredExcessOverBase, 3) . " reqDrop=" . round($requiredDropDelta, 4) . " PV=" . round($chlorine, 2) . " prevPV=" . round($prevPv ?? 0.0, 2) . " delta=" . round($deltaPv, 4) . " trendAvg=" . round($trendAvg, 4) . " trendConf={$trendConfidence} base=" . round($lockedBaseSp, 2) . " pump=" . ($pumpPercent === null ? 'N/A' : round($pumpPercent, 2)) . " offset=" . round($followOffset, 4) . " newSP={$newDynSp}";
     // ────────────────────────────────────────────────────────────────────────
 
     // Cooldown entre envios
