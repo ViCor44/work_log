@@ -263,16 +263,30 @@ function run_dynamic_setpoint_for_chlorine(mysqli $conn, array $pool, float $chl
     $requiredDropDelta = $isNight ? max($trendDeadband, $nightMinDropDelta) : $trendDeadband;
 
     // ── Decisão de setpoint ──────────────────────────────────────────────────
-    // Usa sempre $lockedBaseSp como referência fixa para saber o alvo manual,
-    // mas a proteção do SP dinâmico passa a depender da % da bomba e do offset
-    // máximo em torno do PV atual, não da distância ao SP base.
+    // Enquanto PV está ACIMA da base (+ margem noturna), o SP segue sempre o PV
+    // de cima, independentemente de a tendência momentânea ser positiva ou negativa.
+    // Isto evita que ticks pontuais para cima façam o SP colapsar para a base e
+    // parem a bomba, causando a quebra de doseagem visível no histórico.
+    // O offset varia com a % da bomba para auto-regular sem sobre-dosear.
     $reason = '';
     $decision = 'restaurar_base';
     $followOffset = 0.00;
-    if ($chlorine > ($lockedBaseSp + $requiredExcessOverBase) && $deltaPv < -$requiredDropDelta) {
-        // Acima da base e a descer: manter SP ligeiramente acima do PV e acompanhar a descida.
-        // Em alta afluência usa parâmetros mais agressivos (HA vars) para reagir mais cedo e com mais força.
-        $decision = $isNight ? 'acima_base_a_descer_noite' : ($isHighAttendance ? 'acima_base_a_descer_HA' : 'acima_base_a_descer');
+    if ($chlorine > ($lockedBaseSp + $requiredExcessOverBase) && $deltaPv <= $trendDeadband) {
+        // PV acima da base e estável ou a descer: SP segue PV de cima para não largar a dosagem.
+        // Quando o PV está a SUBIR acima da base não empurramos o SP para cima — restauramos a base
+        // para que o controlador pare a bomba e evite sobre-cloração.
+        if ($deltaPv < -$requiredDropDelta) {
+            $trendLabel = 'a_descer';
+        } else {
+            $trendLabel = 'estavel';
+        }
+        if ($isNight) {
+            $decision = 'acima_base_noite_' . $trendLabel;
+        } elseif ($isHighAttendance) {
+            $decision = 'acima_base_HA_' . $trendLabel;
+        } else {
+            $decision = 'acima_base_' . $trendLabel;
+        }
         $followOffset = $haAnticipationOffset;
         if ($pumpPercent !== null) {
             if ($pumpPercent < $haPumpMinTarget) {
