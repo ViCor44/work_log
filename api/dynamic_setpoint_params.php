@@ -6,6 +6,21 @@ ob_start();
 header('Content-Type: application/json; charset=utf-8');
 require_once '../core.php';
 
+if (!function_exists('get_setting_value')) {
+    function get_setting_value(mysqli $conn, string $key, ?string $default = null): ?string {
+        $stmt = $conn->prepare("SELECT setting_value FROM settings WHERE setting_key = ? LIMIT 1");
+        if (!$stmt) {
+            return $default;
+        }
+        $stmt->bind_param("s", $key);
+        $stmt->execute();
+        $result = $stmt->get_result();
+        $row = $result ? $result->fetch_assoc() : null;
+        $stmt->close();
+        return ($row !== null && isset($row['setting_value'])) ? (string)$row['setting_value'] : $default;
+    }
+}
+
 if (!function_exists('set_setting_value')) {
     function set_setting_value(mysqli $conn, string $key, string $value): bool {
         $stmt = $conn->prepare("INSERT INTO settings (setting_key, setting_value) VALUES (?, ?) ON DUPLICATE KEY UPDATE setting_value = VALUES(setting_value)");
