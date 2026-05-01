@@ -39,6 +39,10 @@ $defaults = [
     'trend_deadband'      => 0.01,
     'cooldown_sec'        => 60.0,
     'min_send_delta'      => 0.01,
+    'night_start_hour'    => 22.0,
+    'night_end_hour'      => 7.0,
+    'night_min_excess_over_base' => 0.25,
+    'night_min_drop_delta' => 0.02,
 ];
 $params = [];
 foreach ($defaults as $name => $default) {
@@ -194,6 +198,30 @@ foreach ($defaults as $name => $default) {
                         </div>
                     </div>
 
+                    <div class="section-title mt-3">Modo Noturno (mais conservador)</div>
+                    <div class="row g-3 mb-3">
+                        <div class="col-md-3">
+                            <label data-bs-toggle="tooltip" data-bs-placement="top" title="Hora de início do modo noturno. Dentro desta janela, o algoritmo só acompanha a descida quando o cloro estiver bem acima da base e com queda mais evidente.">Início noite (hora) <span class="default-badge">(padrão: 22)</span> <span class="info-icon">?</span></label>
+                            <input type="number" min="0" max="23" step="1" class="form-control" name="night_start_hour" id="f_night_start_hour" value="<?= $params['night_start_hour'] ?>">
+                            <div class="param-hint">0-23. Ex.: 22 significa 22:00.</div>
+                        </div>
+                        <div class="col-md-3">
+                            <label data-bs-toggle="tooltip" data-bs-placement="top" title="Hora de fim do modo noturno. Pode atravessar meia-noite (ex.: início 22, fim 7).">Fim noite (hora) <span class="default-badge">(padrão: 7)</span> <span class="info-icon">?</span></label>
+                            <input type="number" min="0" max="23" step="1" class="form-control" name="night_end_hour" id="f_night_end_hour" value="<?= $params['night_end_hour'] ?>">
+                            <div class="param-hint">0-23. Ex.: 7 significa 07:00.</div>
+                        </div>
+                        <div class="col-md-3">
+                            <label data-bs-toggle="tooltip" data-bs-placement="top" title="Durante a noite, só aplica ajuste de descida se PV estiver acima de (SP base + este excesso). Quanto maior, mais conservador.">Excesso mínimo sobre base (mg/L) <span class="default-badge">(padrão: 0.25)</span> <span class="info-icon">?</span></label>
+                            <input type="number" step="0.01" class="form-control" name="night_min_excess_over_base" id="f_night_min_excess_over_base" value="<?= $params['night_min_excess_over_base'] ?>">
+                            <div class="param-hint">À noite exige PV mais acima da base para atuar.</div>
+                        </div>
+                        <div class="col-md-3">
+                            <label data-bs-toggle="tooltip" data-bs-placement="top" title="Durante a noite, só considera queda confirmada se a descida for pelo menos este delta entre leituras. Também respeita o trend deadband (usa o maior dos dois).">Queda mínima confirmada (mg/L) <span class="default-badge">(padrão: 0.02)</span> <span class="info-icon">?</span></label>
+                            <input type="number" step="0.001" class="form-control" name="night_min_drop_delta" id="f_night_min_drop_delta" value="<?= $params['night_min_drop_delta'] ?>">
+                            <div class="param-hint">Evita atuar em quedas pequenas durante baixo consumo.</div>
+                        </div>
+                    </div>
+
                     <div class="d-flex gap-2 mt-4">
                         <button type="submit" class="btn btn-primary px-4">Guardar Parâmetros</button>
                         <button type="button" class="btn btn-outline-warning px-4" id="btn-reset-defaults">↩ Restaurar Defaults</button>
@@ -219,7 +247,8 @@ const API = '../api/dynamic_setpoint_params.php';
 const FIELD_NAMES = [
     'anticipation_offset','min_follow_offset','max_follow_offset',
     'pump_min_target','pump_max_target','pump_adjust_step',
-    'trend_deadband','cooldown_sec','min_send_delta'
+    'trend_deadband','cooldown_sec','min_send_delta',
+    'night_start_hour','night_end_hour','night_min_excess_over_base','night_min_drop_delta'
 ];
 
 function showToast(msg, type = 'success') {

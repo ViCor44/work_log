@@ -29,6 +29,10 @@ function param_defaults(): array {
         'trend_deadband'      => 0.01,
         'cooldown_sec'        => 60.0,
         'min_send_delta'      => 0.01,
+        'night_start_hour'    => 22.0,
+        'night_end_hour'      => 7.0,
+        'night_min_excess_over_base' => 0.25,
+        'night_min_drop_delta' => 0.02,
     ];
 }
 
@@ -96,6 +100,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         'trend_deadband'      => ['min' => 0.00, 'max' => 1.0],
         'cooldown_sec'        => ['min' => 10.0, 'max' => 3600.0],
         'min_send_delta'      => ['min' => 0.00, 'max' => 1.0],
+        'night_start_hour'    => ['min' => 0.0, 'max' => 23.0],
+        'night_end_hour'      => ['min' => 0.0, 'max' => 23.0],
+        'night_min_excess_over_base' => ['min' => 0.0, 'max' => 2.0],
+        'night_min_drop_delta' => ['min' => 0.0, 'max' => 1.0],
     ];
 
     foreach ($defaults as $name => $default) {

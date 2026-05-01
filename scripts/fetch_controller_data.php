@@ -193,6 +193,15 @@ function run_dynamic_setpoint_for_chlorine(mysqli $conn, array $pool, float $chl
     $trendDeadband      = (float)(get_setting_value($conn, $pPrefix . 'trend_deadband',      null) ?? 0.01);
     $cooldownSec        = (float)(get_setting_value($conn, $pPrefix . 'cooldown_sec',        null) ?? 60.0);
     $minSendDelta       = (float)(get_setting_value($conn, $pPrefix . 'min_send_delta',      null) ?? 0.01);
+    $nightStartHour     = (int)(float)(get_setting_value($conn, $pPrefix . 'night_start_hour', null) ?? 22.0);
+    $nightEndHour       = (int)(float)(get_setting_value($conn, $pPrefix . 'night_end_hour',   null) ?? 7.0);
+    $nightMinExcessOverBase = (float)(get_setting_value($conn, $pPrefix . 'night_min_excess_over_base', null) ?? 0.25);
+    $nightMinDropDelta  = (float)(get_setting_value($conn, $pPrefix . 'night_min_drop_delta', null) ?? 0.02);
+
+    $nightStartHour = max(0, min(23, $nightStartHour));
+    $nightEndHour   = max(0, min(23, $nightEndHour));
+    $nightMinExcessOverBase = max(0.0, $nightMinExcessOverBase);
+    $nightMinDropDelta = max(0.0, $nightMinDropDelta);
     // ────────────────────────────────────────────────────────────────────────
 
     // SP base fixo: usa o valor guardado pelo utilizador; se ainda não existir,
@@ -216,6 +225,13 @@ function run_dynamic_setpoint_for_chlorine(mysqli $conn, array $pool, float $chl
     }
 
     $deltaPv = $chlorine - $prevPv;
+    $hourNow = (int)date('G');
+    $isNight = ($nightStartHour <= $nightEndHour)
+        ? ($hourNow >= $nightStartHour && $hourNow < $nightEndHour)
+        : ($hourNow >= $nightStartHour || $hourNow < $nightEndHour);
+
+    $requiredExcessOverBase = $isNight ? $nightMinExcessOverBase : 0.0;
+    $requiredDropDelta = $isNight ? max($trendDeadband, $nightMinDropDelta) : $trendDeadband;
 
     // ── Decisão de setpoint ──────────────────────────────────────────────────
     // Usa sempre $lockedBaseSp como referência fixa para saber o alvo manual,
@@ -224,10 +240,10 @@ function run_dynamic_setpoint_for_chlorine(mysqli $conn, array $pool, float $chl
     $reason = '';
     $decision = 'restaurar_base';
     $followOffset = 0.00;
-    if ($chlorine > $lockedBaseSp && $deltaPv < -$trendDeadband) {
+    if ($chlorine > ($lockedBaseSp + $requiredExcessOverBase) && $deltaPv < -$requiredDropDelta) {
         // Acima da base e a descer: manter SP ligeiramente acima do PV e acompanhar a descida.
         // Se a bomba estiver baixa, sobe offset; se estiver alta, reduz offset.
-        $decision = 'acima_base_a_descer';
+        $decision = $isNight ? 'acima_base_a_descer_noite' : 'acima_base_a_descer';
         $followOffset = $anticipationOffset;
         if ($pumpPercent !== null) {
             if ($pumpPercent < $pumpMinTarget) {
@@ -244,7 +260,7 @@ function run_dynamic_setpoint_for_chlorine(mysqli $conn, array $pool, float $chl
         }
         $followOffset = clamp($followOffset, $minFollowOffset, $maxFollowOffset);
         $newDynSp = $chlorine + $followOffset;
-        $reason   = "acima_base_a_descer PV={$chlorine} base={$lockedBaseSp} delta={$deltaPv} bomba=" . ($pumpPercent === null ? 'N/A' : $pumpPercent) . " offset={$followOffset}";
+        $reason   = ($isNight ? 'acima_base_a_descer_noite' : 'acima_base_a_descer') . " PV={$chlorine} base={$lockedBaseSp} delta={$deltaPv} bomba=" . ($pumpPercent === null ? 'N/A' : $pumpPercent) . " offset={$followOffset}";
     } elseif ($chlorine < $lockedBaseSp && $deltaPv > $trendDeadband) {
         // Abaixo da base e a subir → reduzir doseagem
         $decision = 'abaixo_base_a_subir';
@@ -266,7 +282,7 @@ function run_dynamic_setpoint_for_chlorine(mysqli $conn, array $pool, float $chl
     // ao SP manual. Apenas garantimos um domínio físico plausível.
     $newDynSp = clamp($newDynSp, 0.00, 10.00);
     $newDynSp = round($newDynSp, 2);
-    $calculationSummary = "decision={$decision} PV=" . round($chlorine, 2) . " prevPV=" . round($prevPv, 2) . " delta=" . round($deltaPv, 4) . " base=" . round($lockedBaseSp, 2) . " pump=" . ($pumpPercent === null ? 'N/A' : round($pumpPercent, 2)) . " offset=" . round($followOffset, 4) . " newSP={$newDynSp}";
+    $calculationSummary = "decision={$decision} mode=" . ($isNight ? 'night' : 'day') . " hour={$hourNow} reqExcess=" . round($requiredExcessOverBase, 3) . " reqDrop=" . round($requiredDropDelta, 4) . " PV=" . round($chlorine, 2) . " prevPV=" . round($prevPv, 2) . " delta=" . round($deltaPv, 4) . " base=" . round($lockedBaseSp, 2) . " pump=" . ($pumpPercent === null ? 'N/A' : round($pumpPercent, 2)) . " offset=" . round($followOffset, 4) . " newSP={$newDynSp}";
     // ────────────────────────────────────────────────────────────────────────
 
     // Cooldown entre envios
