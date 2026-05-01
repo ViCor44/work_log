@@ -6,6 +6,30 @@ ob_start();
 header('Content-Type: application/json; charset=utf-8');
 require_once '../core.php';
 
+if (!function_exists('set_setting_value')) {
+    function set_setting_value(mysqli $conn, string $key, string $value): bool {
+        $stmt = $conn->prepare("UPDATE settings SET setting_value = ? WHERE setting_key = ?");
+        if ($stmt) {
+            $stmt->bind_param("ss", $value, $key);
+            $stmt->execute();
+            $affected = $stmt->affected_rows;
+            $stmt->close();
+            if ($affected > 0) {
+                return true;
+            }
+        }
+
+        $stmtIns = $conn->prepare("INSERT INTO settings (setting_key, setting_value) VALUES (?, ?)");
+        if (!$stmtIns) {
+            return false;
+        }
+        $stmtIns->bind_param("ss", $key, $value);
+        $ok = $stmtIns->execute();
+        $stmtIns->close();
+        return $ok;
+    }
+}
+
 function return_json($payload, $status = 200) {
     http_response_code($status);
     if (ob_get_length()) ob_end_clean();
