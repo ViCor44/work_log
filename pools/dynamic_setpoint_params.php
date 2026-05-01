@@ -43,6 +43,12 @@ $defaults = [
     'night_end_hour'      => 7.0,
     'night_min_excess_over_base' => 0.25,
     'night_min_drop_delta' => 0.02,
+    'ha_anticipation_offset' => 0.12,
+    'ha_min_follow_offset'   => 0.06,
+    'ha_max_follow_offset'   => 0.35,
+    'ha_pump_min_target'     => 12.0,
+    'ha_pump_max_target'     => 45.0,
+    'ha_pump_adjust_step'    => 0.04,
 ];
 $params = [];
 foreach ($defaults as $name => $default) {
@@ -222,6 +228,43 @@ foreach ($defaults as $name => $default) {
                         </div>
                     </div>
 
+                    <div class="section-title mt-3">Alta Afluência (mais agressivo)</div>
+                    <p style="color:#b0bec5; font-size:0.82rem; margin-bottom:0.75rem;">Quando o toggle "🏊 Alta afluência" está ativo na página do tanque, estes valores substituem os normais acima durante a descida acima da base.</p>
+                    <div class="row g-3 mb-3">
+                        <div class="col-md-4">
+                            <label data-bs-toggle="tooltip" data-bs-placement="top" title="Offset de antecipação usado em modo de alta afluência. Deve ser maior que o normal para reagir mais cedo.">Offset antecipação (HA) <span class="default-badge">(padrão: 0.12)</span> <span class="info-icon">?</span></label>
+                            <input type="number" step="0.01" class="form-control" name="ha_anticipation_offset" id="f_ha_anticipation_offset" value="<?= $params['ha_anticipation_offset'] ?>">
+                            <div class="param-hint">Normalmente o dobro do offset normal.</div>
+                        </div>
+                        <div class="col-md-4">
+                            <label data-bs-toggle="tooltip" data-bs-placement="top" title="Offset mínimo em modo de alta afluência. Nunca desce abaixo deste valor, mesmo quando a bomba está a trabalhar bem.">Offset mínimo (HA) <span class="default-badge">(padrão: 0.06)</span> <span class="info-icon">?</span></label>
+                            <input type="number" step="0.01" class="form-control" name="ha_min_follow_offset" id="f_ha_min_follow_offset" value="<?= $params['ha_min_follow_offset'] ?>">
+                            <div class="param-hint">Limite inferior em HA.</div>
+                        </div>
+                        <div class="col-md-4">
+                            <label data-bs-toggle="tooltip" data-bs-placement="top" title="Offset máximo em modo de alta afluência. Permite seguir a descida com mais agressão sem over-shoot excessivo.">Offset máximo (HA) <span class="default-badge">(padrão: 0.35)</span> <span class="info-icon">?</span></label>
+                            <input type="number" step="0.01" class="form-control" name="ha_max_follow_offset" id="f_ha_max_follow_offset" value="<?= $params['ha_max_follow_offset'] ?>">
+                            <div class="param-hint">Limite superior em HA.</div>
+                        </div>
+                    </div>
+                    <div class="row g-3 mb-3">
+                        <div class="col-md-4">
+                            <label data-bs-toggle="tooltip" data-bs-placement="top" title="% mínima da bomba em HA. Mais baixo que o normal: reage mesmo quando a bomba já está a dosear um pouco.">% Bomba mínima (HA) <span class="default-badge">(padrão: 12)</span> <span class="info-icon">?</span></label>
+                            <input type="number" step="0.5" class="form-control" name="ha_pump_min_target" id="f_ha_pump_min_target" value="<?= $params['ha_pump_min_target'] ?>">
+                            <div class="param-hint">Inicia ajuste mais cedo em HA.</div>
+                        </div>
+                        <div class="col-md-4">
+                            <label data-bs-toggle="tooltip" data-bs-placement="top" title="% máxima da bomba em HA. Mais alto que o normal: aguenta a doseagem até à bomba estar bem ocupada.">% Bomba máxima (HA) <span class="default-badge">(padrão: 45)</span> <span class="info-icon">?</span></label>
+                            <input type="number" step="0.5" class="form-control" name="ha_pump_max_target" id="f_ha_pump_max_target" value="<?= $params['ha_pump_max_target'] ?>">
+                            <div class="param-hint">Reduz offset só quando bomba muito alta em HA.</div>
+                        </div>
+                        <div class="col-md-4">
+                            <label data-bs-toggle="tooltip" data-bs-placement="top" title="Passo de ajuste por bomba em HA. Maior que o normal: o offset sobe/desce mais rapidamente com a % da bomba.">Passo ajuste bomba (HA) <span class="default-badge">(padrão: 0.04)</span> <span class="info-icon">?</span></label>
+                            <input type="number" step="0.005" class="form-control" name="ha_pump_adjust_step" id="f_ha_pump_adjust_step" value="<?= $params['ha_pump_adjust_step'] ?>">
+                            <div class="param-hint">Reação mais forte à bomba em HA.</div>
+                        </div>
+                    </div>
+
                     <div class="d-flex gap-2 mt-4">
                         <button type="submit" class="btn btn-primary px-4">Guardar Parâmetros</button>
                         <button type="button" class="btn btn-outline-warning px-4" id="btn-reset-defaults">↩ Restaurar Defaults</button>
@@ -248,7 +291,9 @@ const FIELD_NAMES = [
     'anticipation_offset','min_follow_offset','max_follow_offset',
     'pump_min_target','pump_max_target','pump_adjust_step',
     'trend_deadband','cooldown_sec','min_send_delta',
-    'night_start_hour','night_end_hour','night_min_excess_over_base','night_min_drop_delta'
+    'night_start_hour','night_end_hour','night_min_excess_over_base','night_min_drop_delta',
+    'ha_anticipation_offset','ha_min_follow_offset','ha_max_follow_offset',
+    'ha_pump_min_target','ha_pump_max_target','ha_pump_adjust_step'
 ];
 
 function showToast(msg, type = 'success') {

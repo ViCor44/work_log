@@ -77,6 +77,10 @@ function manual_base_setpoint_key($tank_id) {
     return 'dynamic_setpoint_tank_' . (int)$tank_id . '_ctrl_1_base_sp';
 }
 
+function high_attendance_key($tank_id) {
+    return 'dynamic_setpoint_tank_' . (int)$tank_id . '_ctrl_1_high_attendance';
+}
+
 function read_dynamic_state($conn, $tank_id) {
     $key = dynamic_setting_key($tank_id);
     try {
@@ -214,14 +218,28 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
     }
 
     $manualBaseSetpoint = read_manual_base_setpoint($conn, $tank_id);
+    $haKey = high_attendance_key($tank_id);
+    $haActive = false;
+    try {
+        $stmtHa = $conn->prepare('SELECT setting_value FROM settings WHERE setting_key = ? LIMIT 1');
+        if ($stmtHa) {
+            $stmtHa->bind_param('s', $haKey);
+            $stmtHa->execute();
+            $resHa = $stmtHa->get_result();
+            if ($resHa && $resHa->num_rows > 0) {
+                $rowHa = $resHa->fetch_assoc();
+                $haActive = isset($rowHa['setting_value']) && $rowHa['setting_value'] === '1';
+            }
+            $stmtHa->close();
+        }
+    } catch (Throwable $e) {}
 
     return_json_response([
         'success' => true,
         'tank_id' => $tank_id,
-        'states' => [
-            '1' => $enabled,
-        ],
+        'states' => ['1' => $enabled],
         'manual_base_setpoint' => $manualBaseSetpoint,
+        'high_attendance' => $haActive,
     ]);
 }
 
@@ -237,10 +255,34 @@ if (!is_array($payload)) {
 $tank_id = isset($payload['tank_id']) ? (int)$payload['tank_id'] : 0;
 $ctrl = isset($payload['ctrl']) ? (int)$payload['ctrl'] : 0;
 $enabled = !empty($payload['enabled']) ? 1 : 0;
+$postType = isset($payload['type']) ? (string)$payload['type'] : 'dynamic';
 
 if ($tank_id <= 0) {
     return_json_response(['error' => 'tank_id invalido'], 400);
 }
+
+// ── Alta afluência toggle ─────────────────────────────────────────────────────
+if ($postType === 'high_attendance') {
+    $haKey = high_attendance_key($tank_id);
+    $haVal = !empty($payload['enabled']) ? '1' : '0';
+    $stmtUa = $conn->prepare('UPDATE settings SET setting_value = ? WHERE setting_key = ?');
+    if ($stmtUa) {
+        $stmtUa->bind_param('ss', $haVal, $haKey);
+        $stmtUa->execute();
+        $affected = $stmtUa->affected_rows;
+        $stmtUa->close();
+        if ($affected === 0) {
+            $stmtIa = $conn->prepare('INSERT INTO settings (setting_key, setting_value) VALUES (?, ?)');
+            if ($stmtIa) { $stmtIa->bind_param('ss', $haKey, $haVal); $stmtIa->execute(); $stmtIa->close(); }
+        }
+    }
+    if (function_exists('log_action')) {
+        log_action($conn, (int)$_SESSION['user_id'], 'HIGH_ATTENDANCE_TOGGLE',
+            'Alta afluência ' . ($haVal === '1' ? 'ATIVADA' : 'DESATIVADA') . " | tank_id={$tank_id}");
+    }
+    return_json_response(['success' => true, 'high_attendance' => $haVal === '1']);
+}
+// ─────────────────────────────────────────────────────────────────────────────
 
 if ($ctrl !== 1) {
     return_json_response(['error' => 'Setpoint dinamico disponivel apenas para o controlador 1 (cloro)'], 400);

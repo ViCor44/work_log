@@ -167,6 +167,13 @@ $stmt->close();
                                     <label class="form-check-label" for="cloro-dynamic-toggle">Ativo</label>
                                 </div>
                             </div>
+                            <div class="dynamic-switch-row" id="ha-toggle-row" style="display:none;">
+                                <span class="small" title="Ativa parâmetros mais agressivos (offsets maiores) para dias com maior afluência de banhistas.">🏊 Alta afluência</span>
+                                <div class="form-check form-switch">
+                                    <input class="form-check-input" type="checkbox" id="cloro-ha-toggle">
+                                    <label class="form-check-label" for="cloro-ha-toggle" id="cloro-ha-label">Normal</label>
+                                </div>
+                            </div>
                             <label for="cloro-setpoint-val" class="form-label">Setpoint remoto (Controlador 1)</label>
                             <div class="d-flex gap-2">
                                 <input type="number" step="0.01" class="form-control form-control-sm" id="cloro-setpoint-val" placeholder="Ex.: 1.50" required>
@@ -370,6 +377,14 @@ document.addEventListener('DOMContentLoaded', function() {
 
             if (cloroDynamicToggle) cloroDynamicToggle.checked = ctrl1Enabled;
 
+            const haEnabled = !!(data.high_attendance);
+            const haToggle = document.getElementById('cloro-ha-toggle');
+            const haLabel = document.getElementById('cloro-ha-label');
+            const haRow = document.getElementById('ha-toggle-row');
+            if (haToggle) haToggle.checked = haEnabled;
+            if (haLabel) haLabel.textContent = haEnabled ? 'Alta afluência' : 'Normal';
+            if (haRow) haRow.style.display = ctrl1Enabled ? 'flex' : 'none';
+
             setManualSetpointEnabled(1, !ctrl1Enabled);
             updateGauges();
         } catch (error) {
@@ -399,11 +414,30 @@ document.addEventListener('DOMContentLoaded', function() {
             }
 
             setManualSetpointEnabled(ctrl, !enabled);
+            const haRow = document.getElementById('ha-toggle-row');
+            if (ctrl === 1 && haRow) haRow.style.display = enabled ? 'flex' : 'none';
             showGaugeSetpointStatus(statusEl, data.message || (enabled ? 'Setpoint dinâmico ativado.' : 'Setpoint dinâmico desativado.'), true);
             updateGauges();
         } catch (error) {
             setManualSetpointEnabled(ctrl, true);
             if (ctrl === 1 && cloroDynamicToggle) cloroDynamicToggle.checked = false;
+            showGaugeSetpointStatus(statusEl, error.message, false);
+        }
+    }
+
+    async function saveHighAttendance(enabled, statusEl) {
+        try {
+            const response = await fetch('../api/dynamic_setpoint_config.php', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ tank_id: tankId, type: 'high_attendance', enabled })
+            });
+            const data = await readApiResponse(response);
+            if (!data.success) throw new Error(data.error || 'Erro ao alterar modo de alta afluência.');
+            const haLabel = document.getElementById('cloro-ha-label');
+            if (haLabel) haLabel.textContent = enabled ? 'Alta afluência' : 'Normal';
+            showGaugeSetpointStatus(statusEl, enabled ? '🏊 Modo alta afluência ativado.' : 'Modo normal restaurado.', true);
+        } catch (error) {
             showGaugeSetpointStatus(statusEl, error.message, false);
         }
     }
@@ -471,6 +505,13 @@ document.addEventListener('DOMContentLoaded', function() {
     if (cloroDynamicToggle) {
         cloroDynamicToggle.addEventListener('change', function() {
             saveDynamicSetpointStatus(1, cloroDynamicToggle.checked, cloroSetpointStatus);
+        });
+    }
+
+    const cloroHaToggle = document.getElementById('cloro-ha-toggle');
+    if (cloroHaToggle) {
+        cloroHaToggle.addEventListener('change', function() {
+            saveHighAttendance(cloroHaToggle.checked, cloroSetpointStatus);
         });
     }
     let phHistoryChart, cloroHistoryChart;

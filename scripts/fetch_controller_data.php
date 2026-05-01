@@ -213,6 +213,24 @@ function run_dynamic_setpoint_for_chlorine(mysqli $conn, array $pool, float $chl
     $nightEndHour   = max(0, min(23, $nightEndHour));
     $nightMinExcessOverBase = max(0.0, $nightMinExcessOverBase);
     $nightMinDropDelta = max(0.0, $nightMinDropDelta);
+
+    // ── Alta Afluência: parâmetros alternativos para dias com maior afluxo ──
+    $haSettingKey       = 'dynamic_setpoint_tank_' . $tankId . '_ctrl_1_high_attendance';
+    $isHighAttendance   = get_setting_value($conn, $haSettingKey, '0') === '1';
+    $haAnticipationOffset = $anticipationOffset;
+    $haMinFollowOffset    = $minFollowOffset;
+    $haMaxFollowOffset    = $maxFollowOffset;
+    $haPumpMinTarget      = $pumpMinTarget;
+    $haPumpMaxTarget      = $pumpMaxTarget;
+    $haPumpAdjustStep     = $pumpAdjustStep;
+    if ($isHighAttendance) {
+        $haAnticipationOffset = (float)(get_setting_value($conn, $pPrefix . 'ha_anticipation_offset', null) ?? 0.12);
+        $haMinFollowOffset    = (float)(get_setting_value($conn, $pPrefix . 'ha_min_follow_offset',   null) ?? 0.06);
+        $haMaxFollowOffset    = (float)(get_setting_value($conn, $pPrefix . 'ha_max_follow_offset',   null) ?? 0.35);
+        $haPumpMinTarget      = (float)(get_setting_value($conn, $pPrefix . 'ha_pump_min_target',     null) ?? 12.0);
+        $haPumpMaxTarget      = (float)(get_setting_value($conn, $pPrefix . 'ha_pump_max_target',     null) ?? 45.0);
+        $haPumpAdjustStep     = (float)(get_setting_value($conn, $pPrefix . 'ha_pump_adjust_step',    null) ?? 0.04);
+    }
     // ────────────────────────────────────────────────────────────────────────
 
     // SP base fixo: usa o valor guardado pelo utilizador; se ainda não existir,
@@ -253,25 +271,25 @@ function run_dynamic_setpoint_for_chlorine(mysqli $conn, array $pool, float $chl
     $followOffset = 0.00;
     if ($chlorine > ($lockedBaseSp + $requiredExcessOverBase) && $deltaPv < -$requiredDropDelta) {
         // Acima da base e a descer: manter SP ligeiramente acima do PV e acompanhar a descida.
-        // Se a bomba estiver baixa, sobe offset; se estiver alta, reduz offset.
-        $decision = $isNight ? 'acima_base_a_descer_noite' : 'acima_base_a_descer';
-        $followOffset = $anticipationOffset;
+        // Em alta afluência usa parâmetros mais agressivos (HA vars) para reagir mais cedo e com mais força.
+        $decision = $isNight ? 'acima_base_a_descer_noite' : ($isHighAttendance ? 'acima_base_a_descer_HA' : 'acima_base_a_descer');
+        $followOffset = $haAnticipationOffset;
         if ($pumpPercent !== null) {
-            if ($pumpPercent < $pumpMinTarget) {
-                $followOffset += $pumpAdjustStep;
+            if ($pumpPercent < $haPumpMinTarget) {
+                $followOffset += $haPumpAdjustStep;
                 if ($pumpPercent < 5.0) {
-                    $followOffset += $pumpAdjustStep;
+                    $followOffset += $haPumpAdjustStep;
                 }
-            } elseif ($pumpPercent > $pumpMaxTarget) {
-                $followOffset -= $pumpAdjustStep;
+            } elseif ($pumpPercent > $haPumpMaxTarget) {
+                $followOffset -= $haPumpAdjustStep;
                 if ($pumpPercent > 60.0) {
-                    $followOffset -= $pumpAdjustStep;
+                    $followOffset -= $haPumpAdjustStep;
                 }
             }
         }
-        $followOffset = clamp($followOffset, $minFollowOffset, $maxFollowOffset);
+        $followOffset = clamp($followOffset, $haMinFollowOffset, $haMaxFollowOffset);
         $newDynSp = $chlorine + $followOffset;
-        $reason   = ($isNight ? 'acima_base_a_descer_noite' : 'acima_base_a_descer') . " PV={$chlorine} base={$lockedBaseSp} delta={$deltaPv} bomba=" . ($pumpPercent === null ? 'N/A' : $pumpPercent) . " offset={$followOffset}";
+        $reason   = $decision . " PV={$chlorine} base={$lockedBaseSp} delta={$deltaPv} bomba=" . ($pumpPercent === null ? 'N/A' : $pumpPercent) . " offset={$followOffset}";
     } elseif ($chlorine < $lockedBaseSp && $deltaPv > $trendDeadband) {
         // Abaixo da base e a subir → reduzir doseagem
         $decision = 'abaixo_base_a_subir';
@@ -293,7 +311,7 @@ function run_dynamic_setpoint_for_chlorine(mysqli $conn, array $pool, float $chl
     // ao SP manual. Apenas garantimos um domínio físico plausível.
     $newDynSp = clamp($newDynSp, 0.00, 10.00);
     $newDynSp = round($newDynSp, 2);
-    $calculationSummary = "decision={$decision} mode=" . ($isNight ? 'night' : 'day') . " hour={$hourNow} reqExcess=" . round($requiredExcessOverBase, 3) . " reqDrop=" . round($requiredDropDelta, 4) . " PV=" . round($chlorine, 2) . " prevPV=" . round($prevPv, 2) . " delta=" . round($deltaPv, 4) . " base=" . round($lockedBaseSp, 2) . " pump=" . ($pumpPercent === null ? 'N/A' : round($pumpPercent, 2)) . " offset=" . round($followOffset, 4) . " newSP={$newDynSp}";
+    $calculationSummary = "decision={$decision} mode=" . ($isNight ? 'night' : 'day') . " ha=" . ($isHighAttendance ? '1' : '0') . " hour={$hourNow} reqExcess=" . round($requiredExcessOverBase, 3) . " reqDrop=" . round($requiredDropDelta, 4) . " PV=" . round($chlorine, 2) . " prevPV=" . round($prevPv, 2) . " delta=" . round($deltaPv, 4) . " base=" . round($lockedBaseSp, 2) . " pump=" . ($pumpPercent === null ? 'N/A' : round($pumpPercent, 2)) . " offset=" . round($followOffset, 4) . " newSP={$newDynSp}";
     // ────────────────────────────────────────────────────────────────────────
 
     // Cooldown entre envios

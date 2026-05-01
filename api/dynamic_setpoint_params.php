@@ -33,6 +33,13 @@ function param_defaults(): array {
         'night_end_hour'      => 7.0,
         'night_min_excess_over_base' => 0.25,
         'night_min_drop_delta' => 0.02,
+        // Alta afluência (parâmetros mais agressivos)
+        'ha_anticipation_offset' => 0.12,
+        'ha_min_follow_offset'   => 0.06,
+        'ha_max_follow_offset'   => 0.35,
+        'ha_pump_min_target'     => 12.0,
+        'ha_pump_max_target'     => 45.0,
+        'ha_pump_adjust_step'    => 0.04,
     ];
 }
 
@@ -104,6 +111,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         'night_end_hour'      => ['min' => 0.0, 'max' => 23.0],
         'night_min_excess_over_base' => ['min' => 0.0, 'max' => 2.0],
         'night_min_drop_delta' => ['min' => 0.0, 'max' => 1.0],
+        'ha_anticipation_offset' => ['min' => 0.0, 'max' => 2.0],
+        'ha_min_follow_offset'   => ['min' => 0.0, 'max' => 2.0],
+        'ha_max_follow_offset'   => ['min' => 0.0, 'max' => 5.0],
+        'ha_pump_min_target'     => ['min' => 0.0, 'max' => 100.0],
+        'ha_pump_max_target'     => ['min' => 0.0, 'max' => 100.0],
+        'ha_pump_adjust_step'    => ['min' => 0.0, 'max' => 1.0],
     ];
 
     foreach ($defaults as $name => $default) {
