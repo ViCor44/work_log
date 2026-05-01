@@ -8,24 +8,13 @@ require_once '../core.php';
 
 if (!function_exists('set_setting_value')) {
     function set_setting_value(mysqli $conn, string $key, string $value): bool {
-        $stmt = $conn->prepare("UPDATE settings SET setting_value = ? WHERE setting_key = ?");
-        if ($stmt) {
-            $stmt->bind_param("ss", $value, $key);
-            $stmt->execute();
-            $affected = $stmt->affected_rows;
-            $stmt->close();
-            if ($affected > 0) {
-                return true;
-            }
-        }
-
-        $stmtIns = $conn->prepare("INSERT INTO settings (setting_key, setting_value) VALUES (?, ?)");
-        if (!$stmtIns) {
+        $stmt = $conn->prepare("INSERT INTO settings (setting_key, setting_value) VALUES (?, ?) ON DUPLICATE KEY UPDATE setting_value = VALUES(setting_value)");
+        if (!$stmt) {
             return false;
         }
-        $stmtIns->bind_param("ss", $key, $value);
-        $ok = $stmtIns->execute();
-        $stmtIns->close();
+        $stmt->bind_param("ss", $key, $value);
+        $ok = $stmt->execute();
+        $stmt->close();
         return $ok;
     }
 }
