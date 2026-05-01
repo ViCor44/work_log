@@ -57,6 +57,17 @@ function read_params(mysqli $conn, int $tank_id): array {
     return $out;
 }
 
+function parse_float_input($raw): ?float {
+    if ($raw === null) return null;
+    $txt = trim((string)$raw);
+    if ($txt === '') return null;
+    // Aceita formato PT (vírgula decimal) e remove espaços.
+    $txt = str_replace(' ', '', $txt);
+    $txt = str_replace(',', '.', $txt);
+    if (!is_numeric($txt)) return null;
+    return (float)$txt;
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 
 if (!isset($_REQUEST['tank_id']) || !is_numeric($_REQUEST['tank_id'])) {
@@ -105,7 +116,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         'pump_max_target'     => ['min' => 0.0,  'max' => 100.0],
         'pump_adjust_step'    => ['min' => 0.00, 'max' => 1.0],
         'trend_deadband'      => ['min' => 0.00, 'max' => 1.0],
-        'cooldown_sec'        => ['min' => 10.0, 'max' => 3600.0],
+        'cooldown_sec'        => ['min' => 0.0, 'max' => 3600.0],
         'min_send_delta'      => ['min' => 0.00, 'max' => 1.0],
         'night_start_hour'    => ['min' => 0.0, 'max' => 23.0],
         'night_end_hour'      => ['min' => 0.0, 'max' => 23.0],
@@ -121,7 +132,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
     foreach ($defaults as $name => $default) {
         if (!isset($_POST[$name])) continue;
-        $val = (float)$_POST[$name];
+        $val = parse_float_input($_POST[$name]);
+        if ($val === null) {
+            // Campo vazio ou inválido: mantém valor atual/default sem falhar o save global.
+            continue;
+        }
         if ($val < $rules[$name]['min'] || $val > $rules[$name]['max']) {
             $errors[] = "Valor de '{$name}' fora do intervalo [{$rules[$name]['min']}, {$rules[$name]['max']}].";
             continue;
