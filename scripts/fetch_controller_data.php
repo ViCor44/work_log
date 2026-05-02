@@ -3,6 +3,24 @@
 // Incluímos os ficheiros essenciais.
 require_once dirname(__DIR__) . '/core.php';
 
+// ─── Logger para ficheiro ────────────────────────────────────────────────────
+// Escreve TUDO o que este worker faz em logs/fetch_controller_YYYY-MM-DD.log
+// Mantém também os logs em consola (echo) e em DB (log_system_action).
+$GLOBALS['__fetch_log_path'] = null;
+function file_log(string $message): void
+{
+    if (empty($GLOBALS['__fetch_log_path'])) {
+        $dir = dirname(__DIR__) . DIRECTORY_SEPARATOR . 'logs';
+        if (!is_dir($dir)) {
+            @mkdir($dir, 0775, true);
+        }
+        $GLOBALS['__fetch_log_path'] = $dir . DIRECTORY_SEPARATOR . 'fetch_controller_' . date('Y-m-d') . '.log';
+    }
+    $line = '[' . date('Y-m-d H:i:s') . '] ' . $message . PHP_EOL;
+    @file_put_contents($GLOBALS['__fetch_log_path'], $line, FILE_APPEND | LOCK_EX);
+}
+// ─────────────────────────────────────────────────────────────────────────────
+
 /**
  * Remove registos de histórico mais antigos que 730 dias.
  */
@@ -111,6 +129,9 @@ function clamp(float $v, float $min, float $max): float
 
 function log_system_action(mysqli $conn, string $action, string $description): void
 {
+    // Espelha sempre no ficheiro de log do worker.
+    file_log($action . ' | ' . $description);
+
     $stmt = $conn->prepare("INSERT INTO logs (user_id, action, description) VALUES (NULL, ?, ?)");
     if (!$stmt) {
         return;
@@ -467,6 +488,7 @@ $pools_with_controllers = $tanks_stmt->fetch_all(MYSQLI_ASSOC);
 $settingsReady = ensure_settings_table($conn);
 if (!$settingsReady) {
     echo "Aviso: tabela settings indisponivel, setpoint dinamico sera ignorado.\n";
+    file_log('AVISO tabela settings indisponivel, setpoint dinamico sera ignorado');
 }
 
 // Prepara a query de INSERT uma vez para ser reutilizada.
@@ -477,6 +499,7 @@ $stmt_insert = $conn->prepare("
 ");
 
 echo "A iniciar a busca de dados dos controladores...\n";
+file_log('=== INICIO worker fetch_controller_data | tanques=' . count($pools_with_controllers) . ' ===');
 
 // 2. Faz um ciclo por cada piscina.
 foreach ($pools_with_controllers as $pool) {
@@ -500,6 +523,7 @@ foreach ($pools_with_controllers as $pool) {
 
     if ($response_text === false) {
         echo "Erro cURL no tanque '{$pool['name']}': " . curl_error($ch) . "\n";
+        file_log("ERRO_CURL tanque={$pool['name']} ip={$ip} erro=" . curl_error($ch));
     }
 
     curl_close($ch);
@@ -528,6 +552,7 @@ foreach ($pools_with_controllers as $pool) {
                 $stmt_insert->execute();
 
                 echo "Dados do tanque '" . $pool['name'] . "' inseridos com sucesso.\n";
+                file_log("INSERT_OK tanque={$pool['name']} id={$tank_id} cloro=" . ($cloro ?? 'null') . " cloro_sp=" . ($cloro_sp ?? 'null') . " pH=" . ($ph ?? 'null') . " temp=" . ($temp ?? 'null') . " pump_cl=" . ($cl_estado ?? 'null') . " pump_ph=" . ($ph_estado ?? 'null'));
 
                 $chlorineValue = float_or_null($cloro);
                 $chlorineSetpoint = float_or_null($cloro_sp);
@@ -538,10 +563,12 @@ foreach ($pools_with_controllers as $pool) {
 
             } catch (Exception $e) {
                 echo "Erro ao processar XML para o tanque '" . $pool['name'] . "': " . $e->getMessage() . "\n";
+                file_log("ERRO_XML tanque={$pool['name']} id={$tank_id} erro=" . $e->getMessage());
             }
         }
     } else {
         echo "Falha ao contactar o controlador para o tanque '" . $pool['name'] . "' no IP: " . $ip . "\n";
+        file_log("HTTP_FAIL tanque={$pool['name']} id={$tank_id} ip={$ip} http={$http_code}");
     }
 }
 
@@ -549,4 +576,5 @@ $stmt_insert->close();
 cleanup_old_controller_history($conn);
 $conn->close();
 echo "Processo concluído.\n";
+file_log('=== FIM worker fetch_controller_data ===');
 ?>
