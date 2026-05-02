@@ -186,6 +186,7 @@ function run_dynamic_setpoint_for_chlorine(mysqli $conn, array $pool, float $chl
     $prevPvKey     = $keyPrefix . 'prev_pv';
     $prevPv2Key    = $keyPrefix . 'prev_pv_2';
     $prevPv3Key    = $keyPrefix . 'prev_pv_3';
+    $trendStateKey = $keyPrefix . 'trend_state';
     $lastSentAtKey = $keyPrefix . 'last_sent_at';
     $lastSentSpKey = $keyPrefix . 'last_sent_sp';
     $baseSpKey     = $keyPrefix . 'base_sp';   // SP base fixo definido pelo utilizador
@@ -252,6 +253,7 @@ function run_dynamic_setpoint_for_chlorine(mysqli $conn, array $pool, float $chl
     $prevPv     = float_or_null(get_setting_value($conn, $prevPvKey, null));
     $prevPv2    = float_or_null(get_setting_value($conn, $prevPv2Key, null));
     $prevPv3    = float_or_null(get_setting_value($conn, $prevPv3Key, null));
+    $trendState = (string)(get_setting_value($conn, $trendStateKey, 'neutral') ?? 'neutral');
     $lastSentSp = float_or_null(get_setting_value($conn, $lastSentSpKey, null));
     $lastSentAt = (int)(get_setting_value($conn, $lastSentAtKey, '0') ?? '0');
 
@@ -344,7 +346,7 @@ function run_dynamic_setpoint_for_chlorine(mysqli $conn, array $pool, float $chl
     $reason = '';
     $decision = 'restaurar_base';
     $followOffset = 0.00;
-    if ($chlorine > ($lockedBaseSp + $effectiveExcessOverBase) && $isConfirmedFalling) {
+    if ($chlorine > ($lockedBaseSp + $effectiveExcessOverBase) && (($isConfirmedFalling || $trendState === 'following_above') && !$isConfirmedRising)) {
         // PV acima da base e em descida confirmada: SP segue PV de cima.
         $trendLabel = 'a_descer_confirmado';
         if ($isNight) {
@@ -370,6 +372,7 @@ function run_dynamic_setpoint_for_chlorine(mysqli $conn, array $pool, float $chl
         }
         $followOffset = clamp($followOffset, $activeMinFollowOffset, $activeMaxFollowOffset);
         $newDynSp = $chlorine + $followOffset;
+        $trendState = 'following_above';
         $reason   = $decision . " PV={$chlorine} base={$lockedBaseSp} delta={$deltaPv} trendAvg={$trendAvg} conf={$trendConfidence} profile={$profileMode} bomba=" . ($pumpPercent === null ? 'N/A' : $pumpPercent) . " offset={$followOffset}";
     } elseif ($chlorine < $lockedBaseSp && $isConfirmedRising) {
         // Abaixo da base e subida confirmada → reduzir doseagem
@@ -380,13 +383,36 @@ function run_dynamic_setpoint_for_chlorine(mysqli $conn, array $pool, float $chl
         }
         $followOffset = clamp($followOffset, $activeMinFollowOffset, $activeMaxFollowOffset);
         $newDynSp = $chlorine - $followOffset;
+        $trendState = 'following_below';
         $reason   = "abaixo_base_a_subir PV={$chlorine} base={$lockedBaseSp} delta={$deltaPv} trendAvg={$trendAvg} conf={$trendConfidence} profile={$profileMode} bomba=" . ($pumpPercent === null ? 'N/A' : $pumpPercent) . " offset={$followOffset}";
+    } elseif ($chlorine > ($lockedBaseSp + $effectiveExcessOverBase) && $isConfirmedRising) {
+        // Acima da base e ainda a subir: não interfere.
+        $newDynSp = $lockedBaseSp;
+        $trendState = 'waiting_fall_above';
+        $reason   = "acima_base_a_subir_sem_intervencao PV={$chlorine} base={$lockedBaseSp} delta={$deltaPv} trendAvg={$trendAvg} conf={$trendConfidence}";
+    } elseif ($chlorine < $lockedBaseSp && $isConfirmedFalling) {
+        // Abaixo da base e ainda a descer: PID normal, sem intervenção.
+        $newDynSp = $lockedBaseSp;
+        $trendState = 'waiting_rise_below';
+        $reason   = "abaixo_base_a_descer_sem_intervencao PV={$chlorine} base={$lockedBaseSp} delta={$deltaPv} trendAvg={$trendAvg} conf={$trendConfidence}";
+    } elseif ($chlorine < $lockedBaseSp && $trendState === 'following_below' && !$isConfirmedFalling) {
+        // Mantém seguimento abaixo da base enquanto não houver descida confirmada novamente.
+        $decision = 'abaixo_base_follow_continuo';
+        $followOffset = $activeAnticipationOffset;
+        $followOffset = clamp($followOffset, $activeMinFollowOffset, $activeMaxFollowOffset);
+        $newDynSp = $chlorine - $followOffset;
+        $reason   = "abaixo_base_follow_continuo PV={$chlorine} base={$lockedBaseSp} delta={$deltaPv} trendAvg={$trendAvg} conf={$trendConfidence} profile={$profileMode} offset={$followOffset}";
     } else {
         // Tendência inconclusiva, subida acima da base, descida abaixo da base ou já cruzou a base
         // -> restaurar SP base
         $newDynSp = $lockedBaseSp;
+        if (abs($chlorine - $lockedBaseSp) <= 0.02) {
+            $trendState = 'neutral';
+        }
         $reason   = "restaurar_base PV={$chlorine} base={$lockedBaseSp} delta={$deltaPv} trendAvg={$trendAvg} conf={$trendConfidence} rising=" . ($isConfirmedRising ? '1' : '0') . " falling=" . ($isConfirmedFalling ? '1' : '0') . " bomba=" . ($pumpPercent === null ? 'N/A' : $pumpPercent);
     }
+
+    set_setting_value($conn, $trendStateKey, $trendState);
 
     // Segurança baseada na operação: quando segue o PV, o SP dinâmico fica sempre
     // limitado pelo followOffset e pela resposta da bomba, não por um teto relativo
@@ -399,10 +425,10 @@ function run_dynamic_setpoint_for_chlorine(mysqli $conn, array $pool, float $chl
     log_system_action(
         $conn,
         'DYNAMIC_SETPOINT_CALC',
-        "Tanque {$tankName} ({$tankId}) ctrl=1 decision={$decision} PV={$chlorine} base={$lockedBaseSp} trendSum=" . round($trendSum, 4) . " trendConf={$trendConfidence} falling=" . ($isConfirmedFalling ? '1' : '0') . " rising=" . ($isConfirmedRising ? '1' : '0') . " newSP={$newDynSp}"
+        "Tanque {$tankName} ({$tankId}) ctrl=1 decision={$decision} state={$trendState} PV={$chlorine} base={$lockedBaseSp} trendSum=" . round($trendSum, 4) . " trendConf={$trendConfidence} falling=" . ($isConfirmedFalling ? '1' : '0') . " rising=" . ($isConfirmedRising ? '1' : '0') . " newSP={$newDynSp}"
     );
 
-    $calculationSummary = "decision={$decision} mode=" . ($isNight ? 'night' : 'day') . " profile={$profileMode} ha=" . ($isHighAttendance ? '1' : '0') . " hour={$hourNow} reqExcess=" . round($requiredExcessOverBase, 3) . " reqExcessEff=" . round($effectiveExcessOverBase, 3) . " reqDrop=" . round($requiredDropDelta, 4) . " PV=" . round($chlorine, 2) . " prevPV=" . round($prevPv ?? 0.0, 2) . " delta=" . round($deltaPv, 4) . " trendSum=" . round($trendSum, 4) . " trendAvg=" . round($trendAvg, 4) . " trendConf={$trendConfidence} base=" . round($lockedBaseSp, 2) . " pump=" . ($pumpPercent === null ? 'N/A' : round($pumpPercent, 2)) . " offset=" . round($followOffset, 4) . " newSP={$newDynSp}";
+    $calculationSummary = "decision={$decision} state={$trendState} mode=" . ($isNight ? 'night' : 'day') . " profile={$profileMode} ha=" . ($isHighAttendance ? '1' : '0') . " hour={$hourNow} reqExcess=" . round($requiredExcessOverBase, 3) . " reqExcessEff=" . round($effectiveExcessOverBase, 3) . " reqDrop=" . round($requiredDropDelta, 4) . " PV=" . round($chlorine, 2) . " prevPV=" . round($prevPv ?? 0.0, 2) . " delta=" . round($deltaPv, 4) . " trendSum=" . round($trendSum, 4) . " trendAvg=" . round($trendAvg, 4) . " trendConf={$trendConfidence} base=" . round($lockedBaseSp, 2) . " pump=" . ($pumpPercent === null ? 'N/A' : round($pumpPercent, 2)) . " offset=" . round($followOffset, 4) . " newSP={$newDynSp}";
     // ────────────────────────────────────────────────────────────────────────
 
     // Cooldown entre envios
