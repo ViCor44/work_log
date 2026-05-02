@@ -213,6 +213,9 @@ function run_dynamic_setpoint_for_chlorine(mysqli $conn, array $pool, float $chl
     $pumpMaxTarget      = (float)(get_setting_value($conn, $pPrefix . 'pump_max_target',     null) ?? 35.0);
     $pumpAdjustStep     = (float)(get_setting_value($conn, $pPrefix . 'pump_adjust_step',    null) ?? 0.02);
     $trendDeadband      = (float)(get_setting_value($conn, $pPrefix . 'trend_deadband',      null) ?? 0.01);
+    $trendWindowSize    = (int)(float)(get_setting_value($conn, $pPrefix . 'trend_window_size', null) ?? 10.0);
+    if ($trendWindowSize < 3)  { $trendWindowSize = 3; }
+    if ($trendWindowSize > 60) { $trendWindowSize = 60; }
     $cooldownSec        = (float)(get_setting_value($conn, $pPrefix . 'cooldown_sec',        null) ?? 60.0);
     $minSendDelta       = (float)(get_setting_value($conn, $pPrefix . 'min_send_delta',      null) ?? 0.01);
     $nightAnticipationOffset = (float)(get_setting_value($conn, $pPrefix . 'night_anticipation_offset', null) ?? 0.03);
@@ -259,35 +262,47 @@ function run_dynamic_setpoint_for_chlorine(mysqli $conn, array $pool, float $chl
     }
 
     $prevPv     = float_or_null(get_setting_value($conn, $prevPvKey, null));
-    $prevPv2    = float_or_null(get_setting_value($conn, $prevPv2Key, null));
-    $prevPv3    = float_or_null(get_setting_value($conn, $prevPv3Key, null));
-    $trendState = (string)(get_setting_value($conn, $trendStateKey, 'neutral') ?? 'neutral');
     $lastSentSp = float_or_null(get_setting_value($conn, $lastSentSpKey, null));
     $lastSentAt = (int)(get_setting_value($conn, $lastSentAtKey, '0') ?? '0');
 
-    // Tendência com múltiplas leituras para reduzir reações a ruído pontual.
-    // delta_1: atual - t-1 | delta_2: t-1 - t-2 | delta_3: t-2 - t-3
-    $deltaPv1 = ($prevPv !== null) ? ($chlorine - $prevPv) : null;
-    $deltaPv2 = ($prevPv !== null && $prevPv2 !== null) ? ($prevPv - $prevPv2) : null;
-    $deltaPv3 = ($prevPv2 !== null && $prevPv3 !== null) ? ($prevPv2 - $prevPv3) : null;
+    // ── Tendência calculada a partir das últimas N leituras de controller_history ──
+    // A leitura atual ($chlorine) já foi inserida antes desta função correr.
+    $historyValues = [];
+    $stmtHist = $conn->prepare(
+        "SELECT chlorine_value FROM controller_history
+         WHERE tank_id = ? AND chlorine_value IS NOT NULL
+         ORDER BY id DESC LIMIT ?"
+    );
+    if ($stmtHist) {
+        $stmtHist->bind_param("ii", $tankId, $trendWindowSize);
+        if ($stmtHist->execute()) {
+            $resHist = $stmtHist->get_result();
+            while ($rowHist = $resHist->fetch_assoc()) {
+                $val = float_or_null($rowHist['chlorine_value']);
+                if ($val !== null) {
+                    $historyValues[] = $val;
+                }
+            }
+        }
+        $stmtHist->close();
+    }
+    // historyValues está em ordem decrescente (mais recente primeiro). Inverte para cronológica.
+    $pvSeries = array_reverse($historyValues);
+
+    // Deltas consecutivos.
     $trendDeltas = [];
-    if ($deltaPv1 !== null) $trendDeltas[] = $deltaPv1;
-    if ($deltaPv2 !== null) $trendDeltas[] = $deltaPv2;
-    if ($deltaPv3 !== null) $trendDeltas[] = $deltaPv3;
+    $count = count($pvSeries);
+    for ($i = 1; $i < $count; $i++) {
+        $trendDeltas[] = $pvSeries[$i] - $pvSeries[$i - 1];
+    }
     $trendConfidence = count($trendDeltas);
     $trendSum = $trendConfidence > 0 ? array_sum($trendDeltas) : 0.0;
     $trendAvg = $trendConfidence > 0 ? ($trendSum / $trendConfidence) : 0.0;
-    // trendSum = variação total acumulada na janela (ex.: 3 ciclos × -0.005 = -0.015).
-    // Usar a soma em vez da média para detetar descidas/subidas lentas e consistentes
-    // que a média individual não ultrapassa o deadband.
+    $deltaPv1 = $trendConfidence > 0 ? end($trendDeltas) : null;
+    // trendSum = newest - oldest (variação total na janela). Janela default = 10 leituras
+    // (50 min com ciclo de 5 min). Suaviza ruído e capta descidas lentas e acentuadas.
 
-    // Atualiza histórico PV para o próximo ciclo antes de qualquer retorno antecipado.
-    if ($prevPv2 !== null) {
-        set_setting_value($conn, $prevPv3Key, (string)$prevPv2);
-    }
-    if ($prevPv !== null) {
-        set_setting_value($conn, $prevPv2Key, (string)$prevPv);
-    }
+    // Mantém prev_pv apenas para diagnóstico / compatibilidade.
     set_setting_value($conn, $prevPvKey, (string)$chlorine);
 
     // Aguarda no mínimo 2 deltas (3 leituras) para confirmar tendência.

@@ -37,6 +37,7 @@ $defaults = [
     'pump_max_target'     => 35.0,
     'pump_adjust_step'    => 0.02,
     'trend_deadband'      => 0.01,
+    'trend_window_size'   => 10.0,
     'cooldown_sec'        => 60.0,
     'min_send_delta'      => 0.01,
     'night_anticipation_offset' => 0.03,
@@ -199,6 +200,11 @@ foreach ($defaults as $name => $default) {
                             <div class="param-hint">Delta mínimo entre leituras para considerar tendência real. Filtra ruído.</div>
                         </div>
                         <div class="col-md-4">
+                            <label data-bs-toggle="tooltip" data-bs-placement="top" title="Número de leituras consecutivas (em controller_history) usadas para calcular a tendência. Cada leitura ocorre a cada 5 min: 10 leituras ≈ 50 min, 6 leituras ≈ 30 min. Janela maior é mais estável; menor é mais reativa.">Janela de tendência (nº leituras) <span class="default-badge">(padrão: 10)</span> <span class="info-icon">?</span></label>
+                            <input type="number" step="1" min="3" max="60" class="form-control" name="trend_window_size" id="f_trend_window_size" value="<?= $params['trend_window_size'] ?>">
+                            <div class="param-hint">Quantas leituras considerar para confirmar tendência (3–60).</div>
+                        </div>
+                        <div class="col-md-4">
                             <label data-bs-toggle="tooltip" data-bs-placement="top" title="Tempo mínimo em segundos entre dois envios consecutivos de setpoint ao controlador. Evita flooding de comandos em ciclos rápidos. Como o worker corre de 5 em 5 min (300s), valores abaixo de 60s têm pouco impacto prático.">Cooldown entre envios (seg) <span class="default-badge">(padrão: 60)</span> <span class="info-icon">?</span></label>
                             <input type="number" step="1" class="form-control" name="cooldown_sec" id="f_cooldown_sec" value="<?= $params['cooldown_sec'] ?>">
                             <div class="param-hint">Segundos mínimos entre dois envios consecutivos ao controlador.</div>
@@ -330,7 +336,7 @@ const API = '../api/dynamic_setpoint_params.php';
 const FIELD_NAMES = [
     'anticipation_offset','min_follow_offset','max_follow_offset',
     'pump_min_target','pump_max_target','pump_adjust_step',
-    'trend_deadband','cooldown_sec','min_send_delta',
+    'trend_deadband','trend_window_size','cooldown_sec','min_send_delta',
     'night_anticipation_offset','night_min_follow_offset','night_max_follow_offset',
     'night_pump_min_target','night_pump_max_target','night_pump_adjust_step',
     'night_start_hour','night_end_hour','night_min_excess_over_base','night_min_drop_delta',

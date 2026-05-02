@@ -55,6 +55,7 @@ function param_defaults(): array {
         'pump_max_target'     => 35.0,
         'pump_adjust_step'    => 0.02,
         'trend_deadband'      => 0.01,
+        'trend_window_size'   => 10.0,
         'cooldown_sec'        => 60.0,
         'min_send_delta'      => 0.01,
         // Perfil noturno (mais conservador): metade dos defaults base
@@ -151,6 +152,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         'pump_max_target'     => ['min' => 0.0,  'max' => 100.0],
         'pump_adjust_step'    => ['min' => 0.00, 'max' => 1.0],
         'trend_deadband'      => ['min' => 0.00, 'max' => 1.0],
+        'trend_window_size'   => ['min' => 3.0,  'max' => 60.0],
         'cooldown_sec'        => ['min' => 0.0, 'max' => 3600.0],
         'min_send_delta'      => ['min' => 0.00, 'max' => 1.0],
         'night_anticipation_offset' => ['min' => 0.0, 'max' => 2.0],
