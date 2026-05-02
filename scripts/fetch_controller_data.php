@@ -16,7 +16,7 @@ function file_log(string $message): void
         }
         $GLOBALS['__fetch_log_path'] = $dir . DIRECTORY_SEPARATOR . 'fetch_controller_' . date('Y-m-d') . '.log';
     }
-    $line = '[' . date('Y-m-d H:i:s') . '] ' . $message . PHP_EOL;
+    $line = '[' . date('Y-m-d H:i:s') . '] ' . $message . PHP_EOL . PHP_EOL;
     @file_put_contents($GLOBALS['__fetch_log_path'], $line, FILE_APPEND | LOCK_EX);
 }
 // ─────────────────────────────────────────────────────────────────────────────
