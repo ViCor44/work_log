@@ -82,34 +82,21 @@ function get_setting_value(mysqli $conn, string $key, ?string $default = null): 
 
 function set_setting_value(mysqli $conn, string $key, string $value): bool
 {
-    $stmtUpdate = $conn->prepare("UPDATE settings SET setting_value = ? WHERE setting_key = ?");
-    if (!$stmtUpdate) {
+    // UPSERT atómico: evita race conditions e o caso em que UPDATE não afeta linhas
+    // por o valor ser igual ao existente (o que antes provocava INSERT em chave duplicada).
+    $stmt = $conn->prepare(
+        "INSERT INTO settings (setting_key, setting_value) VALUES (?, ?)
+         ON DUPLICATE KEY UPDATE setting_value = VALUES(setting_value)"
+    );
+    if (!$stmt) {
         return false;
     }
 
-    $stmtUpdate->bind_param("ss", $value, $key);
-    $okUpdate = $stmtUpdate->execute();
-    $affected = $stmtUpdate->affected_rows;
-    $stmtUpdate->close();
+    $stmt->bind_param("ss", $key, $value);
+    $ok = $stmt->execute();
+    $stmt->close();
 
-    if (!$okUpdate) {
-        return false;
-    }
-
-    if ($affected > 0) {
-        return true;
-    }
-
-    $stmtInsert = $conn->prepare("INSERT INTO settings (setting_key, setting_value) VALUES (?, ?)");
-    if (!$stmtInsert) {
-        return false;
-    }
-
-    $stmtInsert->bind_param("ss", $key, $value);
-    $okInsert = $stmtInsert->execute();
-    $stmtInsert->close();
-
-    return $okInsert;
+    return $ok;
 }
 
 function float_or_null($value): ?float
