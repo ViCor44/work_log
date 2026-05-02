@@ -265,7 +265,11 @@ function run_dynamic_setpoint_for_chlorine(mysqli $conn, array $pool, float $chl
     if ($deltaPv2 !== null) $trendDeltas[] = $deltaPv2;
     if ($deltaPv3 !== null) $trendDeltas[] = $deltaPv3;
     $trendConfidence = count($trendDeltas);
-    $trendAvg = $trendConfidence > 0 ? (array_sum($trendDeltas) / $trendConfidence) : 0.0;
+    $trendSum = $trendConfidence > 0 ? array_sum($trendDeltas) : 0.0;
+    $trendAvg = $trendConfidence > 0 ? ($trendSum / $trendConfidence) : 0.0;
+    // trendSum = variação total acumulada na janela (ex.: 3 ciclos × -0.005 = -0.015).
+    // Usar a soma em vez da média para detetar descidas/subidas lentas e consistentes
+    // que a média individual não ultrapassa o deadband.
 
     // Atualiza histórico PV para o próximo ciclo antes de qualquer retorno antecipado.
     if ($prevPv2 !== null) {
@@ -319,8 +323,8 @@ function run_dynamic_setpoint_for_chlorine(mysqli $conn, array $pool, float $chl
         $profileMode = 'ha';
     }
 
-    $isConfirmedRising = $trendAvg > $trendDeadband;
-    $isConfirmedFalling = $trendAvg < -$requiredDropDelta;
+    $isConfirmedRising  = $trendSum > $trendDeadband;
+    $isConfirmedFalling = $trendSum < -$requiredDropDelta;
 
     // ── Decisão de setpoint ──────────────────────────────────────────────────
     // Mesma lógica para todos os ajustes: só atua com tendência CONFIRMADA.
@@ -380,7 +384,7 @@ function run_dynamic_setpoint_for_chlorine(mysqli $conn, array $pool, float $chl
     // ao SP manual. Apenas garantimos um domínio físico plausível.
     $newDynSp = clamp($newDynSp, 0.00, 10.00);
     $newDynSp = round($newDynSp, 2);
-    $calculationSummary = "decision={$decision} mode=" . ($isNight ? 'night' : 'day') . " profile={$profileMode} ha=" . ($isHighAttendance ? '1' : '0') . " hour={$hourNow} reqExcess=" . round($requiredExcessOverBase, 3) . " reqDrop=" . round($requiredDropDelta, 4) . " PV=" . round($chlorine, 2) . " prevPV=" . round($prevPv ?? 0.0, 2) . " delta=" . round($deltaPv, 4) . " trendAvg=" . round($trendAvg, 4) . " trendConf={$trendConfidence} base=" . round($lockedBaseSp, 2) . " pump=" . ($pumpPercent === null ? 'N/A' : round($pumpPercent, 2)) . " offset=" . round($followOffset, 4) . " newSP={$newDynSp}";
+    $calculationSummary = "decision={$decision} mode=" . ($isNight ? 'night' : 'day') . " profile={$profileMode} ha=" . ($isHighAttendance ? '1' : '0') . " hour={$hourNow} reqExcess=" . round($requiredExcessOverBase, 3) . " reqDrop=" . round($requiredDropDelta, 4) . " PV=" . round($chlorine, 2) . " prevPV=" . round($prevPv ?? 0.0, 2) . " delta=" . round($deltaPv, 4) . " trendSum=" . round($trendSum, 4) . " trendAvg=" . round($trendAvg, 4) . " trendConf={$trendConfidence} base=" . round($lockedBaseSp, 2) . " pump=" . ($pumpPercent === null ? 'N/A' : round($pumpPercent, 2)) . " offset=" . round($followOffset, 4) . " newSP={$newDynSp}";
     // ────────────────────────────────────────────────────────────────────────
 
     // Cooldown entre envios
