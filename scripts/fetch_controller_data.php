@@ -216,6 +216,9 @@ function run_dynamic_setpoint_for_chlorine(mysqli $conn, array $pool, float $chl
     $trendWindowSize    = (int)(float)(get_setting_value($conn, $pPrefix . 'trend_window_size', null) ?? 10.0);
     if ($trendWindowSize < 3)  { $trendWindowSize = 3; }
     if ($trendWindowSize > 60) { $trendWindowSize = 60; }
+    $trendMinMajority   = (int)(float)(get_setting_value($conn, $pPrefix . 'trend_min_majority', null) ?? 2.0);
+    if ($trendMinMajority < 1)  { $trendMinMajority = 1; }
+    if ($trendMinMajority > 60) { $trendMinMajority = 60; }
     $cooldownSec        = (float)(get_setting_value($conn, $pPrefix . 'cooldown_sec',        null) ?? 60.0);
     $minSendDelta       = (float)(get_setting_value($conn, $pPrefix . 'min_send_delta',      null) ?? 0.01);
     $nightAnticipationOffset = (float)(get_setting_value($conn, $pPrefix . 'night_anticipation_offset', null) ?? 0.03);
@@ -299,6 +302,16 @@ function run_dynamic_setpoint_for_chlorine(mysqli $conn, array $pool, float $chl
     $trendSum = $trendConfidence > 0 ? array_sum($trendDeltas) : 0.0;
     $trendAvg = $trendConfidence > 0 ? ($trendSum / $trendConfidence) : 0.0;
     $deltaPv1 = $trendConfidence > 0 ? end($trendDeltas) : null;
+
+    // Contagem de deltas positivos vs negativos na janela.
+    // Deltas com magnitude inferior ao deadband contam como NEUTROS (ruído).
+    $upCount = 0; $downCount = 0; $flatCount = 0;
+    foreach ($trendDeltas as $d) {
+        if ($d >  $trendDeadband)      { $upCount++; }
+        elseif ($d < -$trendDeadband)  { $downCount++; }
+        else                           { $flatCount++; }
+    }
+    $countDiff = $upCount - $downCount; // > 0 => maioria a subir, < 0 => maioria a descer
     // trendSum = newest - oldest (variação total na janela). Janela default = 10 leituras
     // (50 min com ciclo de 5 min). Suaviza ruído e capta descidas lentas e acentuadas.
 
@@ -353,10 +366,12 @@ function run_dynamic_setpoint_for_chlorine(mysqli $conn, array $pool, float $chl
         $profileMode = 'ha';
     }
 
-    // Tendência confirmada por janela de leituras: usa a soma acumulada para
-    // detetar variações lentas e consistentes que a média/delta único perdem.
-    $isConfirmedRising  = $trendSum >  $trendDeadband;
-    $isConfirmedFalling = $trendSum < -$requiredDropDelta;
+    // Tendência confirmada por contagem de deltas na janela:
+    // a direção dominante (up/down) tem de ter pelo menos $trendMinMajority deltas a
+    // mais que a oposta. A magnitude (trendSum/requiredDropDelta) é usada como
+    // filtro de ruído mínimo para garantir movimento real, não só oscilações.
+    $isConfirmedRising  = ($countDiff >=  $trendMinMajority) && ($trendSum >  $trendDeadband);
+    $isConfirmedFalling = ($countDiff <= -$trendMinMajority) && ($trendSum < -$requiredDropDelta);
 
     // ── Decisão (exatamente como especificado) ─────────────────────────────
     //
@@ -394,12 +409,12 @@ function run_dynamic_setpoint_for_chlorine(mysqli $conn, array $pool, float $chl
             }
             $followOffset = clamp($followOffset, $activeMinFollowOffset, $activeMaxFollowOffset);
             $newDynSp = $chlorine + $followOffset;
-            $reason   = $decision . " PV={$chlorine} base={$lockedBaseSp} trendSum=" . round($trendSum, 4) . " conf={$trendConfidence} profile={$profileMode} bomba=" . ($pumpPercent === null ? 'N/A' : $pumpPercent) . " offset={$followOffset}";
+            $reason   = $decision . " PV={$chlorine} base={$lockedBaseSp} trendSum=" . round($trendSum, 4) . " up={$upCount} down={$downCount} flat={$flatCount} conf={$trendConfidence} profile={$profileMode} bomba=" . ($pumpPercent === null ? 'N/A' : $pumpPercent) . " offset={$followOffset}";
         } else {
             // Acima da base mas não confirmou descida → mantém SP base
             $decision = 'acima_base_aguarda_descida';
             $newDynSp = $lockedBaseSp;
-            $reason   = "{$decision} PV={$chlorine} base={$lockedBaseSp} trendSum=" . round($trendSum, 4) . " conf={$trendConfidence}";
+            $reason   = "{$decision} PV={$chlorine} base={$lockedBaseSp} trendSum=" . round($trendSum, 4) . " up={$upCount} down={$downCount} flat={$flatCount} conf={$trendConfidence}";
         }
     } elseif ($chlorine < $lockedBaseSp) {
         // Abaixo da base
@@ -412,12 +427,12 @@ function run_dynamic_setpoint_for_chlorine(mysqli $conn, array $pool, float $chl
             }
             $followOffset = clamp($followOffset, $activeMinFollowOffset, $activeMaxFollowOffset);
             $newDynSp = $chlorine - $followOffset;
-            $reason   = "{$decision} PV={$chlorine} base={$lockedBaseSp} trendSum=" . round($trendSum, 4) . " conf={$trendConfidence} profile={$profileMode} bomba=" . ($pumpPercent === null ? 'N/A' : $pumpPercent) . " offset={$followOffset}";
+            $reason   = "{$decision} PV={$chlorine} base={$lockedBaseSp} trendSum=" . round($trendSum, 4) . " up={$upCount} down={$downCount} flat={$flatCount} conf={$trendConfidence} profile={$profileMode} bomba=" . ($pumpPercent === null ? 'N/A' : $pumpPercent) . " offset={$followOffset}";
         } else {
             // Abaixo da base e ainda a descer (ou estável) → PID normal, sem intervenção
             $decision = 'abaixo_base_aguarda_subida';
             $newDynSp = $lockedBaseSp;
-            $reason   = "{$decision} PV={$chlorine} base={$lockedBaseSp} trendSum=" . round($trendSum, 4) . " conf={$trendConfidence}";
+            $reason   = "{$decision} PV={$chlorine} base={$lockedBaseSp} trendSum=" . round($trendSum, 4) . " up={$upCount} down={$downCount} flat={$flatCount} conf={$trendConfidence}";
         }
     } else {
         // PV exatamente sobre a base
