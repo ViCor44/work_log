@@ -44,6 +44,11 @@ $logs = $logs_stmt->fetch_all(MYSQLI_ASSOC);
                 <tbody>
                     <?php if (count($logs) > 0): ?>
                         <?php foreach($logs as $log): ?>
+                            <?php
+                            // Melhora a legibilidade: separa ações compostas por " | " com uma linha em branco.
+                            $formattedDescription = htmlspecialchars($log['description']);
+                            $formattedDescription = str_replace(' | ', '<br><br>', $formattedDescription);
+                            ?>
                             <tr>
                                 <td><?= date('d/m/Y H:i:s', strtotime($log['log_datetime'])) ?></td>
                                 <td>
@@ -53,7 +58,7 @@ $logs = $logs_stmt->fetch_all(MYSQLI_ASSOC);
                                     ?>
                                 </td>
                                 <td><span class="badge bg-secondary"><?= htmlspecialchars($log['action']) ?></span></td>
-                                <td><?= htmlspecialchars($log['description']) ?></td>
+                                <td><?= $formattedDescription ?></td>
                             </tr>
                         <?php endforeach; ?>
                     <?php else: ?>
