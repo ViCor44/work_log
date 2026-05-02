@@ -315,6 +315,26 @@ function run_dynamic_setpoint_for_chlorine(mysqli $conn, array $pool, float $chl
     // trendSum = newest - oldest (variação total na janela). Janela default = 10 leituras
     // (50 min com ciclo de 5 min). Suaviza ruído e capta descidas lentas e acentuadas.
 
+    // ── LOG do cálculo da tendência (visível em logs/fetch_controller_*.log) ─
+    if (function_exists('file_log')) {
+        $pvFmt = array_map(function($v) { return number_format((float)$v, 3, '.', ''); }, $pvSeries);
+        $dlFmt = array_map(function($v) {
+            $s = $v >= 0 ? '+' : '';
+            return $s . number_format((float)$v, 3, '.', '');
+        }, $trendDeltas);
+        file_log(
+            "[trend] tank={$tankId} ({$tankName}) ctrl=1 PV_atual={$chlorine} base={$lockedBaseSp} "
+            . "janela={$trendWindowSize} N_amostras=" . count($pvSeries)
+            . " serie=[" . implode(',', $pvFmt) . "]"
+            . " deltas=[" . implode(',', $dlFmt) . "]"
+            . " up={$upCount} down={$downCount} flat={$flatCount}"
+            . " countDiff={$countDiff} maioria_min={$trendMinMajority}"
+            . " trendSum=" . number_format($trendSum, 4, '.', '')
+            . " trendAvg=" . number_format($trendAvg, 4, '.', '')
+            . " deadband={$trendDeadband}"
+        );
+    }
+
     // Mantém prev_pv apenas para diagnóstico / compatibilidade.
     set_setting_value($conn, $prevPvKey, (string)$chlorine);
 
@@ -372,6 +392,16 @@ function run_dynamic_setpoint_for_chlorine(mysqli $conn, array $pool, float $chl
     // filtro de ruído mínimo para garantir movimento real, não só oscilações.
     $isConfirmedRising  = ($countDiff >=  $trendMinMajority) && ($trendSum >  $trendDeadband);
     $isConfirmedFalling = ($countDiff <= -$trendMinMajority) && ($trendSum < -$requiredDropDelta);
+
+    if (function_exists('file_log')) {
+        file_log(
+            "[trend] tank={$tankId} confirmadoSubida=" . ($isConfirmedRising ? 'SIM' : 'nao')
+            . " confirmadoDescida=" . ($isConfirmedFalling ? 'SIM' : 'nao')
+            . " (req: countDiff>=±{$trendMinMajority} E |trendSum|>"
+            . number_format($trendDeadband, 4, '.', '') . "/"
+            . number_format($requiredDropDelta, 4, '.', '') . ")"
+        );
+    }
 
     // ── Decisão (exatamente como especificado) ─────────────────────────────
     //
