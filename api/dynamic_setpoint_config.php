@@ -257,6 +257,53 @@ $ctrl = isset($payload['ctrl']) ? (int)$payload['ctrl'] : 0;
 $enabled = !empty($payload['enabled']) ? 1 : 0;
 $postType = isset($payload['type']) ? (string)$payload['type'] : 'dynamic';
 
+// ── Alta afluência GLOBAL: aplica a todos os tanques com SP dinâmico ativo ──
+if ($postType === 'high_attendance_global') {
+    $haVal = !empty($payload['enabled']) ? '1' : '0';
+
+    // Encontra todos os tanques com SP dinâmico ativo (setting_value = '1' e key matches enabled).
+    $sql = "SELECT setting_key FROM settings
+            WHERE setting_key LIKE 'dynamic_setpoint_tank_%_ctrl_1_enabled'
+              AND setting_value = '1'";
+    $res = $conn->query($sql);
+    $affected = [];
+    if ($res) {
+        while ($row = $res->fetch_assoc()) {
+            // Extrai o tank_id da chave: dynamic_setpoint_tank_{id}_ctrl_1_enabled
+            if (preg_match('/dynamic_setpoint_tank_(\d+)_ctrl_1_enabled/', $row['setting_key'], $m)) {
+                $affected[] = (int)$m[1];
+            }
+        }
+    }
+
+    $upsert = $conn->prepare(
+        "INSERT INTO settings (setting_key, setting_value) VALUES (?, ?)
+         ON DUPLICATE KEY UPDATE setting_value = VALUES(setting_value)"
+    );
+    $okCount = 0;
+    if ($upsert) {
+        foreach ($affected as $tid) {
+            $haKey = high_attendance_key($tid);
+            $upsert->bind_param('ss', $haKey, $haVal);
+            if ($upsert->execute()) { $okCount++; }
+        }
+        $upsert->close();
+    }
+
+    if (function_exists('log_action')) {
+        log_action($conn, (int)$_SESSION['user_id'], 'HIGH_ATTENDANCE_TOGGLE_GLOBAL',
+            'Alta afluência GLOBAL ' . ($haVal === '1' ? 'ATIVADA' : 'DESATIVADA') . ' | tanques=' . count($affected) . ' ok=' . $okCount);
+    }
+
+    return_json_response([
+        'success' => true,
+        'high_attendance' => $haVal === '1',
+        'affected_tanks' => $affected,
+        'count' => $okCount,
+    ]);
+}
+// ────────────────────────────────────────────────────────────────────────────
+
 if ($tank_id <= 0) {
     return_json_response(['error' => 'tank_id invalido'], 400);
 }

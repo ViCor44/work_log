@@ -176,6 +176,9 @@ $filters = fetch_all_safe(
     <div class="d-flex justify-content-between align-items-center mb-4">
         <h1 class="h2 mb-0">Painel de Monitorização</h1>
         <div class="d-flex gap-2">
+            <button type="button" id="btnGlobalHaToggle" class="btn btn-outline-warning" data-state="off" title="Liga/desliga Alta Afluência em todos os tanques com SP dinâmico ativo.">
+                🏊 Alta afluência GLOBAL: <span id="globalHaState">OFF</span>
+            </button>
             <a href="plano_pid.php?days=7" class="btn btn-warning">
                 <i class="fas fa-file-pdf me-1"></i>Plano PID (ver e aceitar)
             </a>
@@ -335,6 +338,44 @@ $filters = fetch_all_safe(
 
 <script>
 document.addEventListener('DOMContentLoaded', function() {
+
+    // ── Botão GLOBAL Alta Afluência ───────────────────────────────────────────
+    const btnHaGlobal = document.getElementById('btnGlobalHaToggle');
+    const lblHaGlobal = document.getElementById('globalHaState');
+    function setBtnState(on) {
+        if (!btnHaGlobal || !lblHaGlobal) return;
+        btnHaGlobal.dataset.state = on ? 'on' : 'off';
+        lblHaGlobal.textContent = on ? 'ON' : 'OFF';
+        btnHaGlobal.classList.toggle('btn-warning', on);
+        btnHaGlobal.classList.toggle('btn-outline-warning', !on);
+    }
+    if (btnHaGlobal) {
+        btnHaGlobal.addEventListener('click', async function () {
+            const turningOn = btnHaGlobal.dataset.state !== 'on';
+            const confirmMsg = turningOn
+                ? 'Ativar Alta Afluência em TODOS os tanques com SP dinâmico ativo?'
+                : 'Desativar Alta Afluência em TODOS os tanques?';
+            if (!confirm(confirmMsg)) return;
+
+            btnHaGlobal.disabled = true;
+            try {
+                const res = await fetch('../api/dynamic_setpoint_config.php', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ type: 'high_attendance_global', enabled: turningOn })
+                });
+                const data = await res.json();
+                if (!data || !data.success) throw new Error((data && data.error) || 'Falha desconhecida');
+                setBtnState(!!data.high_attendance);
+                alert((turningOn ? 'Alta afluência ATIVADA' : 'Alta afluência DESATIVADA') +
+                      ' em ' + (data.count || 0) + ' tanque(s).');
+            } catch (err) {
+                alert('Erro: ' + err.message);
+            } finally {
+                btnHaGlobal.disabled = false;
+            }
+        });
+    }
 
     // ... (O resto do JavaScript não precisa de alterações)
     function getValueClass(type, value) {
