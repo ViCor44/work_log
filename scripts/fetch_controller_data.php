@@ -280,20 +280,12 @@ function run_dynamic_setpoint_for_chlorine(mysqli $conn, array $pool, float $chl
     }
     set_setting_value($conn, $prevPvKey, (string)$chlorine);
 
-    // Queda/subida muito acentuada num único ciclo: calculada aqui para permitir
-    // bypass ao requisito de janela mínima abaixo.
-    // threshold = 1.5× o deadband de tendência (por defeito: 1.5 × 0.01 = 0.015 mg/L por ciclo).
-    $singleDropThreshold = $trendDeadband * 1.5;
-    $isSteepSingleDrop = ($deltaPv1 !== null) && ($deltaPv1 < -$singleDropThreshold);
-    $isSteepSingleRise = ($deltaPv1 !== null) && ($deltaPv1 > $singleDropThreshold);
-
-    // Aguarda no mínimo 2 deltas (3 leituras) para confirmar tendência,
-    // exceto quando há uma queda/subida muito acentuada num único ciclo.
-    if ($trendConfidence < 2 && !$isSteepSingleDrop && !$isSteepSingleRise) {
+    // Aguarda no mínimo 2 deltas (3 leituras) para confirmar tendência.
+    if ($trendConfidence < 2) {
         log_system_action(
             $conn,
             'DYNAMIC_SETPOINT_SKIP_WARMUP',
-            "Tanque {$tankName} ({$tankId}) ctrl=1 PV={$chlorine} conf={$trendConfidence} delta1=" . round($deltaPv1 ?? 0.0, 4) . " threshold={$singleDropThreshold} base={$lockedBaseSp} warmup"
+            "Tanque {$tankName} ({$tankId}) ctrl=1 PV={$chlorine} conf={$trendConfidence} delta1=" . round($deltaPv1 ?? 0.0, 4) . " base={$lockedBaseSp} warmup"
         );
         return;
     }
@@ -336,17 +328,12 @@ function run_dynamic_setpoint_for_chlorine(mysqli $conn, array $pool, float $chl
         $profileMode = 'ha';
     }
 
-    // Queda/subida acentuada: combina o flag já calculado acima com o threshold correto do perfil.
-    $isSteepImmediateDrop = $isSteepSingleDrop;
-    $isSteepImmediateRise = $isSteepSingleRise;
-
-    $isConfirmedRising  = ($trendSum > $trendDeadband) || $isSteepImmediateRise;
-    $isConfirmedFalling = ($trendSum < -$requiredDropDelta) || $isSteepImmediateDrop;
-
-    // Em queda acentuada, relaxa ligeiramente o excesso mínimo sobre a base.
-    $effectiveExcessOverBase = $isSteepImmediateDrop
-        ? min($requiredExcessOverBase, 0.02)
-        : $requiredExcessOverBase;
+    // Confirmação estrita da reversão de tendência:
+    // - acima da base só atua quando já está efetivamente a descer
+    // - abaixo da base só atua quando já está efetivamente a subir
+    $isConfirmedRising  = ($trendSum > $trendDeadband) && ($deltaPv1 !== null && $deltaPv1 > 0);
+    $isConfirmedFalling = ($trendSum < -$requiredDropDelta) && ($deltaPv1 !== null && $deltaPv1 < 0);
+    $effectiveExcessOverBase = $requiredExcessOverBase;
 
     // ── Decisão de setpoint ──────────────────────────────────────────────────
     // Mesma lógica para todos os ajustes: só atua com tendência CONFIRMADA.
@@ -412,10 +399,10 @@ function run_dynamic_setpoint_for_chlorine(mysqli $conn, array $pool, float $chl
     log_system_action(
         $conn,
         'DYNAMIC_SETPOINT_CALC',
-        "Tanque {$tankName} ({$tankId}) ctrl=1 decision={$decision} PV={$chlorine} base={$lockedBaseSp} trendSum=" . round($trendSum, 4) . " trendConf={$trendConfidence} falling=" . ($isConfirmedFalling ? '1' : '0') . " rising=" . ($isConfirmedRising ? '1' : '0') . " steepDrop=" . ($isSteepImmediateDrop ? '1' : '0') . " newSP={$newDynSp}"
+        "Tanque {$tankName} ({$tankId}) ctrl=1 decision={$decision} PV={$chlorine} base={$lockedBaseSp} trendSum=" . round($trendSum, 4) . " trendConf={$trendConfidence} falling=" . ($isConfirmedFalling ? '1' : '0') . " rising=" . ($isConfirmedRising ? '1' : '0') . " newSP={$newDynSp}"
     );
 
-    $calculationSummary = "decision={$decision} mode=" . ($isNight ? 'night' : 'day') . " profile={$profileMode} ha=" . ($isHighAttendance ? '1' : '0') . " hour={$hourNow} reqExcess=" . round($requiredExcessOverBase, 3) . " reqExcessEff=" . round($effectiveExcessOverBase, 3) . " reqDrop=" . round($requiredDropDelta, 4) . " PV=" . round($chlorine, 2) . " prevPV=" . round($prevPv ?? 0.0, 2) . " delta=" . round($deltaPv, 4) . " steepDrop=" . ($isSteepImmediateDrop ? '1' : '0') . " steepRise=" . ($isSteepImmediateRise ? '1' : '0') . " trendSum=" . round($trendSum, 4) . " trendAvg=" . round($trendAvg, 4) . " trendConf={$trendConfidence} base=" . round($lockedBaseSp, 2) . " pump=" . ($pumpPercent === null ? 'N/A' : round($pumpPercent, 2)) . " offset=" . round($followOffset, 4) . " newSP={$newDynSp}";
+    $calculationSummary = "decision={$decision} mode=" . ($isNight ? 'night' : 'day') . " profile={$profileMode} ha=" . ($isHighAttendance ? '1' : '0') . " hour={$hourNow} reqExcess=" . round($requiredExcessOverBase, 3) . " reqExcessEff=" . round($effectiveExcessOverBase, 3) . " reqDrop=" . round($requiredDropDelta, 4) . " PV=" . round($chlorine, 2) . " prevPV=" . round($prevPv ?? 0.0, 2) . " delta=" . round($deltaPv, 4) . " trendSum=" . round($trendSum, 4) . " trendAvg=" . round($trendAvg, 4) . " trendConf={$trendConfidence} base=" . round($lockedBaseSp, 2) . " pump=" . ($pumpPercent === null ? 'N/A' : round($pumpPercent, 2)) . " offset=" . round($followOffset, 4) . " newSP={$newDynSp}";
     // ────────────────────────────────────────────────────────────────────────
 
     // Cooldown entre envios
