@@ -580,14 +580,32 @@ document.addEventListener('DOMContentLoaded', function() {
                             },
                             tooltipFormat: 'dd/MM/yy HH:mm:ss'
                         },
+                        ticks: { fontColor: '#ecf0f1', fontSize: 11 },
+                        gridLines: { color: 'rgba(255,255,255,0.1)' },
                         scaleLabel: {
                             display: true,
-                            labelString: 'Data/Hora'
+                            labelString: 'Data/Hora',
+                            fontColor: '#ecf0f1',
+                            fontSize: 12
                         }
                     }],
                     yAxes: [
-                        { id: 'y-axis-line', type: 'linear', position: 'left' },
-                        { id: 'y-axis-bar', type: 'linear', position: 'right', ticks: { min: 0, max: 100, callback: function(value) { return value + "%" } } }
+                        {
+                            id: 'y-axis-line',
+                            type: 'linear',
+                            position: 'left',
+                            ticks: { fontColor: '#ecf0f1', fontSize: 12, fontStyle: 'bold' },
+                            gridLines: { color: 'rgba(255,255,255,0.12)' },
+                            scaleLabel: { display: true, labelString: 'Valor', fontColor: '#ecf0f1', fontSize: 12 }
+                        },
+                        {
+                            id: 'y-axis-bar',
+                            type: 'linear',
+                            position: 'right',
+                            ticks: { min: 0, max: 100, fontColor: '#7ecfff', fontSize: 12, fontStyle: 'bold', callback: function(value) { return value + '%' } },
+                            gridLines: { drawOnChartArea: false, color: 'rgba(126,207,255,0.15)' },
+                            scaleLabel: { display: true, labelString: 'Dosagem (%)', fontColor: '#7ecfff', fontSize: 12, fontStyle: 'bold' }
+                        }
                     ]
                 },
                 plugins: {
@@ -723,7 +741,7 @@ document.addEventListener('DOMContentLoaded', function() {
             // 4. Criar datasets
             const phDatasets = [
                 { type: 'line', label: 'pH (Valor)', data: phDatasetLine, borderColor: 'rgba(54, 162, 235, 1)', yAxisID: 'y-axis-line', fill: false, tension: 0.1 },
-                { type: 'bar', label: 'Dosagem', data: phDatasetDosagem, backgroundColor: 'rgba(54, 162, 235, 0.2)', yAxisID: 'y-axis-bar' },
+                { type: 'bar', label: 'Dosagem (%)', data: phDatasetDosagem, backgroundColor: 'rgba(54, 162, 235, 0.55)', borderColor: 'rgba(54, 162, 235, 0.85)', borderWidth: 1, yAxisID: 'y-axis-bar' },
                 { type: 'line', label: 'Setpoint', data: phDatasetSetpoint, borderColor: 'rgba(255, 99, 132, 0.8)', borderWidth: 2, yAxisID: 'y-axis-line', fill: false, pointRadius: 0 }
             ];
             // Adiciona notas ao gráfico de Cloro (exibe ponto destacado se houver nota)
@@ -740,7 +758,7 @@ document.addEventListener('DOMContentLoaded', function() {
             const notePointData = notePointIndices.map(idx => ({ x: idx, y: cloroHistoryValues[idx] }));
             const cloroDatasets = [
                 { type: 'line', label: 'Cloro (Valor)', data: cloroDatasetLine, borderColor: 'rgba(75, 192, 192, 1)', yAxisID: 'y-axis-line', fill: false, tension: 0.1 },
-                { type: 'bar', label: 'Dosagem', data: cloroDatasetDosagem, backgroundColor: 'rgba(75, 192, 192, 0.2)', yAxisID: 'y-axis-bar' },
+                { type: 'bar', label: 'Dosagem (%)', data: cloroDatasetDosagem, backgroundColor: 'rgba(75, 192, 192, 0.55)', borderColor: 'rgba(75, 192, 192, 0.85)', borderWidth: 1, yAxisID: 'y-axis-bar' },
                 { type: 'line', label: 'Setpoint', data: cloroDatasetSetpoint, borderColor: 'rgba(255, 99, 132, 0.8)', borderWidth: 2, yAxisID: 'y-axis-line', fill: false, pointRadius: 0 },
                 {
                     type: 'line',
