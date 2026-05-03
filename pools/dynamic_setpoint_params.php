@@ -41,6 +41,7 @@ $defaults = [
     'trend_min_majority'  => 2.0,
     'cooldown_sec'        => 60.0,
     'min_send_delta'      => 0.01,
+    'safety_disable_above_pv' => 3.00,
     'night_anticipation_offset' => 0.03,
     'night_min_follow_offset'   => 0.015,
     'night_max_follow_offset'   => 0.09,
@@ -221,6 +222,11 @@ foreach ($defaults as $name => $default) {
                             <input type="number" step="0.001" class="form-control" name="min_send_delta" id="f_min_send_delta" value="<?= $params['min_send_delta'] ?>">
                             <div class="param-hint">Só envia ao controlador se o novo SP diferir pelo menos este valor do último enviado.</div>
                         </div>
+                        <div class="col-md-4">
+                            <label data-bs-toggle="tooltip" data-bs-placement="top" title="Limite de segurança de PV (cloro). Se o PV atual for maior ou igual a este valor, o SP dinâmico é inativado nesse ciclo e o sistema usa SP base.">PV de segurança para inativar dinâmico (mg/L) <span class="default-badge">(padrão: 3.00)</span> <span class="info-icon">?</span></label>
+                            <input type="number" step="0.01" class="form-control" name="safety_disable_above_pv" id="f_safety_disable_above_pv" value="<?= $params['safety_disable_above_pv'] ?>">
+                            <div class="param-hint">Se PV >= limite, força SP base (sem offsets dinâmicos).</div>
+                        </div>
                     </div>
 
                     <div class="section-title mt-3">Modo Noturno (mais conservador)</div>
@@ -352,7 +358,7 @@ const API = '../api/dynamic_setpoint_params.php';
 const FIELD_NAMES = [
     'anticipation_offset','min_follow_offset','max_follow_offset',
     'pump_min_target','pump_max_target','pump_adjust_step',
-    'trend_deadband','trend_window_size','trend_min_majority','cooldown_sec','min_send_delta',
+    'trend_deadband','trend_window_size','trend_min_majority','cooldown_sec','min_send_delta','safety_disable_above_pv',
     'night_anticipation_offset','night_min_follow_offset','night_max_follow_offset',
     'night_pump_min_target','night_pump_max_target','night_pump_adjust_step',
     'night_start_hour','night_end_hour','night_disable_dynamic','night_min_excess_over_base','night_min_drop_delta',

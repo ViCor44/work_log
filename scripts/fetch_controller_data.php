@@ -221,6 +221,9 @@ function run_dynamic_setpoint_for_chlorine(mysqli $conn, array $pool, float $chl
     if ($trendMinMajority > 60) { $trendMinMajority = 60; }
     $cooldownSec        = (float)(get_setting_value($conn, $pPrefix . 'cooldown_sec',        null) ?? 60.0);
     $minSendDelta       = (float)(get_setting_value($conn, $pPrefix . 'min_send_delta',      null) ?? 0.01);
+    $safetyDisableAbovePv = (float)(get_setting_value($conn, $pPrefix . 'safety_disable_above_pv', null) ?? 3.00);
+    if ($safetyDisableAbovePv < 0.0) { $safetyDisableAbovePv = 0.0; }
+    if ($safetyDisableAbovePv > 10.0) { $safetyDisableAbovePv = 10.0; }
     $nightAnticipationOffset = (float)(get_setting_value($conn, $pPrefix . 'night_anticipation_offset', null) ?? 0.03);
     $nightMinFollowOffset    = (float)(get_setting_value($conn, $pPrefix . 'night_min_follow_offset',   null) ?? 0.015);
     $nightMaxFollowOffset    = (float)(get_setting_value($conn, $pPrefix . 'night_max_follow_offset',   null) ?? 0.09);
@@ -420,7 +423,11 @@ function run_dynamic_setpoint_for_chlorine(mysqli $conn, array $pool, float $chl
     $decision = 'restaurar_base';
     $followOffset = 0.00;
 
-    if ($isNight && $nightDisableDynamic) {
+    if ($chlorine >= $safetyDisableAbovePv) {
+        $decision = 'safety_disable_high_pv';
+        $newDynSp = $lockedBaseSp;
+        $reason = "{$decision} PV={$chlorine} limite={$safetyDisableAbovePv} base={$lockedBaseSp}";
+    } elseif ($isNight && $nightDisableDynamic) {
         $decision = 'night_dynamic_disabled';
         $newDynSp = $lockedBaseSp;
         $reason = "{$decision} PV={$chlorine} base={$lockedBaseSp} hora={$hourNow}";
@@ -490,7 +497,7 @@ function run_dynamic_setpoint_for_chlorine(mysqli $conn, array $pool, float $chl
         "Tanque {$tankName} ({$tankId}) ctrl=1 decision={$decision} PV={$chlorine} base={$lockedBaseSp} trendSum=" . round($trendSum, 4) . " trendConf={$trendConfidence} falling=" . ($isConfirmedFalling ? '1' : '0') . " rising=" . ($isConfirmedRising ? '1' : '0') . " newSP={$newDynSp}"
     );
 
-    $calculationSummary = "decision={$decision} mode=" . ($isNight ? 'night' : 'day') . " profile={$profileMode} ha=" . ($isHighAttendance ? '1' : '0') . " nightDynamicOff=" . ($nightDisableDynamic ? '1' : '0') . " hour={$hourNow} reqDrop=" . round($requiredDropDelta, 4) . " PV=" . round($chlorine, 2) . " prevPV=" . round($prevPv ?? 0.0, 2) . " delta=" . round($deltaPv, 4) . " trendSum=" . round($trendSum, 4) . " trendConf={$trendConfidence} base=" . round($lockedBaseSp, 2) . " pump=" . ($pumpPercent === null ? 'N/A' : round($pumpPercent, 2)) . " offset=" . round($followOffset, 4) . " newSP={$newDynSp}";
+    $calculationSummary = "decision={$decision} mode=" . ($isNight ? 'night' : 'day') . " profile={$profileMode} ha=" . ($isHighAttendance ? '1' : '0') . " nightDynamicOff=" . ($nightDisableDynamic ? '1' : '0') . " safetyPV=" . round($safetyDisableAbovePv, 2) . " hour={$hourNow} reqDrop=" . round($requiredDropDelta, 4) . " PV=" . round($chlorine, 2) . " prevPV=" . round($prevPv ?? 0.0, 2) . " delta=" . round($deltaPv, 4) . " trendSum=" . round($trendSum, 4) . " trendConf={$trendConfidence} base=" . round($lockedBaseSp, 2) . " pump=" . ($pumpPercent === null ? 'N/A' : round($pumpPercent, 2)) . " offset=" . round($followOffset, 4) . " newSP={$newDynSp}";
     // ────────────────────────────────────────────────────────────────────────
 
     // Cooldown entre envios

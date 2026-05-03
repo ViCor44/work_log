@@ -59,6 +59,7 @@ function param_defaults(): array {
         'trend_min_majority'  => 2.0,
         'cooldown_sec'        => 60.0,
         'min_send_delta'      => 0.01,
+        'safety_disable_above_pv' => 3.00,
         // Perfil noturno (mais conservador): metade dos defaults base
         'night_anticipation_offset' => 0.03,
         'night_min_follow_offset'   => 0.015,
@@ -158,6 +159,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         'trend_min_majority'  => ['min' => 1.0,  'max' => 60.0],
         'cooldown_sec'        => ['min' => 0.0, 'max' => 3600.0],
         'min_send_delta'      => ['min' => 0.00, 'max' => 1.0],
+        'safety_disable_above_pv' => ['min' => 0.0, 'max' => 10.0],
         'night_anticipation_offset' => ['min' => 0.0, 'max' => 2.0],
         'night_min_follow_offset'   => ['min' => 0.0, 'max' => 2.0],
         'night_max_follow_offset'   => ['min' => 0.0, 'max' => 5.0],
