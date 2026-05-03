@@ -68,6 +68,7 @@ function param_defaults(): array {
         'night_pump_adjust_step'    => 0.01,
         'night_start_hour'    => 22.0,
         'night_end_hour'      => 7.0,
+        'night_disable_dynamic' => 0.0,
         'night_min_excess_over_base' => 0.25,
         'night_min_drop_delta' => 0.02,
         // Alta afluência (parâmetros mais agressivos)
@@ -165,6 +166,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         'night_pump_adjust_step'    => ['min' => 0.0, 'max' => 1.0],
         'night_start_hour'    => ['min' => 0.0, 'max' => 23.0],
         'night_end_hour'      => ['min' => 0.0, 'max' => 23.0],
+        'night_disable_dynamic' => ['min' => 0.0, 'max' => 1.0],
         'night_min_excess_over_base' => ['min' => 0.0, 'max' => 2.0],
         'night_min_drop_delta' => ['min' => 0.0, 'max' => 1.0],
         'ha_anticipation_offset' => ['min' => 0.0, 'max' => 2.0],

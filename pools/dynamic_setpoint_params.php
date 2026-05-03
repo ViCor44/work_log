@@ -49,6 +49,7 @@ $defaults = [
     'night_pump_adjust_step'    => 0.01,
     'night_start_hour'    => 22.0,
     'night_end_hour'      => 7.0,
+    'night_disable_dynamic' => 0.0,
     'night_min_excess_over_base' => 0.25,
     'night_min_drop_delta' => 0.02,
     'ha_anticipation_offset' => 0.12,
@@ -258,6 +259,15 @@ foreach ($defaults as $name => $default) {
                         </div>
                     </div>
                     <div class="row g-3 mb-3">
+                        <div class="col-12">
+                            <div class="form-check form-switch mt-1 mb-1">
+                                <input class="form-check-input" type="checkbox" id="f_night_disable_dynamic" name="night_disable_dynamic" <?= ((float)$params['night_disable_dynamic'] === 1.0) ? 'checked' : '' ?>>
+                                <label class="form-check-label" for="f_night_disable_dynamic" data-bs-toggle="tooltip" data-bs-placement="top" title="Se ativo, o SP dinâmico não atua durante a janela noturna. O algoritmo mantém/restaura o SP base do controlador nesse período.">Inativar SP dinâmico durante o período noturno <span class="default-badge">(padrão: desligado)</span> <span class="info-icon">?</span></label>
+                            </div>
+                            <div class="param-hint">Quando ativo, à noite o sistema usa apenas o setpoint base (sem offsets dinâmicos).</div>
+                        </div>
+                    </div>
+                    <div class="row g-3 mb-3">
                         <div class="col-md-3">
                             <label data-bs-toggle="tooltip" data-bs-placement="top" title="Hora de início do modo noturno. Dentro desta janela, o algoritmo só acompanha a descida quando o cloro estiver bem acima da base e com queda mais evidente.">Início noite (hora) <span class="default-badge">(padrão: 22)</span> <span class="info-icon">?</span></label>
                             <input type="number" min="0" max="23" step="1" class="form-control" name="night_start_hour" id="f_night_start_hour" value="<?= $params['night_start_hour'] ?>">
@@ -345,7 +355,7 @@ const FIELD_NAMES = [
     'trend_deadband','trend_window_size','trend_min_majority','cooldown_sec','min_send_delta',
     'night_anticipation_offset','night_min_follow_offset','night_max_follow_offset',
     'night_pump_min_target','night_pump_max_target','night_pump_adjust_step',
-    'night_start_hour','night_end_hour','night_min_excess_over_base','night_min_drop_delta',
+    'night_start_hour','night_end_hour','night_disable_dynamic','night_min_excess_over_base','night_min_drop_delta',
     'ha_anticipation_offset','ha_min_follow_offset','ha_max_follow_offset',
     'ha_pump_min_target','ha_pump_max_target','ha_pump_adjust_step'
 ];
@@ -363,7 +373,12 @@ function showToast(msg, type = 'success') {
 function fillForm(params) {
     FIELD_NAMES.forEach(name => {
         const el = document.getElementById('f_' + name);
-        if (el) el.value = params[name];
+        if (!el) return;
+        if (el.type === 'checkbox') {
+            el.checked = Number(params[name]) === 1;
+            return;
+        }
+        el.value = params[name];
     });
 }
 
@@ -380,7 +395,12 @@ document.getElementById('params-form').addEventListener('submit', async function
     const body = new URLSearchParams({ tank_id: TANK_ID, action: 'save' });
     FIELD_NAMES.forEach(name => {
         const el = document.getElementById('f_' + name);
-        if (el) body.append(name, el.value);
+        if (!el) return;
+        if (el.type === 'checkbox') {
+            body.append(name, el.checked ? '1' : '0');
+            return;
+        }
+        body.append(name, el.value);
     });
     try {
         const r = await fetch(API, { method: 'POST', body });
