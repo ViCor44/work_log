@@ -79,6 +79,7 @@ function param_defaults(): array {
         'ha_pump_min_target'     => 12.0,
         'ha_pump_max_target'     => 45.0,
         'ha_pump_adjust_step'    => 0.04,
+        'brake_enabled'          => 1.0,
     ];
 }
 
@@ -177,6 +178,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         'ha_pump_min_target'     => ['min' => 0.0, 'max' => 100.0],
         'ha_pump_max_target'     => ['min' => 0.0, 'max' => 100.0],
         'ha_pump_adjust_step'    => ['min' => 0.0, 'max' => 1.0],
+        'brake_enabled'          => ['min' => 0.0, 'max' => 1.0],
     ];
 
     foreach ($defaults as $name => $default) {

@@ -59,6 +59,7 @@ $defaults = [
     'ha_pump_min_target'     => 12.0,
     'ha_pump_max_target'     => 45.0,
     'ha_pump_adjust_step'    => 0.04,
+    'brake_enabled'          => 1.0,
 ];
 $params = [];
 foreach ($defaults as $name => $default) {
@@ -271,6 +272,11 @@ foreach ($defaults as $name => $default) {
                                 <label class="form-check-label" for="f_night_disable_dynamic" data-bs-toggle="tooltip" data-bs-placement="top" title="Se ativo, o SP dinâmico não atua durante a janela noturna. O algoritmo mantém/restaura o SP base do controlador nesse período.">Inativar SP dinâmico durante o período noturno <span class="default-badge">(padrão: desligado)</span> <span class="info-icon">?</span></label>
                             </div>
                             <div class="param-hint">Quando ativo, à noite o sistema usa apenas o setpoint base (sem offsets dinâmicos).</div>
+                            <div class="form-check form-switch mt-2 mb-1">
+                                <input class="form-check-input" type="checkbox" id="f_brake_enabled" name="brake_enabled" <?= ((float)$params['brake_enabled'] !== 0.0) ? 'checked' : '' ?>>
+                                <label class="form-check-label" for="f_brake_enabled" data-bs-toggle="tooltip" data-bs-placement="top" title="Quando ativo, se o PV ultrapassar o SP base com a bomba ainda a dosear, o algoritmo envia um SP abaixo da base (até -0.25 mg/L) para forçar paragem mais rápida e desfazer windup integral. Aplica-se dia e noite.">Travagem ativa (anti-windup) <span class="default-badge">(padrão: ativo)</span> <span class="info-icon">?</span></label>
+                            </div>
+                            <div class="param-hint">Recomendado manter ativo. Protege contra sobre-dosagem quando o PV excede a base.</div>
                         </div>
                     </div>
                     <div class="row g-3 mb-3">
@@ -363,7 +369,8 @@ const FIELD_NAMES = [
     'night_pump_min_target','night_pump_max_target','night_pump_adjust_step',
     'night_start_hour','night_end_hour','night_disable_dynamic','night_min_excess_over_base','night_min_drop_delta',
     'ha_anticipation_offset','ha_min_follow_offset','ha_max_follow_offset',
-    'ha_pump_min_target','ha_pump_max_target','ha_pump_adjust_step'
+    'ha_pump_min_target','ha_pump_max_target','ha_pump_adjust_step',
+    'brake_enabled'
 ];
 
 function showToast(msg, type = 'success') {

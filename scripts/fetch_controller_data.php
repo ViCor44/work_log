@@ -235,6 +235,7 @@ function run_dynamic_setpoint_for_chlorine(mysqli $conn, array $pool, float $chl
     $nightDisableDynamic = get_setting_value($conn, $pPrefix . 'night_disable_dynamic', '0') === '1';
     $nightMinExcessOverBase = (float)(get_setting_value($conn, $pPrefix . 'night_min_excess_over_base', null) ?? 0.25);
     $nightMinDropDelta  = (float)(get_setting_value($conn, $pPrefix . 'night_min_drop_delta', null) ?? 0.02);
+    $brakeEnabled       = get_setting_value($conn, $pPrefix . 'brake_enabled', '1') !== '0';
 
     $nightStartHour = max(0, min(23, $nightStartHour));
     $nightEndHour   = max(0, min(23, $nightEndHour));
@@ -436,7 +437,7 @@ function run_dynamic_setpoint_for_chlorine(mysqli $conn, array $pool, float $chl
         // se PV exceder significativamente a base e a bomba ainda estiver a dosear,
         // força SP abaixo da base para desfazer windup integral.
         $overBase = $chlorine - $lockedBaseSp;
-        if ($overBase > 0.10 && $pumpPercent !== null && $pumpPercent > 5.0) {
+        if ($brakeEnabled && $overBase > 0.10 && $pumpPercent !== null && $pumpPercent > 5.0) {
             $brakeOffset = round(min($overBase * 0.25, 0.25), 2);
             $decision  = 'night_travagem_ativa';
             $newDynSp  = max(round($lockedBaseSp - $brakeOffset, 2), 0.50);
@@ -473,7 +474,7 @@ function run_dynamic_setpoint_for_chlorine(mysqli $conn, array $pool, float $chl
             // envia SP ligeiramente abaixo da base para criar erro negativo maior e
             // desfazer o windup integral do controlador físico mais depressa.
             $overBase = $chlorine - $lockedBaseSp;
-            if ($overBase > 0.10 && $pumpPercent !== null && $pumpPercent > 5.0) {
+            if ($brakeEnabled && $overBase > 0.10 && $pumpPercent !== null && $pumpPercent > 5.0) {
                 $brakeOffset = round(min($overBase * 0.25, 0.25), 2); // até 25% do excesso, máx 0.25 mg/L
                 $decision  = 'acima_base_travagem_ativa';
                 $newDynSp  = max(round($lockedBaseSp - $brakeOffset, 2), 0.50);
