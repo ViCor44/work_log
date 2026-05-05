@@ -1,5 +1,6 @@
 <?php
 require_once '../header.php';
+require_once 'meter_continuity.php';
 
 // --- Lógica de Filtragem e Busca de Dados ---
 $current_month = isset($_GET['month']) ? $_GET['month'] : date('Y-m');
@@ -20,6 +21,7 @@ $total_consumption = 0;
 $days_in_month = cal_days_in_month(CAL_GREGORIAN, $month, $year);
 
 if ($edificio_tank_id) {
+    $offsetIndex = get_meter_offset_index($conn, [(int)$edificio_tank_id], 'normal');
     // 2. Buscar as leituras para o mês e o último dia do mês anterior
     $first_day_of_month = "$year-$month-01";
     $last_day_of_prev_month = date('Y-m-d', strtotime($first_day_of_month . ' -1 day'));
@@ -42,9 +44,10 @@ if ($edificio_tank_id) {
     $readings_by_day = [];
     foreach ($results as $row) {
         $date_key = date('Y-m-d', strtotime($row['reading_datetime']));
+        $adjustedValue = get_adjusted_meter_value((int)$edificio_tank_id, $row['reading_datetime'], (float)$row['meter_value'], $offsetIndex);
         // Guarda a primeira (e única) leitura do dia
         if (!isset($readings_by_day[$date_key])) {
-            $readings_by_day[$date_key] = $row['meter_value'];
+            $readings_by_day[$date_key] = $adjustedValue;
         }
     }
 

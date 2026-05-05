@@ -1,6 +1,7 @@
 <?php
 require_once '../core.php';
 require_once '../fpdf/fpdf.php'; // Verifique se este caminho está correto
+require_once 'meter_continuity.php';
 
 // --- Lógica de busca e processamento de dados (sem alterações) ---
 $report_date = isset($_GET['report_date']) ? $_GET['report_date'] : date('Y-m-d');
@@ -37,18 +38,23 @@ $result_rede_id = $stmt_rede_id->get_result()->fetch_assoc();
 $rede_tank_id = isset($result_rede_id['id']) ? $result_rede_id['id'] : null;
 $stmt_rede_id->close();
 if ($rede_tank_id) {
+    $offsetIndex = get_meter_offset_index($conn, [(int)$rede_tank_id], 'normal');
     $stmt_current = $conn->prepare("SELECT meter_value FROM water_readings WHERE tank_id = ? AND DATE(reading_datetime) = ? ORDER BY reading_datetime ASC LIMIT 1");
     $stmt_current->bind_param("is", $rede_tank_id, $report_date);
     $stmt_current->execute();
     $res_current = $stmt_current->get_result()->fetch_assoc();
-    $rede_data['current_reading'] = isset($res_current['meter_value']) ? $res_current['meter_value'] : null;
+    $rede_data['current_reading'] = isset($res_current['meter_value'])
+        ? get_adjusted_meter_value((int)$rede_tank_id, $report_date . ' 00:00:00', (float)$res_current['meter_value'], $offsetIndex)
+        : null;
     $stmt_current->close();
     $previous_date = date('Y-m-d', strtotime($report_date . ' -1 day'));
     $stmt_prev = $conn->prepare("SELECT meter_value FROM water_readings WHERE tank_id = ? AND DATE(reading_datetime) = ? ORDER BY reading_datetime ASC LIMIT 1");
     $stmt_prev->bind_param("is", $rede_tank_id, $previous_date);
     $stmt_prev->execute();
     $res_prev = $stmt_prev->get_result()->fetch_assoc();
-    $rede_data['previous_reading'] = isset($res_prev['meter_value']) ? $res_prev['meter_value'] : null;
+    $rede_data['previous_reading'] = isset($res_prev['meter_value'])
+        ? get_adjusted_meter_value((int)$rede_tank_id, $previous_date . ' 00:00:00', (float)$res_prev['meter_value'], $offsetIndex)
+        : null;
     $stmt_prev->close();
     if ($rede_data['current_reading'] !== null && $rede_data['previous_reading'] !== null) {
         $rede_data['consumption'] = $rede_data['current_reading'] - $rede_data['previous_reading'];

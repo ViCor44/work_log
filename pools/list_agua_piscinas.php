@@ -1,5 +1,6 @@
 <?php
 require_once '../header.php';
+require_once 'meter_continuity.php';
 
 // --- Lógica de busca e processamento de dados (sem alterações) ---
 $current_month = isset($_GET['month']) ? $_GET['month'] : date('Y-m');
@@ -26,6 +27,7 @@ $stmt->bind_param("sss", $month, $year, $last_day_of_prev_month);
 $stmt->execute();
 $results = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
 $stmt->close();
+$offsetIndex = get_meter_offset_index($conn, $tank_ids, 'normal');
 // --- NOVO BLOCO DE PROCESSAMENTO DE DADOS (MAIS SIMPLES E CORRETO) ---
 // --- NOVO BLOCO DE PROCESSAMENTO DE DADOS (MAIS SIMPLES E CORRETO) ---
 $report_data = [];
@@ -36,10 +38,12 @@ $readings_by_day = [];
 // 1. Organiza todas as leituras por dia para cada tanque
 foreach ($results as $row) {
     $date_key = date('Y-m-d', strtotime($row['reading_datetime']));
+    $tankId = (int)$row['tank_id'];
+    $adjustedValue = get_adjusted_meter_value($tankId, $row['reading_datetime'], (float)$row['meter_value'], $offsetIndex);
     // Converte para float logo na leitura da base de dados
-    $readings_by_day[$row['tank_id']][$date_key][] = [
+    $readings_by_day[$tankId][$date_key][] = [
         'time' => $row['reading_datetime'],
-        'value' => (float)$row['meter_value']
+        'value' => $adjustedValue
     ];
 }
 

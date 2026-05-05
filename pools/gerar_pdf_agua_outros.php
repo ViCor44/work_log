@@ -1,6 +1,7 @@
 <?php
 require_once '../core.php';
 require_once '../fpdf/fpdf.php'; // Verifique se este caminho está correto
+require_once 'meter_continuity.php';
 
 // --- Lógica de busca e processamento de dados ---
 $current_month = isset($_GET['month']) ? $_GET['month'] : date('Y-m');
@@ -41,12 +42,15 @@ if (!empty($tank_ids)) {
     $stmt->execute();
     $results = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
     $stmt->close();
+    $offsetIndex = get_meter_offset_index($conn, $tank_ids, 'normal');
     
     $readings_by_day = [];
     foreach ($results as $row) {
         $date_key = date('Y-m-d', strtotime($row['reading_datetime']));
-        if (!isset($readings_by_day[$row['tank_id']][$date_key])) {
-            $readings_by_day[$row['tank_id']][$date_key] = (float)$row['meter_value'];
+        $tankId = (int)$row['tank_id'];
+        $adjustedValue = get_adjusted_meter_value($tankId, $row['reading_datetime'], (float)$row['meter_value'], $offsetIndex);
+        if (!isset($readings_by_day[$tankId][$date_key])) {
+            $readings_by_day[$tankId][$date_key] = $adjustedValue;
         }
     }
     

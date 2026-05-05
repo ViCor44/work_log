@@ -1,5 +1,6 @@
 <?php
 require_once '../header.php';
+require_once 'meter_continuity.php';
 
 // --- Lógica de Filtragem e Busca de Dados ---
 $current_month = isset($_GET['month']) ? $_GET['month'] : date('Y-m');
@@ -18,8 +19,10 @@ $report_data = [];
 $total_consumption_24h = 0;
 $total_consumption_intraday = 0;
 $days_in_month = cal_days_in_month(CAL_GREGORIAN, $month, $year);
+$offsetIndex = [];
 
 if ($rede_tank_id) {
+    $offsetIndex = get_meter_offset_index($conn, [(int)$rede_tank_id], 'normal');
     $first_day_of_month = "$year-$month-01";
     $last_day_of_prev_month = date('Y-m-d', strtotime($first_day_of_month . ' -1 day'));
     $sql = "SELECT reading_datetime, meter_value FROM water_readings WHERE tank_id = ? AND ( (MONTH(reading_datetime) = ? AND YEAR(reading_datetime) = ?) OR DATE(reading_datetime) = ? ) ORDER BY reading_datetime ASC";
@@ -32,10 +35,11 @@ if ($rede_tank_id) {
     $readings_by_day = [];
     foreach ($results as $row) {
         $date_key = date('Y-m-d', strtotime($row['reading_datetime']));
+        $adjustedValue = get_adjusted_meter_value((int)$rede_tank_id, $row['reading_datetime'], (float)$row['meter_value'], $offsetIndex);
         if (!isset($readings_by_day[$date_key])) {
             $readings_by_day[$date_key] = [];
         }
-        $readings_by_day[$date_key][] = $row['meter_value'];
+        $readings_by_day[$date_key][] = $adjustedValue;
     }
 
     // Inicializar todos os dias do mês no report_data com valores padrão

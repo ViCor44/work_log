@@ -1,5 +1,6 @@
 <?php
 require_once '../header.php';
+require_once 'meter_continuity.php';
 
 // --- 1. Lógica para buscar todos os tanques para os dropdowns ---
 $tanks_list_stmt = $conn->query("SELECT id, name FROM tanks WHERE water_reading_frequency > 0 ORDER BY name ASC");
@@ -35,12 +36,15 @@ if ($tank1_id && $tank2_id) {
     $stmt->execute();
     $results = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
     $stmt->close();
+    $offsetIndex = get_meter_offset_index($conn, [(int)$tank1_id, (int)$tank2_id], 'normal');
 
     // Processa os dados para a tabela e para o gráfico
     $readings_by_day = [];
     foreach ($results as $row) {
         $date_key = date('Y-m-d', strtotime($row['reading_datetime']));
-        $readings_by_day[$row['tank_id']][$date_key] = $row['meter_value'];
+        $tankId = (int)$row['tank_id'];
+        $adjustedValue = get_adjusted_meter_value($tankId, $row['reading_datetime'], (float)$row['meter_value'], $offsetIndex);
+        $readings_by_day[$tankId][$date_key] = $adjustedValue;
     }
 
     $current_date = new DateTime($start_date);

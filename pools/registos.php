@@ -175,6 +175,11 @@ require_once '../header.php';
                         <a href="form_hipoclorito.php" class="btn btn-warning btn-lg text-dark">Registar Hipoclorito</a>
                     </div>
                 </div>
+                <div class="col-md-6 col-lg-3 mb-3">
+                    <div class="d-grid">
+                        <a href="form_troca_contador.php" class="btn btn-dark btn-lg">Troca de Contador</a>
+                    </div>
+                </div>
             </div>
         </div>
     </div>

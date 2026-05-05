@@ -1,6 +1,7 @@
 <?php
 require_once '../core.php';
 require_once '../fpdf/fpdf.php';
+require_once 'meter_continuity.php';
 
 // Carrega configuração de secções
 $config_path = __DIR__ . '/config_relatorio.json';
@@ -70,22 +71,35 @@ $reject_stmt->execute();
 $reject_results = $reject_stmt->get_result()->fetch_all(MYSQLI_ASSOC);
 $reject_stmt->close();
 
+$reject_tanks = array_values(array_filter($tanks, function ($tank) {
+    return $tank['type'] === 'piscina' && (int)$tank['has_reject_counter'] === 1;
+}));
+
+$allTankIds = array_column($tanks, 'id');
+$rejectTankIds = array_column($reject_tanks, 'id');
+$normalOffsetIndex = get_meter_offset_index($conn, $allTankIds, 'normal');
+$rejectOffsetIndex = get_meter_offset_index($conn, $rejectTankIds, 'rejected');
+
 // 3. Processar os dados
 $report_data = [];
 $readings_by_day = [];
 $reject_readings_by_day = [];
 foreach ($results as $row) {
     $date_key = date('Y-m-d', strtotime($row['reading_datetime']));
+    $tankId = (int)$row['tank_id'];
+    $adjustedValue = get_adjusted_meter_value($tankId, $row['reading_datetime'], (float)$row['meter_value'], $normalOffsetIndex);
     // Guarda a primeira leitura do dia
-    if (!isset($readings_by_day[$row['tank_id']][$date_key])) {
-        $readings_by_day[$row['tank_id']][$date_key] = $row['meter_value'];
+    if (!isset($readings_by_day[$tankId][$date_key])) {
+        $readings_by_day[$tankId][$date_key] = $adjustedValue;
     }
 }
 
 foreach ($reject_results as $row) {
     $date_key = date('Y-m-d', strtotime($row['reading_datetime']));
-    if (!isset($reject_readings_by_day[$row['tank_id']][$date_key])) {
-        $reject_readings_by_day[$row['tank_id']][$date_key] = $row['meter_value'];
+    $tankId = (int)$row['tank_id'];
+    $adjustedValue = get_adjusted_meter_value($tankId, $row['reading_datetime'], (float)$row['meter_value'], $rejectOffsetIndex);
+    if (!isset($reject_readings_by_day[$tankId][$date_key])) {
+        $reject_readings_by_day[$tankId][$date_key] = $adjustedValue;
     }
 }
 
