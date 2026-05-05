@@ -457,10 +457,21 @@ function run_dynamic_setpoint_for_chlorine(mysqli $conn, array $pool, float $chl
             $newDynSp = $chlorine + $followOffset;
             $reason   = $decision . " PV={$chlorine} base={$lockedBaseSp} trendSum=" . round($trendSum, 4) . " up={$upCount} down={$downCount} flat={$flatCount} conf={$trendConfidence} profile={$profileMode} bomba=" . ($pumpPercent === null ? 'N/A' : $pumpPercent) . " offset={$followOffset}";
         } else {
-            // Acima da base mas não confirmou descida → mantém SP base
-            $decision = 'acima_base_aguarda_descida';
-            $newDynSp = $lockedBaseSp;
-            $reason   = "{$decision} PV={$chlorine} base={$lockedBaseSp} trendSum=" . round($trendSum, 4) . " up={$upCount} down={$downCount} flat={$flatCount} conf={$trendConfidence}";
+            // Acima da base mas não confirmou descida.
+            // Se o excesso for significativo e a bomba ainda estiver a dosear, aplica travagem ativa:
+            // envia SP ligeiramente abaixo da base para criar erro negativo maior e
+            // desfazer o windup integral do controlador físico mais depressa.
+            $overBase = $chlorine - $lockedBaseSp;
+            if ($overBase > 0.10 && $pumpPercent !== null && $pumpPercent > 5.0) {
+                $brakeOffset = round(min($overBase * 0.25, 0.25), 2); // até 25% do excesso, máx 0.25 mg/L
+                $decision  = 'acima_base_travagem_ativa';
+                $newDynSp  = max(round($lockedBaseSp - $brakeOffset, 2), 0.50);
+                $reason    = "{$decision} PV={$chlorine} base={$lockedBaseSp} overBase=" . round($overBase, 3) . " brakeOffset={$brakeOffset} newSP={$newDynSp} bomba={$pumpPercent}";
+            } else {
+                $decision = 'acima_base_aguarda_descida';
+                $newDynSp = $lockedBaseSp;
+                $reason   = "{$decision} PV={$chlorine} base={$lockedBaseSp} trendSum=" . round($trendSum, 4) . " up={$upCount} down={$downCount} flat={$flatCount} conf={$trendConfidence}";
+            }
         }
     } elseif ($chlorine < $lockedBaseSp) {
         // Abaixo da base
