@@ -223,9 +223,9 @@ foreach ($defaults as $name => $default) {
                             <div class="param-hint">Só envia ao controlador se o novo SP diferir pelo menos este valor do último enviado.</div>
                         </div>
                         <div class="col-md-4">
-                            <label data-bs-toggle="tooltip" data-bs-placement="top" title="Limite de segurança de PV (cloro). Se o PV atual for maior ou igual a este valor, o SP dinâmico é inativado nesse ciclo e o sistema usa SP base.">PV de segurança para inativar dinâmico (mg/L) <span class="default-badge">(padrão: 3.00)</span> <span class="info-icon">?</span></label>
-                            <input type="number" step="0.01" class="form-control" name="safety_disable_above_pv" id="f_safety_disable_above_pv" value="<?= $params['safety_disable_above_pv'] ?>">
-                            <div class="param-hint">Se PV >= limite, força SP base (sem offsets dinâmicos).</div>
+                            <label data-bs-toggle="tooltip" data-bs-placement="top" title="Limite de segurança de PV (cloro). Calculado automaticamente como SP base + 1.00 mg/L. Se o PV atual for maior ou igual a este valor, o SP dinâmico é inativado nesse ciclo e o sistema usa SP base.">PV de segurança para inativar dinâmico (mg/L) <span class="info-icon">?</span></label>
+                            <input type="number" step="0.01" class="form-control bg-secondary text-white" id="f_safety_disable_above_pv" value="<?= $params['safety_disable_above_pv'] ?>" readonly title="Calculado automaticamente: SP base + 1.00 mg/L">
+                            <div class="param-hint">Auto-calculado: SP base + 1.00 mg/L. Se PV &gt;= limite, força SP base (sem offsets dinâmicos).</div>
                         </div>
                     </div>
 

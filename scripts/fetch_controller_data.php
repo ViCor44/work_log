@@ -268,6 +268,10 @@ function run_dynamic_setpoint_for_chlorine(mysqli $conn, array $pool, float $chl
         set_setting_value($conn, $baseSpKey, (string)$lockedBaseSp);
     }
 
+    // PV de segurança: calculado automaticamente como SP base + 1.00 mg/L.
+    // Garante que o limite de segurança acompanha sempre o setpoint base.
+    $safetyDisableAbovePv = round($lockedBaseSp + 1.00, 2);
+
     $prevPv     = float_or_null(get_setting_value($conn, $prevPvKey, null));
     $lastSentSp = float_or_null(get_setting_value($conn, $lastSentSpKey, null));
     $lastSentAt = (int)(get_setting_value($conn, $lastSentAtKey, '0') ?? '0');
