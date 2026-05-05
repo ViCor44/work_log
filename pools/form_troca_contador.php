@@ -6,7 +6,7 @@ ensure_meter_replacements_table($conn);
 
 $tanks = $conn->query("SELECT id, name, type, has_reject_counter FROM tanks WHERE water_reading_frequency > 0 ORDER BY name ASC")->fetch_all(MYSQLI_ASSOC);
 
-$recent = $conn->query("\n+    SELECT mr.*, t.name AS tank_name, CONCAT(u.first_name, ' ', u.last_name) AS user_name\n+    FROM meter_replacements mr\n+    JOIN tanks t ON t.id = mr.tank_id\n+    LEFT JOIN users u ON u.id = mr.created_by\n+    ORDER BY mr.replacement_datetime DESC, mr.id DESC\n+    LIMIT 20\n+")->fetch_all(MYSQLI_ASSOC);
+$recent = $conn->query("\n    SELECT mr.*, t.name AS tank_name, CONCAT(u.first_name, ' ', u.last_name) AS user_name\n    FROM meter_replacements mr\n    JOIN tanks t ON t.id = mr.tank_id\n    LEFT JOIN users u ON u.id = mr.created_by\n    ORDER BY mr.replacement_datetime DESC, mr.id DESC\n    LIMIT 20\n")->fetch_all(MYSQLI_ASSOC);
 ?>
 
 <div class="container mt-4">

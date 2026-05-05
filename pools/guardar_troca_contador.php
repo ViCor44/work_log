@@ -26,7 +26,7 @@ if ($tankId <= 0 || !in_array($readingType, ['normal', 'rejected'], true) || $re
 $replacementDatetime = str_replace('T', ' ', $replacementDatetime) . ':00';
 $offsetDelta = $oldReading - $newReading;
 
-$stmt = $conn->prepare("\n+    INSERT INTO meter_replacements\n+    (tank_id, reading_type, replacement_datetime, old_reading, new_reading, offset_delta, notes, created_by)\n+    VALUES (?, ?, ?, ?, ?, ?, ?, ?)\n+");
+$stmt = $conn->prepare("\n    INSERT INTO meter_replacements\n    (tank_id, reading_type, replacement_datetime, old_reading, new_reading, offset_delta, notes, created_by)\n    VALUES (?, ?, ?, ?, ?, ?, ?, ?)\n");
 
 if (!$stmt) {
     $_SESSION['error_message'] = 'Erro ao preparar o registo de troca.';
