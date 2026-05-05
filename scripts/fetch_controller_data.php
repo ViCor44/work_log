@@ -432,9 +432,20 @@ function run_dynamic_setpoint_for_chlorine(mysqli $conn, array $pool, float $chl
         $newDynSp = $lockedBaseSp;
         $reason = "{$decision} PV={$chlorine} limite={$safetyDisableAbovePv} base={$lockedBaseSp}";
     } elseif ($isNight && $nightDisableDynamic) {
-        $decision = 'night_dynamic_disabled';
-        $newDynSp = $lockedBaseSp;
-        $reason = "{$decision} PV={$chlorine} base={$lockedBaseSp} hora={$hourNow}";
+        // SP dinâmico noturno desligado, mas a travagem ativa aplica-se sempre:
+        // se PV exceder significativamente a base e a bomba ainda estiver a dosear,
+        // força SP abaixo da base para desfazer windup integral.
+        $overBase = $chlorine - $lockedBaseSp;
+        if ($overBase > 0.10 && $pumpPercent !== null && $pumpPercent > 5.0) {
+            $brakeOffset = round(min($overBase * 0.25, 0.25), 2);
+            $decision  = 'night_travagem_ativa';
+            $newDynSp  = max(round($lockedBaseSp - $brakeOffset, 2), 0.50);
+            $reason    = "{$decision} PV={$chlorine} base={$lockedBaseSp} overBase=" . round($overBase, 3) . " brakeOffset={$brakeOffset} newSP={$newDynSp} bomba={$pumpPercent} hora={$hourNow}";
+        } else {
+            $decision = 'night_dynamic_disabled';
+            $newDynSp = $lockedBaseSp;
+            $reason   = "{$decision} PV={$chlorine} base={$lockedBaseSp} hora={$hourNow}";
+        }
     } elseif ($chlorine > $lockedBaseSp) {
         // Acima da base
         if ($isConfirmedFalling) {
