@@ -354,22 +354,20 @@ $influent_open    = (bool)(($status_word >> 12) & 1); // bit 4: Válvula Influen
 $influent_closed  = (bool)(($status_word >> 13) & 1); // bit 5: Válvula Influente fechada
 
 // --- Estado do filtro derivado dos bits ---
-// Bump tem prioridade máxima: durante contra-lavagem o bit de interrupção
-// também fica ativo (filtração é interrompida), mas o estado relevante é Bump.
-if ($filter_bump) {
+// Pré-coat tem prioridade máxima: durante pré-coat o bit de bump também
+// fica ativo (o controlador faz bump para distribuir a perlite).
+// Bump vem a seguir: durante contra-lavagem o bit de interrupção também
+// fica ativo (filtração é interrompida), mas o estado relevante é Bump.
+if ($filter_precoat) {
+    $filter_state = 'Pré-coat';
+} elseif ($filter_bump) {
     $filter_state = 'Bump';
 } elseif ($filter_interruption) {
     $filter_state = 'Interrompido';
-} elseif ($filter_precoat) {
-    $filter_state = 'Pré-coat';
 } elseif ($filter_in_service) {
     $filter_state = 'Em Filtração';
 } elseif ($filter_fill_drain) {
     $filter_state = 'Enchimento/Drenagem';
-} elseif ($filter_bump) {
-    $filter_state = 'Bump';
-} elseif ($filter_in_service) {
-    $filter_state = 'Em Filtração';
 } elseif ($pump1_start || $pump2_start) {
     $filter_state = 'Bomba a Arrancar';
 } elseif (!$filter_off) {
