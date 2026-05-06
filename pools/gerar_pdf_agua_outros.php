@@ -50,7 +50,7 @@ if (!empty($tank_ids)) {
         $tankId = (int)$row['tank_id'];
         $adjustedValue = get_adjusted_meter_value($tankId, $row['reading_datetime'], (float)$row['meter_value'], $offsetIndex);
         if (!isset($readings_by_day[$tankId][$date_key])) {
-            $readings_by_day[$tankId][$date_key] = $adjustedValue;
+            $readings_by_day[$tankId][$date_key] = ['adjusted' => $adjustedValue, 'raw' => (float)$row['meter_value']];
         }
     }
     
@@ -60,15 +60,15 @@ if (!empty($tank_ids)) {
             $tank_id = $tank['id'];
             $current_date_str = sprintf('%s-%s-%02d', $year, $month, $day);
             $previous_date_str = date('Y-m-d', strtotime($current_date_str . ' -1 day'));
-            $leitura_atual = isset($readings_by_day[$tank_id][$current_date_str]) ? $readings_by_day[$tank_id][$current_date_str] : null;
-            $leitura_anterior = isset($readings_by_day[$tank_id][$previous_date_str]) ? $readings_by_day[$tank_id][$previous_date_str] : null;
+            $leitura_atual_data = isset($readings_by_day[$tank_id][$current_date_str]) ? $readings_by_day[$tank_id][$current_date_str] : null;
+            $leitura_anterior_data = isset($readings_by_day[$tank_id][$previous_date_str]) ? $readings_by_day[$tank_id][$previous_date_str] : null;
             $consumo = null;
-            if ($leitura_atual !== null && $leitura_anterior !== null) {
-                $consumo = $leitura_atual - $leitura_anterior;
+            if ($leitura_atual_data !== null && $leitura_anterior_data !== null) {
+                $consumo = $leitura_atual_data['adjusted'] - $leitura_anterior_data['adjusted'];
                 if ($consumo < 0) $consumo = 0;
             }
-            if ($leitura_atual !== null) {
-                $report_data[$day][$tank_id] = ['leitura' => $leitura_atual, 'consumo' => $consumo];
+            if ($leitura_atual_data !== null) {
+                $report_data[$day][$tank_id] = ['leitura' => $leitura_atual_data['raw'], 'consumo' => $consumo];
                 if ($consumo !== null) { $tank_totals[$tank_id] += $consumo; }
             }
         }

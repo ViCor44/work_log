@@ -49,7 +49,7 @@ if (!empty($tank_ids)) {
         $tankId = (int)$row['tank_id'];
         $adjustedValue = get_adjusted_meter_value($tankId, $row['reading_datetime'], (float)$row['meter_value'], $offsetIndex);
         if (!isset($readings_by_day[$tankId][$date_key])) {
-            $readings_by_day[$tankId][$date_key] = ['value' => $adjustedValue, 'id' => $row['id']];
+            $readings_by_day[$tankId][$date_key] = ['value' => $adjustedValue, 'raw' => (float)$row['meter_value'], 'id' => $row['id']];
         }
     }
     
@@ -67,7 +67,7 @@ if (!empty($tank_ids)) {
                 if ($consumo < 0) $consumo = 0;
             }
             if ($leitura_atual_data) {
-                $report_data[$day][$tank_id] = ['id' => $leitura_atual_data['id'], 'leitura' => $leitura_atual_data['value'], 'consumo' => $consumo];
+                $report_data[$day][$tank_id] = ['id' => $leitura_atual_data['id'], 'leitura' => $leitura_atual_data['raw'], 'consumo' => $consumo];
                 if ($consumo !== null) { $tank_totals[$tank_id] += $consumo; }
             }
         }
