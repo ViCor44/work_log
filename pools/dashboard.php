@@ -181,9 +181,19 @@ $filters = fetch_all_safe(
         font-size: 0.8rem;
         color: var(--scada-text-secondary);
     }
-    .pump-dot { font-size: 1.1rem; line-height: 1; }
+    .pump-dot { font-size: 1.2rem; line-height: 1; }
     .pump-dot.pump-on  { color: #198754; }
     .pump-dot.pump-off { color: #495057; }
+    /* Linha de info BUMP */
+    .filtro-bump-info {
+        padding: 6px 14px;
+        background: rgba(111,66,193,0.15);
+        border-top: 1px solid rgba(111,66,193,0.4);
+        font-size: 0.78rem;
+        color: #bf97f7;
+        text-align: center;
+        display: none;
+    }
     .filtro-footer {
         background-color: var(--scada-section-bg);
         border-top: 1px solid var(--scada-border-color);
@@ -347,11 +357,16 @@ $filters = fetch_all_safe(
                                 <div class="filtro-pump">
                                     <span class="pump-dot pump-off" id="filtro-pump1-<?= $filter['id'] ?>">●</span>
                                     <span>Bomba 1</span>
+                                    <span id="filtro-pump1-badge-<?= $filter['id'] ?>" class="badge bg-secondary" style="font-size:0.7rem">--</span>
                                 </div>
                                 <div class="filtro-pump">
                                     <span class="pump-dot pump-off" id="filtro-pump2-<?= $filter['id'] ?>">●</span>
                                     <span>Bomba 2</span>
+                                    <span id="filtro-pump2-badge-<?= $filter['id'] ?>" class="badge bg-secondary" style="font-size:0.7rem">--</span>
                                 </div>
+                            </div>
+                            <div class="filtro-bump-info" id="filtro-bump-info-<?= $filter['id'] ?>">
+                                <i class="fas fa-redo-alt me-1"></i><strong>BUMP</strong> &mdash; Contra-lavagem do leito filtrante em curso
                             </div>
                             <div class="filtro-footer d-flex justify-content-between">
                                 <span><i class="fas fa-network-wired me-1"></i><?= htmlspecialchars($filter['ip_address']) ?></span>
@@ -860,8 +875,11 @@ function createLoraCard(device) {
         const deltaEl   = document.getElementById(`filtro-delta-${filterId}`);
         const flowEl    = document.getElementById(`filtro-flow-${filterId}`);
         const stateEl   = document.getElementById(`filtro-pump-state-${filterId}`);
-        const pump1Dot  = document.getElementById(`filtro-pump1-${filterId}`);
-        const pump2Dot  = document.getElementById(`filtro-pump2-${filterId}`);
+        const pump1Dot    = document.getElementById(`filtro-pump1-${filterId}`);
+        const pump2Dot    = document.getElementById(`filtro-pump2-${filterId}`);
+        const pump1Badge  = document.getElementById(`filtro-pump1-badge-${filterId}`);
+        const pump2Badge  = document.getElementById(`filtro-pump2-badge-${filterId}`);
+        const bumpInfoEl  = document.getElementById(`filtro-bump-info-${filterId}`);
 
         const metricsEl   = cardElement.querySelector('.filtro-metrics');
         const statePanelEl = cardElement.querySelector('.filtro-state-panel');
@@ -887,10 +905,13 @@ function createLoraCard(device) {
             const flow   = data.flow   != null ? parseFloat(data.flow)   : null;
 
             const fb = data.feedback_bits || {};
-            const p1on    = fb.pump1_running || false;
-            const p1fault = fb.pump1_fault   || false;
-            const p2on    = fb.pump2_running || false;
-            const p2fault = fb.pump2_fault   || false;
+            const sb = data.status_bits    || {};
+            // feedback_bits (reg 40105) são os retrosinais reais; status_bits (reg 40072)
+            // têm os bits de arranque VFD como fallback se o retrosinal ainda não chegou
+            const p1on    = !!(fb.pump1_running || sb.pump1_start);
+            const p1fault = !!fb.pump1_fault;
+            const p2on    = !!(fb.pump2_running || sb.pump2_start);
+            const p2fault = !!fb.pump2_fault;
 
             if (data.activeFault || p1fault || p2fault) {
                 cardElement.classList.add('border-danger', 'animate-pulse-red-bs');
@@ -913,13 +934,31 @@ function createLoraCard(device) {
                 stateEl.className   = 'metric-value ' + (STATE_CSS[filterState] || '');
             }
 
-            const setDot = (dot, running, fault) => {
-                if (!dot) return;
-                dot.style.color = fault ? '#dc3545' : (running ? '#198754' : '#495057');
-                dot.title = fault ? 'Falha' : (running ? 'Em serviço' : 'Parada');
+            const setPump = (dot, badge, running, fault) => {
+                if (dot) {
+                    dot.style.color = fault ? '#dc3545' : (running ? '#198754' : '#495057');
+                    dot.title = fault ? 'Falha' : (running ? 'Em serviço' : 'Parada');
+                }
+                if (badge) {
+                    if (fault) {
+                        badge.className = 'badge bg-danger';
+                        badge.textContent = 'FALHA';
+                    } else if (running) {
+                        badge.className = 'badge bg-success';
+                        badge.textContent = 'Em Serviço';
+                    } else {
+                        badge.className = 'badge bg-secondary';
+                        badge.textContent = 'Parada';
+                    }
+                    badge.style.fontSize = '0.7rem';
+                }
             };
-            setDot(pump1Dot, p1on, p1fault);
-            setDot(pump2Dot, p2on, p2fault);
+            setPump(pump1Dot, pump1Badge, p1on, p1fault);
+            setPump(pump2Dot, pump2Badge, p2on, p2fault);
+
+            // Info de BUMP
+            const isBump = !!(sb.filter_bump);
+            if (bumpInfoEl) bumpInfoEl.style.display = isBump ? '' : 'none';
 
             if (metricsEl)    metricsEl.style.display    = '';
             if (statePanelEl) statePanelEl.style.display = '';
@@ -947,6 +986,8 @@ function createLoraCard(device) {
             if (stateEl) { stateEl.textContent = '--'; stateEl.className = 'metric-value'; }
             if (pump1Dot) pump1Dot.style.color = '#495057';
             if (pump2Dot) pump2Dot.style.color = '#495057';
+            [pump1Badge, pump2Badge].forEach(b => { if (b) { b.className = 'badge bg-secondary'; b.textContent = '--'; b.style.fontSize = '0.7rem'; } });
+            if (bumpInfoEl) bumpInfoEl.style.display = 'none';
 
             if (metricsEl)    metricsEl.style.display    = 'none';
             if (statePanelEl) statePanelEl.style.display = 'none';
