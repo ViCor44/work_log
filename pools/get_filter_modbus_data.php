@@ -433,6 +433,20 @@ if (isset($coil_result['error'])) {
 
 $precoat_active = ($precoat_coil === 1) || $filter_precoat;
 
+// --- Registo 40072 bit 15: Network heartbeat (ON=2s, OFF=1s) ---
+$network_heartbeat = (bool)(($status_word >> 15) & 1);
+
+// --- Registo 40073 (n+144): bits de alarme/mensagens de defeição ---
+$alarm_word         = isset($regs[1]) ? (int)$regs[1] : 0;
+$alarm_power_fail   = (bool)(($alarm_word >> 0) & 1); // bit 0: Pane de corrente
+$alarm_bit1         = (bool)(($alarm_word >> 1) & 1); // bit 1: (reservado)
+$alarm_bit2         = (bool)(($alarm_word >> 2) & 1); // bit 2: (reservado)
+$alarm_bit3         = (bool)(($alarm_word >> 3) & 1); // bit 3: (reservado)
+$alarm_bit4         = (bool)(($alarm_word >> 4) & 1); // bit 4: (reservado)
+$alarm_bit5         = (bool)(($alarm_word >> 5) & 1); // bit 5: (reservado)
+$alarm_bit6         = (bool)(($alarm_word >> 6) & 1); // bit 6: (reservado)
+$alarm_bit7         = (bool)(($alarm_word >> 7) & 1); // bit 7: (reservado)
+
 // --- Registo 40105: bits de escrita (W) pelo master ---
 // NOTA: todos os bits deste registo são W (write-only pelo master Modbus).
 // Não representam leitura fiável do estado físico das bombas.
@@ -477,6 +491,20 @@ echo json_encode([
         'pump1_fault'   => $pump1_fault,
         'pump2_fault'   => $pump2_fault,
     ],
+    // Alarmes e mensagens de serviço (reg 40073)
+    'alarms'          => [
+        'power_failure' => $alarm_power_fail,
+        'bit1'          => $alarm_bit1,
+        'bit2'          => $alarm_bit2,
+        'bit3'          => $alarm_bit3,
+        'bit4'          => $alarm_bit4,
+        'bit5'          => $alarm_bit5,
+        'bit6'          => $alarm_bit6,
+        'bit7'          => $alarm_bit7,
+        'pump1_fault'   => $pump1_fault,
+        'pump2_fault'   => $pump2_fault,
+    ],
+    'network_heartbeat' => $network_heartbeat,
     // Medições analógicas
     'pneumatic_air'   => $pneumatic_air,
     'pin'             => $pin,

@@ -441,6 +441,57 @@ function pumpStatusBadge(running, fault) {
     return '<span class="badge bg-secondary">Parada</span>';
 }
 
+function buildServiceMessagesSection(data) {
+    const sb = data.status_bits || {};
+    const msgs = [];
+    if (sb.filter_interruption) msgs.push({icon:'fa-pause-circle',   color:'#ffc107', text:'Filtro interrompido'});
+    if (sb.filter_precoat)      msgs.push({icon:'fa-layer-group',    color:'#0dcaf0', text:'Pré-coat ativo'});
+    if (sb.filter_fill_drain)   msgs.push({icon:'fa-fill-drip',      color:'#0dcaf0', text:'Enchimento/Drenagem em curso'});
+    if (sb.filter_bump)         msgs.push({icon:'fa-redo-alt',       color:'#bf97f7', text:'Bump (contra-lavagem) em curso'});
+    if (sb.pump1_start)         msgs.push({icon:'fa-bolt',           color:'#6ee0a0', text:'Sinal de arranque VFD – Bomba 1'});
+    if (sb.pump2_start)         msgs.push({icon:'fa-bolt',           color:'#6ee0a0', text:'Sinal de arranque VFD – Bomba 2'});
+    if (data.network_heartbeat) msgs.push({icon:'fa-heartbeat',      color:'#6ee0a0', text:'Heartbeat de rede ativo'});
+
+    if (!msgs.length) return '';
+    const rows = msgs.map(m =>
+        `<div class="d-flex align-items-center gap-2 mb-1">
+            <i class="fas ${m.icon}" style="color:${m.color};width:16px;text-align:center"></i>
+            <span style="font-size:0.85rem">${m.text}</span>
+        </div>`).join('');
+    return `<div class="p-3 rounded mt-3" style="background:#2b3035;border:1px solid #495057">
+        <h6 class="text-secondary mb-3"><i class="fas fa-info-circle me-1"></i>Mensagens de Serviço</h6>
+        ${rows}
+    </div>`;
+}
+
+function buildAlarmsSection(data) {
+    const al = data.alarms || {};
+    const alarms = [];
+    if (al.power_failure) alarms.push('Pane de corrente');
+    if (al.pump1_fault)   alarms.push('Falha Bomba 1');
+    if (al.pump2_fault)   alarms.push('Falha Bomba 2');
+    // Bits reservados ainda sem descrição conhecida
+    ['bit1','bit2','bit3','bit4','bit5','bit6','bit7'].forEach((k,i) => {
+        if (al[k]) alarms.push(`Alarme bit ${i+1} (sem descrição)`);
+    });
+
+    if (!alarms.length) {
+        return `<div class="p-3 rounded mt-3" style="background:#1a2a1a;border:1px solid #2d5a2d">
+            <h6 style="color:#6ee0a0" class="mb-2"><i class="fas fa-check-circle me-1"></i>Alarmes</h6>
+            <span style="font-size:0.85rem;color:#6ee0a0">Sem alarmes ativos</span>
+        </div>`;
+    }
+    const rows = alarms.map(a =>
+        `<div class="d-flex align-items-center gap-2 mb-1">
+            <i class="fas fa-exclamation-triangle" style="color:#dc3545;width:16px;text-align:center"></i>
+            <span style="font-size:0.85rem;color:#f8d7da">${a}</span>
+        </div>`).join('');
+    return `<div class="p-3 rounded mt-3" style="background:#2d1a1a;border:1px solid #5a2d2d">
+        <h6 style="color:#f5c6cb" class="mb-3"><i class="fas fa-exclamation-triangle me-1"></i>Alarmes Ativos</h6>
+        ${rows}
+    </div>`;
+}
+
 function buildFiltroModal(data) {
     const fb = data.feedback_bits  || {};
     const sb = data.status_bits    || {};
@@ -577,7 +628,10 @@ function buildFiltroModal(data) {
                 ${lsIndicator(ls.precoat_open, ls.precoat_closed)}
             </div>
         </div>
-    </div>`;
+    </div>
+
+    ${buildServiceMessagesSection(data)}
+    ${buildAlarmsSection(data)}`;
 }
 
 function openFiltroModal(filterId) {
