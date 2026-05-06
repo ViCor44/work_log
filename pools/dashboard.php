@@ -914,18 +914,36 @@ function createLoraCard(device) {
             const fb = data.feedback_bits || {};
             const sb = data.status_bits    || {};
 
-            // Os bits 6/7 do reg 40072 são "Démarrage VFD" (arranque VFD) — sinais
-            // momentâneos que pulsam no arranque e voltam a 0. NÃO representam estado
-            // estável "bomba a correr". O estado fiável é o estado do filtro.
-            // Lógica: bomba activa ↔ filtro em estado operacional.
+            // Os bits 6/7 do reg 40072 são "Démarrage VFD" — sinais momentâneos de arranque.
+            // Usamos hysteresis: uma bomba só passa a "Parada" após OFF_THRESHOLD polls
+            // consecutivos sem o seu bit activo. Evita que o display flutue.
+            const OFF_THRESHOLD = 3;
             const ACTIVE_STATES = ['Em Filtração','Pré-coat','Bump','Enchimento/Drenagem','Bomba a Arrancar'];
             const filterActive = ACTIVE_STATES.includes(data.filter_state);
-            // Quando o filtro está activo, usar os bits de arranque para distinguir qual
-            // bomba está a ser usada (ficam altos enquanto o VFD está em RUN, com o
-            // possível pulso inicial — mas o filtro activo garante que pelo menos 1 bomba corre)
-            const p1on    = filterActive && (sb.pump1_start || (!sb.pump2_start));
+
+            if (!cardElement._pco) cardElement._pco = {p1: 0, p2: 0};
+            if (!cardElement._psh) cardElement._psh = {p1: false, p2: false};
+            const pco = cardElement._pco;
+            const psh = cardElement._psh;
+
+            if (!filterActive) {
+                // Filtro inactivo — reset imediato
+                pco.p1 = pco.p2 = 0;
+                psh.p1 = psh.p2 = false;
+            } else {
+                // Bomba 1
+                if (sb.pump1_start) { pco.p1 = 0; psh.p1 = true; }
+                else { pco.p1++; if (pco.p1 >= OFF_THRESHOLD) psh.p1 = false; }
+                // Bomba 2
+                if (sb.pump2_start) { pco.p2 = 0; psh.p2 = true; }
+                else { pco.p2++; if (pco.p2 >= OFF_THRESHOLD) psh.p2 = false; }
+                // Filtro activo mas nenhuma bomba mostrada → default bomba 1
+                if (!psh.p1 && !psh.p2) psh.p1 = true;
+            }
+
+            const p1on    = psh.p1;
             const p1fault = !!fb.pump1_fault;
-            const p2on    = filterActive && (sb.pump2_start);
+            const p2on    = psh.p2;
             const p2fault = !!fb.pump2_fault;
 
             if (data.activeFault || p1fault || p2fault) {
