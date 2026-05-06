@@ -446,11 +446,15 @@ function buildFiltroModal(data) {
     const sb = data.status_bits    || {};
     const ls = data.limit_switches || {};
 
-    // Mesma lógica de derivação do card: estado do filtro é a fonte fiável
+    // Setpoint VFD como indicador estável de qual bomba está activa
     const ACTIVE_STATES = ['Em Filtração','Pré-coat','Bump','Enchimento/Drenagem','Bomba a Arrancar'];
     const filterActive = ACTIVE_STATES.includes(data.filter_state);
-    const m_p1on = filterActive && (sb.pump1_start || (!sb.pump2_start));
-    const m_p2on = filterActive && (sb.pump2_start);
+    const sp1 = parseFloat(data.setpoint_vfd_p1) || 0;
+    const sp2 = parseFloat(data.setpoint_vfd_p2) || 0;
+    let m_p1on, m_p2on;
+    if (!filterActive)        { m_p1on = m_p2on = false; }
+    else if (sp1 > 0 || sp2 > 0) { m_p1on = sp1 > 0; m_p2on = sp2 > 0; }
+    else                      { m_p1on = !!sb.pump1_start || !sb.pump2_start; m_p2on = !!sb.pump2_start; }
 
     const stateClass = STATE_CSS[data.filter_state] || '';
     const faultHtml  = data.activeFault
@@ -914,36 +918,26 @@ function createLoraCard(device) {
             const fb = data.feedback_bits || {};
             const sb = data.status_bits    || {};
 
-            // Os bits 6/7 do reg 40072 são "Démarrage VFD" — sinais momentâneos de arranque.
-            // Usamos hysteresis: uma bomba só passa a "Parada" após OFF_THRESHOLD polls
-            // consecutivos sem o seu bit activo. Evita que o display flutue.
-            const OFF_THRESHOLD = 3;
+            // Indicador de bomba a correr: Setpoint VFD é um valor contínuo e estável.
+            // Se o setpoint de uma bomba > 0 ela está activa. Muito mais fiável
+            // que os bits de arranque VFD (que são sinais momentâneos).
             const ACTIVE_STATES = ['Em Filtração','Pré-coat','Bump','Enchimento/Drenagem','Bomba a Arrancar'];
             const filterActive = ACTIVE_STATES.includes(data.filter_state);
-
-            if (!cardElement._pco) cardElement._pco = {p1: 0, p2: 0};
-            if (!cardElement._psh) cardElement._psh = {p1: false, p2: false};
-            const pco = cardElement._pco;
-            const psh = cardElement._psh;
-
+            const sp1 = parseFloat(data.setpoint_vfd_p1) || 0;
+            const sp2 = parseFloat(data.setpoint_vfd_p2) || 0;
+            // Se ambos os setpoints são 0 e filtro está activo, usar bit de arranque como fallback
+            let p1on, p2on;
             if (!filterActive) {
-                // Filtro inactivo — reset imediato
-                pco.p1 = pco.p2 = 0;
-                psh.p1 = psh.p2 = false;
+                p1on = p2on = false;
+            } else if (sp1 > 0 || sp2 > 0) {
+                p1on = sp1 > 0;
+                p2on = sp2 > 0;
             } else {
-                // Bomba 1
-                if (sb.pump1_start) { pco.p1 = 0; psh.p1 = true; }
-                else { pco.p1++; if (pco.p1 >= OFF_THRESHOLD) psh.p1 = false; }
-                // Bomba 2
-                if (sb.pump2_start) { pco.p2 = 0; psh.p2 = true; }
-                else { pco.p2++; if (pco.p2 >= OFF_THRESHOLD) psh.p2 = false; }
-                // Filtro activo mas nenhuma bomba mostrada → default bomba 1
-                if (!psh.p1 && !psh.p2) psh.p1 = true;
+                // Fallback: setpoints ainda não lidos, usar bits de arranque
+                p1on = !!sb.pump1_start || !sb.pump2_start; // default bomba 1
+                p2on = !!sb.pump2_start;
             }
-
-            const p1on    = psh.p1;
             const p1fault = !!fb.pump1_fault;
-            const p2on    = psh.p2;
             const p2fault = !!fb.pump2_fault;
 
             if (data.activeFault || p1fault || p2fault) {

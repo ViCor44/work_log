@@ -332,7 +332,9 @@ if (count($regs) < 34) {
 //  Indice 15    → addr 86     → Alarme            (registo  40087, uint16)
 //  Indice 17,18 → addr 88,89  → Velocidade Bomba  (registos 40089-40090, float32)
 
-// --- Registo 40072: bits de estado do filtro (ADRESSLIST Rev.3) ---
+// --- Registo 40072 (16 bits) ---
+// Byte baixo (n+142, bits 0-7) : estado do filtro
+// Byte alto  (n+143, bits 8-15): fins de curso das válvulas
 $status_word         = $regs[0];
 $filter_off          = (bool)(($status_word >> 0) & 1); // bit 0: Filtro em Serviço/OFF
 $filter_interruption = (bool)(($status_word >> 1) & 1); // bit 1: Interrupção
@@ -343,14 +345,13 @@ $filter_bump         = (bool)(($status_word >> 5) & 1); // bit 5: Bump
 $pump1_start         = (bool)(($status_word >> 6) & 1); // bit 6: Arranque Bomba 1 (VFD)
 $pump2_start         = (bool)(($status_word >> 7) & 1); // bit 7: Arranque Bomba 2 (VFD)
 
-// --- Registo 40073: fins de curso das válvulas ---
-$ls_word          = $regs[1];
-$effluent_open    = (bool)(($ls_word >> 0) & 1); // bit 0: Válvula Efluente aberta
-$effluent_closed  = (bool)(($ls_word >> 1) & 1); // bit 1: Válvula Efluente fechada
-$precoat_open     = (bool)(($ls_word >> 2) & 1); // bit 2: Válvula Pré-coat aberta
-$precoat_closed   = (bool)(($ls_word >> 3) & 1); // bit 3: Válvula Pré-coat fechada
-$influent_open    = (bool)(($ls_word >> 4) & 1); // bit 4: Válvula Influente aberta
-$influent_closed  = (bool)(($ls_word >> 5) & 1); // bit 5: Válvula Influente fechada
+// Fins de curso: byte alto do mesmo registo 40072 (bits 8-15 = n+143)
+$effluent_open    = (bool)(($status_word >>  8) & 1); // bit 0 do byte alto: Válvula Efluente aberta
+$effluent_closed  = (bool)(($status_word >>  9) & 1); // bit 1: Válvula Efluente fechada
+$precoat_open     = (bool)(($status_word >> 10) & 1); // bit 2: Válvula Pré-coat aberta
+$precoat_closed   = (bool)(($status_word >> 11) & 1); // bit 3: Válvula Pré-coat fechada
+$influent_open    = (bool)(($status_word >> 12) & 1); // bit 4: Válvula Influente aberta
+$influent_closed  = (bool)(($status_word >> 13) & 1); // bit 5: Válvula Influente fechada
 
 // --- Estado do filtro derivado dos bits ---
 if ($filter_interruption) {
