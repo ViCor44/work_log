@@ -226,6 +226,32 @@ $stmt->close();
                     </div>
                 </form>
                 <div id="history-stale-warning" class="alert alert-warning py-2 px-3 d-none" role="alert"></div>
+
+                <!-- Cards estatísticos Cloro Livre -->
+                <div class="row g-2 mb-3" id="cloro-stats-row" style="display:none!important">
+                    <div class="col-4">
+                        <div class="card text-center py-2" style="background:#1a2a35;border:1px solid #2a4a5a">
+                            <div class="text-white-50" style="font-size:0.7rem;letter-spacing:1px">MÁX</div>
+                            <div id="stat-cloro-max" class="fw-bold" style="font-size:1.3rem;color:#6ee0a0">--</div>
+                            <div class="text-white-50" style="font-size:0.7rem">mg/L</div>
+                        </div>
+                    </div>
+                    <div class="col-4">
+                        <div class="card text-center py-2" style="background:#1a2a35;border:1px solid #2a4a5a">
+                            <div class="text-white-50" style="font-size:0.7rem;letter-spacing:1px">MÉD</div>
+                            <div id="stat-cloro-avg" class="fw-bold" style="font-size:1.3rem;color:#4bc8c8">--</div>
+                            <div class="text-white-50" style="font-size:0.7rem">mg/L</div>
+                        </div>
+                    </div>
+                    <div class="col-4">
+                        <div class="card text-center py-2" style="background:#1a2a35;border:1px solid #2a4a5a">
+                            <div class="text-white-50" style="font-size:0.7rem;letter-spacing:1px">MÍN</div>
+                            <div id="stat-cloro-min" class="fw-bold" style="font-size:1.3rem;color:#f08060">--</div>
+                            <div class="text-white-50" style="font-size:0.7rem">mg/L</div>
+                        </div>
+                    </div>
+                </div>
+
                <div class="row">
                    <div class="col-12">
                        <h5 class="text-center">Histórico de Cloro Livre (mg/L)</h5>
@@ -718,6 +744,22 @@ document.addEventListener('DOMContentLoaded', function() {
             // Prepara os dados para os gráficos
             cloroHistoryTimestamps = data.history.map(rec => rec.log_datetime);
             cloroHistoryValues = data.history.map(rec => rec.chlorine_value);
+
+            // Calcular e mostrar estatísticas Cloro Livre
+            const cloroNums = cloroHistoryValues.map(v => parseFloat(v)).filter(v => !isNaN(v) && v !== null);
+            const statsRow = document.getElementById('cloro-stats-row');
+            if (cloroNums.length > 0) {
+                const cMax = Math.max(...cloroNums);
+                const cMin = Math.min(...cloroNums);
+                const cAvg = cloroNums.reduce((a, b) => a + b, 0) / cloroNums.length;
+                document.getElementById('stat-cloro-max').textContent = cMax.toFixed(2);
+                document.getElementById('stat-cloro-avg').textContent = cAvg.toFixed(2);
+                document.getElementById('stat-cloro-min').textContent = cMin.toFixed(2);
+                statsRow.style.removeProperty('display');
+            } else {
+                statsRow.style.setProperty('display', 'none', 'important');
+            }
+
             // Datasets com x = log_datetime
             const phDatasetLine = data.history.map(rec => ({ x: rec.log_datetime, y: rec.ph_value }));
             const phDatasetDosagem = data.history.map(rec => ({ x: rec.log_datetime, y: parseFloat(rec.ph_controller_state) || 0 }));
