@@ -446,6 +446,12 @@ function buildFiltroModal(data) {
     const sb = data.status_bits    || {};
     const ls = data.limit_switches || {};
 
+    // Mesma lógica de derivação do card: estado do filtro é a fonte fiável
+    const ACTIVE_STATES = ['Em Filtração','Pré-coat','Bump','Enchimento/Drenagem','Bomba a Arrancar'];
+    const filterActive = ACTIVE_STATES.includes(data.filter_state);
+    const m_p1on = filterActive && (sb.pump1_start || (!sb.pump2_start));
+    const m_p2on = filterActive && (sb.pump2_start);
+
     const stateClass = STATE_CSS[data.filter_state] || '';
     const faultHtml  = data.activeFault
         ? '<span class="badge bg-danger ms-2"><i class="fas fa-exclamation-triangle me-1"></i>FALHA ATIVA</span>'
@@ -511,7 +517,7 @@ function buildFiltroModal(data) {
                 <h6 class="text-secondary mb-3"><i class="fas fa-cogs me-1"></i>Bombas</h6>
                 <div class="d-flex justify-content-between align-items-center mb-2">
                     <span class="text-white-50">Bomba 1</span>
-                    ${pumpStatusBadge(sb.pump1_start, fb.pump1_fault)}
+                    ${pumpStatusBadge(m_p1on, fb.pump1_fault)}
                 </div>
                 <div class="d-flex justify-content-between mb-3">
                     <span class="text-white-50 ms-2" style="font-size:0.8rem">Horas de operação</span>
@@ -519,7 +525,7 @@ function buildFiltroModal(data) {
                 </div>
                 <div class="d-flex justify-content-between align-items-center mb-2">
                     <span class="text-white-50">Bomba 2</span>
-                    ${pumpStatusBadge(sb.pump2_start, fb.pump2_fault)}
+                    ${pumpStatusBadge(m_p2on, fb.pump2_fault)}
                 </div>
                 <div class="d-flex justify-content-between">
                     <span class="text-white-50 ms-2" style="font-size:0.8rem">Horas de operação</span>
@@ -907,11 +913,19 @@ function createLoraCard(device) {
 
             const fb = data.feedback_bits || {};
             const sb = data.status_bits    || {};
-            // Reg 40105 é write-only: pump1_running/pump2_running não são leitura fiável.
-            // Estado de arranque real: bits 6/7 do reg 40072 (pump1_start / pump2_start).
-            const p1on    = !!sb.pump1_start;
+
+            // Os bits 6/7 do reg 40072 são "Démarrage VFD" (arranque VFD) — sinais
+            // momentâneos que pulsam no arranque e voltam a 0. NÃO representam estado
+            // estável "bomba a correr". O estado fiável é o estado do filtro.
+            // Lógica: bomba activa ↔ filtro em estado operacional.
+            const ACTIVE_STATES = ['Em Filtração','Pré-coat','Bump','Enchimento/Drenagem','Bomba a Arrancar'];
+            const filterActive = ACTIVE_STATES.includes(data.filter_state);
+            // Quando o filtro está activo, usar os bits de arranque para distinguir qual
+            // bomba está a ser usada (ficam altos enquanto o VFD está em RUN, com o
+            // possível pulso inicial — mas o filtro activo garante que pelo menos 1 bomba corre)
+            const p1on    = filterActive && (sb.pump1_start || (!sb.pump2_start));
             const p1fault = !!fb.pump1_fault;
-            const p2on    = !!sb.pump2_start;
+            const p2on    = filterActive && (sb.pump2_start);
             const p2fault = !!fb.pump2_fault;
 
             if (data.activeFault || p1fault || p2fault) {
