@@ -468,12 +468,15 @@ function buildServiceMessagesSection(data) {
 function buildAlarmsSection(data) {
     const al = data.alarms || {};
     const alarms = [];
-    if (al.power_failure) alarms.push('Pane de corrente');
-    if (al.pump1_fault)   alarms.push('Falha Bomba 1');
-    if (al.pump2_fault)   alarms.push('Falha Bomba 2');
-    // Bits reservados ainda sem descrição conhecida
-    ['bit1','bit2','bit3','bit4','bit5','bit6','bit7'].forEach((k,i) => {
-        if (al[k]) alarms.push(`Alarme bit ${i+1} (sem descrição)`);
+    if (al.power_failure)  alarms.push('Pane de corrente');
+    if (al.pneumatic_low)  alarms.push('Pressão de ar pneumático baixa');
+    if (al.pin_high)       alarms.push('Pressão filtro entrada alta');
+    if (al.pout_high)      alarms.push('Pressão filtro saída alta');
+    if (al.delta_p_high)   alarms.push('Pressão diferencial alta');
+    if (al.pump1_fault)    alarms.push('Falha Bomba 1');
+    if (al.pump2_fault)    alarms.push('Falha Bomba 2');
+    ['bit5','bit6','bit7'].forEach((k,i) => {
+        if (al[k]) alarms.push(`Alarme (sem descrição, bit ${i+5})`);
     });
 
     if (!alarms.length) {
