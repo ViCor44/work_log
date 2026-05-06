@@ -38,6 +38,7 @@ $p = (float)$data['p'];
 $i = (float)$data['i'];
 $d = (float)$data['d'];
 $reason = isset($data['reason']) ? trim($data['reason']) : 'Sugestão automática aceita';
+$force = isset($data['force']) && $data['force'] === true;
 $user_id = (int)$_SESSION['user_id'];
 $ip = isset($_SERVER['REMOTE_ADDR']) ? $_SERVER['REMOTE_ADDR'] : null;
 
@@ -60,9 +61,9 @@ if ($stmt->get_result()->num_rows === 0) {
 }
 $stmt->close();
 
-// Verifica bloqueio de 72 horas após última alteração
+// Verifica bloqueio de 72 horas após última alteração (ignorado em modo force)
 $stmt_block = $conn->prepare("SELECT changed_at FROM tank_pid_changes WHERE tank_id = ? ORDER BY changed_at DESC LIMIT 1");
-if ($stmt_block) {
+if ($stmt_block && !$force) {
     $stmt_block->bind_param('i', $tank_id);
     if ($stmt_block->execute()) {
         $result_block = $stmt_block->get_result();

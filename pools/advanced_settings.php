@@ -78,6 +78,7 @@ $stmt->close();
         <h1 class="h3 mb-0">Análise Inteligente de Controle PID: <?= htmlspecialchars($tank_name) ?></h1>
         <div>
             <a href="glossario_analise_pid.php?tank_id=<?= (int)$tank_id ?>&days=<?= (int)$analysis_days ?>&from=advanced" class="btn btn-info">Glossário da Análise</a>
+            <button class="btn btn-primary" onclick="openManualPidModal()"><i class="fas fa-pencil-alt me-1"></i>Gravar PID Manualmente</button>
             <a href="view_pool_details.php?id=<?= $tank_id ?>" class="btn btn-secondary">Voltar à Monitorização</a>
             <a href="dashboard.php" class="btn btn-secondary">Voltar ao Dashboard</a>
         </div>
@@ -94,6 +95,50 @@ $stmt->close();
                     <span class="visually-hidden">Carregando análise de PID...</span>
                 </div>
                 <p class="mt-2 text-muted">Analisando dados históricos e calculando recomendações...</p>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Modal para gravar PID manualmente -->
+<div class="modal fade" id="manualPidModal" tabindex="-1" aria-labelledby="manualPidModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header bg-primary text-white">
+                <h5 class="modal-title" id="manualPidModalLabel">
+                    <i class="fas fa-pencil-alt"></i> Gravar Parâmetros PID Manualmente
+                </h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <div class="row mb-3">
+                    <div class="col-md-4">
+                        <label class="form-label"><strong>Kp (P)</strong></label>
+                        <input type="number" id="manualP" class="form-control" step="0.000001" min="0.000001" max="100" placeholder="Ex: 7.3">
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label"><strong>Ti (I)</strong></label>
+                        <input type="number" id="manualI" class="form-control" step="0.01" min="0" max="7200" placeholder="Ex: 392">
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label"><strong>Td (D)</strong></label>
+                        <input type="number" id="manualD" class="form-control" step="0.01" min="0" max="3600" placeholder="Ex: 0">
+                    </div>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label"><strong>Motivo da Alteração</strong></label>
+                    <textarea id="manualReason" class="form-control" rows="3" placeholder="Descreva o motivo da alteração manual..."></textarea>
+                </div>
+                <div class="alert alert-info mb-0">
+                    <i class="fas fa-info-circle"></i>
+                    <strong>Nota:</strong> Esta operação grava os valores diretamente, ignorando o período de monitorização de 72h se necessário.
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                <button type="button" class="btn btn-primary" id="confirmManualPidBtn" onclick="confirmManualPid()">
+                    <i class="fas fa-save"></i> Gravar
+                </button>
             </div>
         </div>
     </div>
@@ -170,6 +215,61 @@ $stmt->close();
 
 <script>
     let currentSuggestionData = null;
+
+    function openManualPidModal() {
+        document.getElementById('manualP').value = '';
+        document.getElementById('manualI').value = '';
+        document.getElementById('manualD').value = '';
+        document.getElementById('manualReason').value = '';
+        document.getElementById('confirmManualPidBtn').disabled = false;
+        document.getElementById('confirmManualPidBtn').innerHTML = '<i class="fas fa-save"></i> Gravar';
+        new bootstrap.Modal(document.getElementById('manualPidModal')).show();
+    }
+
+    function confirmManualPid(force = false) {
+        const tankId = <?= (int)$tank_id ?>;
+        const p = parseFloat(document.getElementById('manualP').value);
+        const i = parseFloat(document.getElementById('manualI').value);
+        const d = parseFloat(document.getElementById('manualD').value);
+        const reason = document.getElementById('manualReason').value.trim();
+
+        if (isNaN(p) || p <= 0) { alert('Por favor, introduza um valor válido para Kp.'); return; }
+        if (isNaN(i) || i < 0) { alert('Por favor, introduza um valor válido para Ti.'); return; }
+        if (isNaN(d) || d < 0) { alert('Por favor, introduza um valor válido para Td.'); return; }
+        if (!reason) { alert('Por favor, adicione um motivo para a alteração.'); return; }
+
+        document.getElementById('confirmManualPidBtn').disabled = true;
+        document.getElementById('confirmManualPidBtn').innerHTML = '<i class="fas fa-spinner fa-spin"></i> A gravar...';
+
+        fetch('../api/apply_pid_suggestion.php', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ tank_id: tankId, p, i, d, reason, force })
+        })
+        .then(response => response.json().then(data => ({ status: response.status, data })))
+        .then(({ status, data }) => {
+            if (data.success) {
+                alert('✅ Parâmetros PID gravados com sucesso!\n\nKp: ' + p + '\nTi: ' + i + '\nTd: ' + d);
+                bootstrap.Modal.getInstance(document.getElementById('manualPidModal')).hide();
+                fetchPidSuggestions(initialPidDays, initialPidStartDate, initialPidEndDate);
+            } else if (status === 429 && !force) {
+                document.getElementById('confirmManualPidBtn').disabled = false;
+                document.getElementById('confirmManualPidBtn').innerHTML = '<i class="fas fa-save"></i> Gravar';
+                if (confirm('⚠️ Período de monitorização ativo.\n\n' + (data.error || '') + '\n\nTem a certeza que quer forçar a gravação mesmo assim?')) {
+                    confirmManualPid(true);
+                }
+            } else {
+                alert('❌ Erro: ' + (data.error || 'Falha ao gravar'));
+                document.getElementById('confirmManualPidBtn').disabled = false;
+                document.getElementById('confirmManualPidBtn').innerHTML = '<i class="fas fa-save"></i> Gravar';
+            }
+        })
+        .catch(error => {
+            alert('❌ Erro ao comunicar com o servidor: ' + error.message);
+            document.getElementById('confirmManualPidBtn').disabled = false;
+            document.getElementById('confirmManualPidBtn').innerHTML = '<i class="fas fa-save"></i> Gravar';
+        });
+    }
 
     function openAcceptModal(suggestedP, suggestedI, suggestedD, reason, canAccept) {
         if (!canAccept) {
