@@ -443,6 +443,7 @@ function pumpStatusBadge(running, fault) {
 
 function buildFiltroModal(data) {
     const fb = data.feedback_bits  || {};
+    const sb = data.status_bits    || {};
     const ls = data.limit_switches || {};
 
     const stateClass = STATE_CSS[data.filter_state] || '';
