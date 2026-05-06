@@ -366,7 +366,8 @@ $filters = fetch_all_safe(
                                 </div>
                             </div>
                             <div class="filtro-bump-info" id="filtro-bump-info-<?= $filter['id'] ?>">
-                                <i class="fas fa-redo-alt me-1"></i><strong>BUMP</strong> &mdash; Contra-lavagem do leito filtrante em curso
+                                <i class="fas fa-redo-alt me-1"></i><strong>BUMP</strong> &mdash; Contra-lavagem em curso
+                                <span id="filtro-bump-cycle-<?= $filter['id'] ?>" class="ms-2" style="opacity:0.8"></span>
                             </div>
                             <div class="filtro-footer d-flex justify-content-between">
                                 <span><i class="fas fa-network-wired me-1"></i><?= htmlspecialchars($filter['ip_address']) ?></span>
@@ -945,6 +946,7 @@ function createLoraCard(device) {
         const pump1Badge  = document.getElementById(`filtro-pump1-badge-${filterId}`);
         const pump2Badge  = document.getElementById(`filtro-pump2-badge-${filterId}`);
         const bumpInfoEl  = document.getElementById(`filtro-bump-info-${filterId}`);
+        const bumpCycleEl = document.getElementById(`filtro-bump-cycle-${filterId}`);
 
         const metricsEl   = cardElement.querySelector('.filtro-metrics');
         const statePanelEl = cardElement.querySelector('.filtro-state-panel');
@@ -1037,9 +1039,13 @@ function createLoraCard(device) {
             setPump(pump1Dot, pump1Badge, p1on, p1fault);
             setPump(pump2Dot, pump2Badge, p2on, p2fault);
 
-            // Info de BUMP
+            // Info de BUMP: mostrar quando o bit de bump está activo
             const isBump = !!(sb.filter_bump);
             if (bumpInfoEl) bumpInfoEl.style.display = isBump ? '' : 'none';
+            if (bumpCycleEl) {
+                const cycles = data.charging_cycles != null ? parseFloat(data.charging_cycles) : null;
+                bumpCycleEl.textContent = cycles != null ? `— Ciclo ${cycles}` : '';
+            }
 
             if (metricsEl)    metricsEl.style.display    = '';
             if (statePanelEl) statePanelEl.style.display = '';
