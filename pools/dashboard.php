@@ -510,7 +510,7 @@ function buildFiltroModal(data) {
                 <h6 class="text-secondary mb-3"><i class="fas fa-cogs me-1"></i>Bombas</h6>
                 <div class="d-flex justify-content-between align-items-center mb-2">
                     <span class="text-white-50">Bomba 1</span>
-                    ${pumpStatusBadge(fb.pump1_running, fb.pump1_fault)}
+                    ${pumpStatusBadge(sb.pump1_start, fb.pump1_fault)}
                 </div>
                 <div class="d-flex justify-content-between mb-3">
                     <span class="text-white-50 ms-2" style="font-size:0.8rem">Horas de operação</span>
@@ -518,7 +518,7 @@ function buildFiltroModal(data) {
                 </div>
                 <div class="d-flex justify-content-between align-items-center mb-2">
                     <span class="text-white-50">Bomba 2</span>
-                    ${pumpStatusBadge(fb.pump2_running, fb.pump2_fault)}
+                    ${pumpStatusBadge(sb.pump2_start, fb.pump2_fault)}
                 </div>
                 <div class="d-flex justify-content-between">
                     <span class="text-white-50 ms-2" style="font-size:0.8rem">Horas de operação</span>
@@ -906,11 +906,11 @@ function createLoraCard(device) {
 
             const fb = data.feedback_bits || {};
             const sb = data.status_bits    || {};
-            // feedback_bits (reg 40105) são os retrosinais reais; status_bits (reg 40072)
-            // têm os bits de arranque VFD como fallback se o retrosinal ainda não chegou
-            const p1on    = !!(fb.pump1_running || sb.pump1_start);
+            // Reg 40105 é write-only: pump1_running/pump2_running não são leitura fiável.
+            // Estado de arranque real: bits 6/7 do reg 40072 (pump1_start / pump2_start).
+            const p1on    = !!sb.pump1_start;
             const p1fault = !!fb.pump1_fault;
-            const p2on    = !!(fb.pump2_running || sb.pump2_start);
+            const p2on    = !!sb.pump2_start;
             const p2fault = !!fb.pump2_fault;
 
             if (data.activeFault || p1fault || p2fault) {

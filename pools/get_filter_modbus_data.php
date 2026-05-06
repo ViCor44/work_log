@@ -432,15 +432,17 @@ if (isset($coil_result['error'])) {
 
 $precoat_active = ($precoat_coil === 1) || $filter_precoat;
 
-// --- Registo 40105: feedback das bombas (retrosinais) ---
-$ext_release   = (bool)(($feedback_word >> 0) & 1); // bit 0: Autorização externa
-$pump1_running = (bool)(($feedback_word >> 1) & 1); // bit 1: Bomba 1 em serviço
-$pump1_fault   = (bool)(($feedback_word >> 2) & 1); // bit 2: Falha Bomba 1
-$pump2_running = (bool)(($feedback_word >> 3) & 1); // bit 3: Bomba 2 em serviço
-$pump2_fault   = (bool)(($feedback_word >> 4) & 1); // bit 4: Falha Bomba 2
+// --- Registo 40105: bits de escrita (W) pelo master ---
+// NOTA: todos os bits deste registo são W (write-only pelo master Modbus).
+// Não representam leitura fiável do estado físico das bombas.
+// O estado de arranque real das bombas é dado pelos bits 6 e 7 do reg 40072.
+$ext_release   = (bool)(($feedback_word >> 0) & 1); // bit 0: Autorização externa (W)
+$pump1_fault   = (bool)(($feedback_word >> 2) & 1); // bit 2: Falha Bomba 1 (W)
+$pump2_fault   = (bool)(($feedback_word >> 4) & 1); // bit 4: Falha Bomba 2 (W)
 
+// Estado de arranque das bombas: bits 6/7 do reg 40072 (arranque VFD, legíveis)
 $active_fault = $pump1_fault || $pump2_fault;
-$is_running   = $pump1_running || $pump2_running;
+$is_running   = $pump1_start || $pump2_start;
 
 echo json_encode([
     'filter_id'       => $filter_id,
@@ -468,12 +470,10 @@ echo json_encode([
         'influent_open'   => $influent_open,
         'influent_closed' => $influent_closed,
     ],
-    // Feedback das bombas (retrosinais - reg 40105)
+    // Reg 40105 – bits W (escritos pelo master); pump1/2_running não são leitura fiável
     'feedback_bits'   => [
         'ext_release'   => $ext_release,
-        'pump1_running' => $pump1_running,
         'pump1_fault'   => $pump1_fault,
-        'pump2_running' => $pump2_running,
         'pump2_fault'   => $pump2_fault,
     ],
     // Medições analógicas
