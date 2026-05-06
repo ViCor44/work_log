@@ -48,8 +48,8 @@ if (!$filter) {
 //   400089        → Estado Bomba  (uint16: 0=parado, 1-99=precoat, 100=filtracao)
 // Endereco PDU 0-indexed: 78 … 89  →  12 registos
 
-const MODBUS_START = 78;
-const MODBUS_COUNT = 13;
+const MODBUS_START = 71;  // reg 40072 (estado do filtro)
+const MODBUS_COUNT = 35;  // cobre 40072–40106 (total 35 registos)
 const MODBUS_PORT  = 502;
 const MODBUS_TIMEOUT = 5;
 const PRECOAT_COIL_ADDRESS = 3;
@@ -308,33 +308,99 @@ if (isset($result['error'])) {
 }
 
 $regs = $result['registers'];
-if (count($regs) < 13) {
+if (count($regs) < 34) {
     log_modbus_event('holding_register_count_error', [
         'filter_id' => $filter_id,
         'filter_name' => $filter['name'],
         'ip_address' => $filter['ip_address'],
         'slave_id' => (int) $filter['slave_id'],
         'register_count' => count($regs),
-        'register_count_expected_min' => 13,
+        'register_count_expected_min' => 34,
     ]);
 
     echo json_encode(['error' => 'Registos Modbus insuficientes na resposta', 'filter_id' => $filter_id]);
     exit;
 }
 
-//  Indices relativos a PDU start=78 (registo 400079)
-//  Indice 0,1   → addr 78,79  → Pin             (registos 400079-400080, float32)
-//  Indice 2,3   → addr 80,81  → Pout            (registos 400081-400082, float32)
-//  Indice 4,5   → addr 82,83  → Delta P         (registos 400083-400084, float32)
-//  Indice 6     → addr 84     → Fluxo           (registo  400085, uint16)
-//  Indice 8     → addr 86     → Alarme          (registo  400087, uint16)
-//  Indice 10    → addr 88     → Velocidade Bomba (registo  400089, uint16 0-100%)
-$pin        = regs_to_float32($regs[0], $regs[1]);
-$pout       = regs_to_float32($regs[2], $regs[3]);
-$delta_p    = regs_to_float32($regs[4], $regs[5]);
-$flow       = $regs[6];
-$alarm_reg  = $regs[8];
-$pump_state = regs_to_float32($regs[10], $regs[11]);  // float32 velocidade bomba (0-100%)
+//  Indices relativos a PDU start=71 (registo 40072)
+//  Indice 0     → addr 71     → Estado do filtro  (registo 40072, bits de estado)
+//  Indice 1     → addr 72     → Fins de curso     (registo 40073, bits válvulas)
+//  Indice 7,8   → addr 78,79  → Pin               (registos 40079-40080, float32)
+//  Indice 9,10  → addr 80,81  → Pout              (registos 40081-40082, float32)
+//  Indice 11,12 → addr 82,83  → Delta P           (registos 40083-40084, float32)
+//  Indice 13    → addr 84     → Fluxo             (registo  40085, uint16)
+//  Indice 15    → addr 86     → Alarme            (registo  40087, uint16)
+//  Indice 17,18 → addr 88,89  → Velocidade Bomba  (registos 40089-40090, float32)
+
+// --- Registo 40072: bits de estado do filtro (ADRESSLIST Rev.3) ---
+$status_word         = $regs[0];
+$filter_off          = (bool)(($status_word >> 0) & 1); // bit 0: Filtro em Serviço/OFF
+$filter_interruption = (bool)(($status_word >> 1) & 1); // bit 1: Interrupção
+$filter_precoat      = (bool)(($status_word >> 2) & 1); // bit 2: Pré-coat
+$filter_in_service   = (bool)(($status_word >> 3) & 1); // bit 3: Em Filtração
+$filter_fill_drain   = (bool)(($status_word >> 4) & 1); // bit 4: Enchimento/Drenagem
+$filter_bump         = (bool)(($status_word >> 5) & 1); // bit 5: Bump
+$pump1_start         = (bool)(($status_word >> 6) & 1); // bit 6: Arranque Bomba 1 (VFD)
+$pump2_start         = (bool)(($status_word >> 7) & 1); // bit 7: Arranque Bomba 2 (VFD)
+
+// --- Registo 40073: fins de curso das válvulas ---
+$ls_word          = $regs[1];
+$effluent_open    = (bool)(($ls_word >> 0) & 1); // bit 0: Válvula Efluente aberta
+$effluent_closed  = (bool)(($ls_word >> 1) & 1); // bit 1: Válvula Efluente fechada
+$precoat_open     = (bool)(($ls_word >> 2) & 1); // bit 2: Válvula Pré-coat aberta
+$precoat_closed   = (bool)(($ls_word >> 3) & 1); // bit 3: Válvula Pré-coat fechada
+$influent_open    = (bool)(($ls_word >> 4) & 1); // bit 4: Válvula Influente aberta
+$influent_closed  = (bool)(($ls_word >> 5) & 1); // bit 5: Válvula Influente fechada
+
+// --- Estado do filtro derivado dos bits ---
+if ($filter_interruption) {
+    $filter_state = 'Interrompido';
+} elseif ($filter_precoat) {
+    $filter_state = 'Pré-coat';
+} elseif ($filter_fill_drain) {
+    $filter_state = 'Enchimento/Drenagem';
+} elseif ($filter_bump) {
+    $filter_state = 'Bump';
+} elseif ($filter_in_service) {
+    $filter_state = 'Em Filtração';
+} elseif ($pump1_start || $pump2_start) {
+    $filter_state = 'Bomba a Arrancar';
+} elseif (!$filter_off) {
+    $filter_state = 'Parado';
+} else {
+    $filter_state = 'Inativo';
+}
+
+//  Indice 5,6   → 40077,78  → Ar Pneumático      (float32, 0-10 bar)
+//  Indice 7,8   → 40079,80  → Pin                (float32, 0-2.50 bar)
+//  Indice 9,10  → 40081,82  → Pout               (float32, 0-2.50 bar)
+//  Indice 11,12 → 40083,84  → ΔP                 (float32, 0-99.99 bar)
+//  Indice 13,14 → 40085,86  → Caudal filtrado     (float32, 0-300 m³/h)
+//  Indice 15,16 → 40087,88  → Setpoint VFD ext.   (float32, 0-100%)
+//  Indice 17,18 → 40089,90  → Setpoint VFD Bomba1 (float32, 0-100%)
+//  Indice 19,20 → 40091,92  → Horas filtro        (float32, 0-999999.9)
+//  Indice 21,22 → 40093,94  → Intervalo perlita   (float32)
+//  Indice 23,24 → 40095,96  → Tempo restante [d]  (float32)
+//  Indice 25,26 → 40097,98  → Ciclos perlita      (float32)
+//  Indice 27,28 → 40099,100 → Setpoint VFD Bomba2 (float32, 0-100%)
+//  Indice 29,30 → 40101,102 → Horas Bomba 1       (float32)
+//  Indice 31,32 → 40103,104 → Horas Bomba 2       (float32)
+//  Indice 33    → 40105     → Feedback bits (W)   (bits bomba 1/2 estado e falha)
+$pneumatic_air    = regs_to_float32($regs[5],  $regs[6]);
+$pin              = regs_to_float32($regs[7],  $regs[8]);
+$pout             = regs_to_float32($regs[9],  $regs[10]);
+$delta_p          = regs_to_float32($regs[11], $regs[12]);
+$flow             = regs_to_float32($regs[13], $regs[14]);
+$setpoint_vfd_ext = regs_to_float32($regs[15], $regs[16]);
+$setpoint_vfd_p1  = regs_to_float32($regs[17], $regs[18]);
+$op_hours_filter  = regs_to_float32($regs[19], $regs[20]);
+$interval_perlite = regs_to_float32($regs[21], $regs[22]);
+$remaining_time   = regs_to_float32($regs[23], $regs[24]);
+$charging_cycles  = regs_to_float32($regs[25], $regs[26]);
+$setpoint_vfd_p2  = regs_to_float32($regs[27], $regs[28]);
+$op_hours_pump1   = regs_to_float32($regs[29], $regs[30]);
+$op_hours_pump2   = regs_to_float32($regs[31], $regs[32]);
+$feedback_word    = isset($regs[33]) ? $regs[33] : 0;
 
 $coil_result = modbus_tcp_read_coils(
     $filter['ip_address'],
@@ -362,23 +428,74 @@ if (isset($coil_result['error'])) {
     ]);
 }
 
-$precoat_active = ($precoat_coil === 1);
+$precoat_active = ($precoat_coil === 1) || $filter_precoat;
 
-$active_fault = ($alarm_reg !== 0);
-$is_running   = !$active_fault;
+// --- Registo 40105: feedback das bombas (retrosinais) ---
+$ext_release   = (bool)(($feedback_word >> 0) & 1); // bit 0: Autorização externa
+$pump1_running = (bool)(($feedback_word >> 1) & 1); // bit 1: Bomba 1 em serviço
+$pump1_fault   = (bool)(($feedback_word >> 2) & 1); // bit 2: Falha Bomba 1
+$pump2_running = (bool)(($feedback_word >> 3) & 1); // bit 3: Bomba 2 em serviço
+$pump2_fault   = (bool)(($feedback_word >> 4) & 1); // bit 4: Falha Bomba 2
+
+$active_fault = $pump1_fault || $pump2_fault;
+$is_running   = $pump1_running || $pump2_running;
 
 echo json_encode([
-    'filter_id'   => $filter_id,
-    'filter_name' => $filter['name'],
-    'ip_address'  => $filter['ip_address'],
-    'slave_id'    => $filter['slave_id'],
-    'pin'         => $pin,
-    'pout'        => $pout,
-    'delta_p'     => $delta_p,
-    'pump_state'  => $pump_state,
-    'precoat_coil' => $precoat_coil,
-    'precoat_active' => $precoat_active,
-    'alarm_reg'   => $alarm_reg,
-    'isRunning'   => $is_running,
-    'activeFault' => $active_fault,
+    'filter_id'       => $filter_id,
+    'filter_name'     => $filter['name'],
+    'ip_address'      => $filter['ip_address'],
+    'slave_id'        => $filter['slave_id'],
+    // Estado principal
+    'filter_state'    => $filter_state,
+    'status_bits'     => [
+        'filter_off'          => $filter_off,
+        'filter_interruption' => $filter_interruption,
+        'filter_precoat'      => $filter_precoat,
+        'filter_in_service'   => $filter_in_service,
+        'filter_fill_drain'   => $filter_fill_drain,
+        'filter_bump'         => $filter_bump,
+        'pump1_start'         => $pump1_start,
+        'pump2_start'         => $pump2_start,
+    ],
+    // Fins de curso das válvulas
+    'limit_switches'  => [
+        'effluent_open'   => $effluent_open,
+        'effluent_closed' => $effluent_closed,
+        'precoat_open'    => $precoat_open,
+        'precoat_closed'  => $precoat_closed,
+        'influent_open'   => $influent_open,
+        'influent_closed' => $influent_closed,
+    ],
+    // Feedback das bombas (retrosinais - reg 40105)
+    'feedback_bits'   => [
+        'ext_release'   => $ext_release,
+        'pump1_running' => $pump1_running,
+        'pump1_fault'   => $pump1_fault,
+        'pump2_running' => $pump2_running,
+        'pump2_fault'   => $pump2_fault,
+    ],
+    // Medições analógicas
+    'pneumatic_air'   => $pneumatic_air,
+    'pin'             => $pin,
+    'pout'            => $pout,
+    'delta_p'         => $delta_p,
+    'flow'            => $flow,
+    // Setpoints VFD
+    'setpoint_vfd_ext' => $setpoint_vfd_ext,
+    'setpoint_vfd_p1'  => $setpoint_vfd_p1,
+    'setpoint_vfd_p2'  => $setpoint_vfd_p2,
+    // Horas de operação
+    'op_hours_filter' => $op_hours_filter,
+    'op_hours_pump1'  => $op_hours_pump1,
+    'op_hours_pump2'  => $op_hours_pump2,
+    // Perlita
+    'interval_perlite' => $interval_perlite,
+    'remaining_time'   => $remaining_time,
+    'charging_cycles'  => $charging_cycles,
+    // Compatibilidade
+    'pump_state'      => $setpoint_vfd_p1,
+    'precoat_coil'    => $precoat_coil,
+    'precoat_active'  => $precoat_active,
+    'isRunning'       => $is_running,
+    'activeFault'     => $active_fault,
 ]);

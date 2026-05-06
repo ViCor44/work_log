@@ -162,6 +162,28 @@ $filters = fetch_all_safe(
     .filtro-state-panel .metric-value.parado { color: #dc3545 !important; white-space: nowrap; }
     .filtro-state-panel .metric-value.precoat { color: #0d6efd !important; white-space: nowrap; }
     .filtro-state-panel .metric-value.filtracao { color: #198754 !important; white-space: nowrap; }
+    .filtro-state-panel .metric-value.interrompido { color: #ffc107 !important; white-space: nowrap; }
+    .filtro-state-panel .metric-value.enchimento { color: #0dcaf0 !important; white-space: nowrap; }
+    .filtro-state-panel .metric-value.bump { color: #6f42c1 !important; white-space: nowrap; }
+    .filtro-state-panel .metric-value.arrancando { color: #20c997 !important; white-space: nowrap; }
+    .filtro-state-panel .metric-value.inativo { color: var(--scada-text-secondary) !important; white-space: nowrap; }
+    /* Painel de bombas */
+    .filtro-pump-panel {
+        display: flex;
+        justify-content: space-around;
+        padding: 10px 16px;
+        border-top: 1px solid var(--scada-border-color);
+    }
+    .filtro-pump {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        font-size: 0.8rem;
+        color: var(--scada-text-secondary);
+    }
+    .pump-dot { font-size: 1.1rem; line-height: 1; }
+    .pump-dot.pump-on  { color: #198754; }
+    .pump-dot.pump-off { color: #495057; }
     .filtro-footer {
         background-color: var(--scada-section-bg);
         border-top: 1px solid var(--scada-border-color);
@@ -287,7 +309,7 @@ $filters = fetch_all_safe(
             <div class="dashboard-grid" id="dashboard-container-filtros">
                 <?php if (!empty($filters)): ?>
                     <?php foreach ($filters as $filter): ?>
-                        <div id="card-filtro-<?= $filter['id'] ?>" class="card scada-card h-100 border-secondary shadow-sm" data-type="filtro" data-ip="<?= htmlspecialchars($filter['ip_address']) ?>" data-slave-id="<?= (int)$filter['slave_id'] ?>">
+                        <div id="card-filtro-<?= $filter['id'] ?>" class="card scada-card h-100 border-secondary shadow-sm" style="cursor:pointer" data-type="filtro" data-ip="<?= htmlspecialchars($filter['ip_address']) ?>" data-slave-id="<?= (int)$filter['slave_id'] ?>" data-filter-id="<?= $filter['id'] ?>" onclick="openFiltroModal(<?= $filter['id'] ?>)">
                             <div class="card-header d-flex justify-content-between align-items-center">
                                 <h5 class="card-title mb-0 fw-bold">
                                     <i class="fas fa-filter me-2 opacity-75"></i><?= htmlspecialchars($filter['name']) ?>
@@ -311,9 +333,25 @@ $filters = fetch_all_safe(
                                     <div class="metric-unit">bar</div>
                                 </div>
                             </div>
-                            <div class="filtro-state-panel">
-                                <div class="metric-label">Estado</div>
-                                <div class="metric-value" id="filtro-pump-state-<?= $filter['id'] ?>">--</div>
+                            <div class="filtro-state-panel d-flex justify-content-between align-items-end">
+                                <div>
+                                    <div class="metric-label">Estado</div>
+                                    <div class="metric-value" id="filtro-pump-state-<?= $filter['id'] ?>">--</div>
+                                </div>
+                                <div class="text-end">
+                                    <div class="metric-label">Caudal</div>
+                                    <div id="filtro-flow-<?= $filter['id'] ?>" style="font-size:1.3rem;font-weight:700;font-family:monospace;color:#0dcaf0">--</div>
+                                </div>
+                            </div>
+                            <div class="filtro-pump-panel">
+                                <div class="filtro-pump">
+                                    <span class="pump-dot pump-off" id="filtro-pump1-<?= $filter['id'] ?>">●</span>
+                                    <span>Bomba 1</span>
+                                </div>
+                                <div class="filtro-pump">
+                                    <span class="pump-dot pump-off" id="filtro-pump2-<?= $filter['id'] ?>">●</span>
+                                    <span>Bomba 2</span>
+                                </div>
                             </div>
                             <div class="filtro-footer d-flex justify-content-between">
                                 <span><i class="fas fa-network-wired me-1"></i><?= htmlspecialchars($filter['ip_address']) ?></span>
@@ -334,7 +372,29 @@ $filters = fetch_all_safe(
         </div>
 
     </div>
-</div>    
+</div>
+
+<!-- Modal detalhe Filtro Defender -->
+<div class="modal fade" id="filtroDetailModal" tabindex="-1" aria-labelledby="filtroDetailModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg modal-dialog-scrollable">
+        <div class="modal-content" style="background:#212529;color:#dee2e6;border:1px solid #495057">
+            <div class="modal-header" style="border-bottom:1px solid #495057">
+                <div>
+                    <h5 class="modal-title mb-0" id="filtroDetailModalLabel">Filtro Defender</h5>
+                    <div id="filtroModalSubtitle" class="text-secondary" style="font-size:0.8rem"></div>
+                </div>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body" id="filtroModalBody">
+                <div class="text-center p-4"><i class="fas fa-spinner fa-spin fa-2x"></i></div>
+            </div>
+            <div class="modal-footer" style="border-top:1px solid #495057">
+                <span class="text-secondary me-auto" style="font-size:0.75rem" id="filtroModalTs"></span>
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Fechar</button>
+            </div>
+        </div>
+    </div>
+</div>
 
 <script>
 document.addEventListener('DOMContentLoaded', function() {
@@ -608,44 +668,234 @@ function createLoraCard(device) {
 
     const filtroFailCount = {};
     const FILTRO_FAIL_THRESHOLD = 2;
+    const filtroLastData = {};
+
+    const STATE_CSS = {
+        'Em Filtração':        'filtracao',
+        'Pré-coat':            'precoat',
+        'Interrompido':        'interrompido',
+        'Enchimento/Drenagem': 'enchimento',
+        'Bump':                'bump',
+        'Bomba a Arrancar':    'arrancando',
+        'Parado':              'parado',
+        'Inativo':             'inativo',
+    };
+
+    function fmtVal(v, dec = 2) {
+        const n = parseFloat(v);
+        return Number.isFinite(n) ? n.toFixed(dec) : '--';
+    }
+
+    function lsIndicator(open, closed) {
+        if (open)   return '<span class="badge bg-success">Aberta</span>';
+        if (closed) return '<span class="badge bg-secondary">Fechada</span>';
+        return '<span class="badge bg-warning text-dark">Indeterminado</span>';
+    }
+
+    function pumpStatusBadge(running, fault) {
+        if (fault)   return '<span class="badge bg-danger">FALHA</span>';
+        if (running) return '<span class="badge bg-success">Em Serviço</span>';
+        return '<span class="badge bg-secondary">Parada</span>';
+    }
+
+    function buildFiltroModal(data) {
+        const fb = data.feedback_bits  || {};
+        const ls = data.limit_switches || {};
+        const sb = data.status_bits    || {};
+
+        const stateClass = STATE_CSS[data.filter_state] || '';
+        const faultHtml  = data.activeFault
+            ? '<span class="badge bg-danger ms-2"><i class="fas fa-exclamation-triangle me-1"></i>FALHA ATIVA</span>'
+            : '<span class="badge bg-success ms-2">Online</span>';
+
+        return `
+        <div class="mb-3 p-3 rounded" style="background:#2b3035;border:1px solid #495057">
+            <div class="d-flex align-items-center gap-2 mb-1">
+                <span class="filtro-state-panel metric-value ${stateClass}" style="font-size:1.6rem">${data.filter_state || '--'}</span>
+                ${faultHtml}
+            </div>
+            <small class="text-secondary">${data.ip_address} &bull; Slave ${data.slave_id}</small>
+        </div>
+
+        <div class="row g-3 mb-3">
+            <!-- Pressões -->
+            <div class="col-md-6">
+                <div class="p-3 rounded h-100" style="background:#2b3035;border:1px solid #495057">
+                    <h6 class="text-secondary mb-3"><i class="fas fa-tachometer-alt me-1"></i>Pressões</h6>
+                    <div class="d-flex justify-content-between mb-2">
+                        <span class="text-white-50">Entrada (Pin)</span>
+                        <span class="font-monospace fw-bold" style="color:#5bc8f5">${fmtVal(data.pin)} bar</span>
+                    </div>
+                    <div class="d-flex justify-content-between mb-2">
+                        <span class="text-white-50">Saída (Pout)</span>
+                        <span class="font-monospace fw-bold" style="color:#6ee0a0">${fmtVal(data.pout)} bar</span>
+                    </div>
+                    <div class="d-flex justify-content-between mb-2">
+                        <span class="text-white-50">Diferencial (ΔP)</span>
+                        <span class="font-monospace fw-bold" style="color:#f5a623">${fmtVal(data.delta_p)} bar</span>
+                    </div>
+                    <div class="d-flex justify-content-between">
+                        <span class="text-white-50">Ar Pneumático</span>
+                        <span class="font-monospace fw-bold">${fmtVal(data.pneumatic_air)} bar</span>
+                    </div>
+                </div>
+            </div>
+            <!-- Caudal + Setpoints -->
+            <div class="col-md-6">
+                <div class="p-3 rounded h-100" style="background:#2b3035;border:1px solid #495057">
+                    <h6 class="text-secondary mb-3"><i class="fas fa-water me-1"></i>Caudal &amp; Setpoints</h6>
+                    <div class="d-flex justify-content-between mb-2">
+                        <span class="text-white-50">Caudal Filtrado</span>
+                        <span class="font-monospace fw-bold" style="color:#0dcaf0">${fmtVal(data.flow, 1)} m³/h</span>
+                    </div>
+                    <div class="d-flex justify-content-between mb-2">
+                        <span class="text-white-50">Setpoint VFD Ext.</span>
+                        <span class="font-monospace fw-bold">${fmtVal(data.setpoint_vfd_ext, 1)} %</span>
+                    </div>
+                    <div class="d-flex justify-content-between mb-2">
+                        <span class="text-white-50">Setpoint VFD Bomba 1</span>
+                        <span class="font-monospace fw-bold">${fmtVal(data.setpoint_vfd_p1, 1)} %</span>
+                    </div>
+                    <div class="d-flex justify-content-between">
+                        <span class="text-white-50">Setpoint VFD Bomba 2</span>
+                        <span class="font-monospace fw-bold">${fmtVal(data.setpoint_vfd_p2, 1)} %</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="row g-3 mb-3">
+            <!-- Bombas -->
+            <div class="col-md-6">
+                <div class="p-3 rounded h-100" style="background:#2b3035;border:1px solid #495057">
+                    <h6 class="text-secondary mb-3"><i class="fas fa-cogs me-1"></i>Bombas</h6>
+                    <div class="d-flex justify-content-between align-items-center mb-2">
+                        <span class="text-white-50">Bomba 1</span>
+                        ${pumpStatusBadge(fb.pump1_running, fb.pump1_fault)}
+                    </div>
+                    <div class="d-flex justify-content-between mb-3">
+                        <span class="text-white-50 ms-2" style="font-size:0.8rem">Horas de operação</span>
+                        <span class="font-monospace">${fmtVal(data.op_hours_pump1, 1)} h</span>
+                    </div>
+                    <div class="d-flex justify-content-between align-items-center mb-2">
+                        <span class="text-white-50">Bomba 2</span>
+                        ${pumpStatusBadge(fb.pump2_running, fb.pump2_fault)}
+                    </div>
+                    <div class="d-flex justify-content-between">
+                        <span class="text-white-50 ms-2" style="font-size:0.8rem">Horas de operação</span>
+                        <span class="font-monospace">${fmtVal(data.op_hours_pump2, 1)} h</span>
+                    </div>
+                </div>
+            </div>
+            <!-- Perlita + Horas Filtro -->
+            <div class="col-md-6">
+                <div class="p-3 rounded h-100" style="background:#2b3035;border:1px solid #495057">
+                    <h6 class="text-secondary mb-3"><i class="fas fa-hourglass-half me-1"></i>Manutenção</h6>
+                    <div class="d-flex justify-content-between mb-2">
+                        <span class="text-white-50">Horas Filtro Total</span>
+                        <span class="font-monospace fw-bold">${fmtVal(data.op_hours_filter, 1)} h</span>
+                    </div>
+                    <hr style="border-color:#495057;margin:8px 0">
+                    <div class="d-flex justify-content-between mb-2">
+                        <span class="text-white-50">Intervalo Perlita</span>
+                        <span class="font-monospace">${fmtVal(data.interval_perlite, 0)}</span>
+                    </div>
+                    <div class="d-flex justify-content-between mb-2">
+                        <span class="text-white-50">Tempo Restante</span>
+                        <span class="font-monospace fw-bold" style="color:${parseFloat(data.remaining_time) < 5 ? '#dc3545' : '#dee2e6'}">${fmtVal(data.remaining_time, 1)} dias</span>
+                    </div>
+                    <div class="d-flex justify-content-between">
+                        <span class="text-white-50">Ciclos de Carga</span>
+                        <span class="font-monospace">${fmtVal(data.charging_cycles, 0)}</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Válvulas -->
+        <div class="p-3 rounded" style="background:#2b3035;border:1px solid #495057">
+            <h6 class="text-secondary mb-3"><i class="fas fa-sliders-h me-1"></i>Válvulas (Fins de Curso)</h6>
+            <div class="row g-2 text-center">
+                <div class="col-4">
+                    <div class="mb-1 text-white-50" style="font-size:0.75rem">INFLUENTE</div>
+                    ${lsIndicator(ls.influent_open, ls.influent_closed)}
+                </div>
+                <div class="col-4">
+                    <div class="mb-1 text-white-50" style="font-size:0.75rem">EFLUENTE</div>
+                    ${lsIndicator(ls.effluent_open, ls.effluent_closed)}
+                </div>
+                <div class="col-4">
+                    <div class="mb-1 text-white-50" style="font-size:0.75rem">PRÉ-COAT</div>
+                    ${lsIndicator(ls.precoat_open, ls.precoat_closed)}
+                </div>
+            </div>
+        </div>`;
+    }
+
+    function openFiltroModal(filterId) {
+        const modal = new bootstrap.Modal(document.getElementById('filtroDetailModal'));
+        const card  = document.getElementById(`card-filtro-${filterId}`);
+        const data  = card ? card._filtroData : null;
+
+        const titleEl    = document.getElementById('filtroDetailModalLabel');
+        const subtitleEl = document.getElementById('filtroModalSubtitle');
+        const bodyEl     = document.getElementById('filtroModalBody');
+        const tsEl       = document.getElementById('filtroModalTs');
+
+        if (data) {
+            titleEl.textContent    = data.filter_name || 'Filtro Defender';
+            subtitleEl.textContent = data.ip_address + ' · Slave ' + data.slave_id;
+            bodyEl.innerHTML       = buildFiltroModal(data);
+            tsEl.textContent       = 'Última atualização: ' + new Date().toLocaleTimeString('pt-PT');
+        } else {
+            titleEl.textContent = 'Filtro Defender';
+            bodyEl.innerHTML    = '<div class="text-center p-4 text-secondary">Dados ainda não carregados. Aguarde o próximo ciclo de atualização.</div>';
+        }
+
+        modal.show();
+    }
 
     async function updateFiltroCard(cardElement) {
         const filterId = cardElement.id.split('-')[2];
-        const statusEl = document.getElementById(`status-filtro-${filterId}`);
+        const statusEl  = document.getElementById(`status-filtro-${filterId}`);
+        const pinEl     = document.getElementById(`filtro-pin-${filterId}`);
+        const poutEl    = document.getElementById(`filtro-pout-${filterId}`);
+        const deltaEl   = document.getElementById(`filtro-delta-${filterId}`);
+        const flowEl    = document.getElementById(`filtro-flow-${filterId}`);
+        const stateEl   = document.getElementById(`filtro-pump-state-${filterId}`);
+        const pump1Dot  = document.getElementById(`filtro-pump1-${filterId}`);
+        const pump2Dot  = document.getElementById(`filtro-pump2-${filterId}`);
 
-        const pinEl   = document.getElementById(`filtro-pin-${filterId}`);
-        const poutEl  = document.getElementById(`filtro-pout-${filterId}`);
-        const deltaEl = document.getElementById(`filtro-delta-${filterId}`);
-
-        const metricsEl  = cardElement.querySelector('.filtro-metrics');
-        const footerEl   = cardElement.querySelector('.filtro-footer');
-        const stateEl    = cardElement.querySelector('.filtro-state-panel');
-        const alarmEl    = cardElement.querySelector('.alarm-content');
+        const metricsEl   = cardElement.querySelector('.filtro-metrics');
+        const statePanelEl = cardElement.querySelector('.filtro-state-panel');
+        const pumpPanelEl = cardElement.querySelector('.filtro-pump-panel');
+        const footerEl    = cardElement.querySelector('.filtro-footer');
+        const alarmEl     = cardElement.querySelector('.alarm-content');
 
         try {
             const response = await fetch(`get_filter_modbus_data.php?id=${filterId}`);
             const data = await response.json();
             if (!response.ok || data.error) throw new Error(data.error || ('HTTP ' + response.status));
 
+            // Cache for modal
+            cardElement._filtroData = data;
+
             cardElement.classList.remove('status-offline', 'border-danger', 'border-success', 'border-secondary', 'animate-pulse-red-bs');
             if (statusEl) statusEl.classList.remove('bg-danger', 'bg-success', 'bg-secondary', 'bg-warning');
 
-            const pin    = (data.pin    !== null && data.pin    !== undefined) ? parseFloat(data.pin)    : null;
-            const pout   = (data.pout   !== null && data.pout   !== undefined) ? parseFloat(data.pout)   : null;
-            const deltaP = (data.delta_p !== null && data.delta_p !== undefined) ? parseFloat(data.delta_p)
-                          : (pin !== null && pout !== null ? pin - pout : null);
-            const pump_state = (data.pump_state !== null && data.pump_state !== undefined) ? parseFloat(data.pump_state) : null;
-            const precoat_active = data.precoat_active === true || data.precoat_active === 1 || data.precoat_active === '1';
+            const pin    = data.pin    != null ? parseFloat(data.pin)    : null;
+            const pout   = data.pout   != null ? parseFloat(data.pout)   : null;
+            const deltaP = data.delta_p != null ? parseFloat(data.delta_p)
+                         : (pin != null && pout != null ? pin - pout : null);
+            const flow   = data.flow   != null ? parseFloat(data.flow)   : null;
 
-            let pumpState = '--';
-            if (pump_state !== null && !isNaN(pump_state)) {
-                if (pump_state === 0) pumpState = 'Parado';
-                else if (precoat_active) pumpState = 'Pré-coat';
-                else if (pump_state >= 90) pumpState = 'Em Filtração';
-                else pumpState = 'Pré-coat';
-            }
+            const fb = data.feedback_bits || {};
+            const p1on    = fb.pump1_running || false;
+            const p1fault = fb.pump1_fault   || false;
+            const p2on    = fb.pump2_running || false;
+            const p2fault = fb.pump2_fault   || false;
 
-            if (data.activeFault) {
+            if (data.activeFault || p1fault || p2fault) {
                 cardElement.classList.add('border-danger', 'animate-pulse-red-bs');
                 if (statusEl) { statusEl.classList.add('bg-danger'); statusEl.textContent = 'FALHA'; }
             } else {
@@ -653,35 +903,39 @@ function createLoraCard(device) {
                 if (statusEl) { statusEl.classList.add('bg-success'); statusEl.textContent = 'ONLINE'; }
             }
 
-            if (pinEl)   pinEl.textContent   = pin    !== null && !isNaN(pin)    ? pin.toFixed(2)    : '--';
-            if (poutEl)  poutEl.textContent  = pout   !== null && !isNaN(pout)   ? pout.toFixed(2)   : '--';
-            if (deltaEl) deltaEl.textContent = deltaP !== null && !isNaN(deltaP) ? deltaP.toFixed(2) : '--';
+            if (pinEl)   pinEl.textContent  = pin    != null ? pin.toFixed(2)    : '--';
+            if (poutEl)  poutEl.textContent = pout   != null ? pout.toFixed(2)   : '--';
+            if (deltaEl) deltaEl.textContent = deltaP != null ? deltaP.toFixed(2) : '--';
+            if (flowEl)  flowEl.innerHTML   = flow   != null
+                ? `${flow.toFixed(1)} <span style="font-size:0.75rem;color:var(--scada-text-secondary);font-family:sans-serif">m³/h</span>`
+                : '--';
 
-            const pumpStateBadge = document.getElementById(`filtro-pump-state-${filterId}`);
-            if (pumpStateBadge) {
-                pumpStateBadge.textContent = pumpState;
-                pumpStateBadge.className = 'metric-value';
-                if (pump_state !== null && !isNaN(pump_state)) {
-                    if (pump_state === 0) pumpStateBadge.classList.add('parado');
-                    else if (precoat_active) pumpStateBadge.classList.add('precoat');
-                    else if (pump_state >= 90) pumpStateBadge.classList.add('filtracao');
-                    else pumpStateBadge.classList.add('precoat');
-                }
+            if (stateEl) {
+                const filterState = data.filter_state || '--';
+                stateEl.textContent = filterState;
+                stateEl.className   = 'metric-value ' + (STATE_CSS[filterState] || '');
             }
 
-            if (metricsEl) metricsEl.style.display = '';
-            if (stateEl)   stateEl.style.display   = '';
-            if (footerEl)  footerEl.style.display  = '';
-            if (alarmEl)   alarmEl.style.display   = 'none';
+            const setDot = (dot, running, fault) => {
+                if (!dot) return;
+                dot.style.color = fault ? '#dc3545' : (running ? '#198754' : '#495057');
+                dot.title = fault ? 'Falha' : (running ? 'Em serviço' : 'Parada');
+            };
+            setDot(pump1Dot, p1on, p1fault);
+            setDot(pump2Dot, p2on, p2fault);
 
-            filtroFailCount[filterId] = 0; // reset contador de falhas consecutivas
+            if (metricsEl)    metricsEl.style.display    = '';
+            if (statePanelEl) statePanelEl.style.display = '';
+            if (pumpPanelEl)  pumpPanelEl.style.display  = '';
+            if (footerEl)     footerEl.style.display     = '';
+            if (alarmEl)      alarmEl.style.display      = 'none';
+
+            filtroFailCount[filterId] = 0;
 
         } catch (error) {
             filtroFailCount[filterId] = (filtroFailCount[filterId] || 0) + 1;
             const failCount = filtroFailCount[filterId];
             console.error(`[filtro-${filterId}] updateFiltroCard error (${failCount}/${FILTRO_FAIL_THRESHOLD}):`, error);
-
-            // Só mostra alarme após atingir o threshold de falhas consecutivas
             if (failCount < FILTRO_FAIL_THRESHOLD) return;
 
             cardElement.classList.remove('border-success', 'border-secondary', 'animate-pulse-red-bs');
@@ -691,18 +945,17 @@ function createLoraCard(device) {
                 statusEl.classList.add('bg-danger');
                 statusEl.textContent = 'OFFLINE';
             }
+            [pinEl, poutEl, deltaEl].forEach(el => { if (el) el.textContent = '--'; });
+            if (flowEl)  flowEl.textContent  = '--';
+            if (stateEl) { stateEl.textContent = '--'; stateEl.className = 'metric-value'; }
+            if (pump1Dot) pump1Dot.style.color = '#495057';
+            if (pump2Dot) pump2Dot.style.color = '#495057';
 
-            if (pinEl)   pinEl.textContent   = '--';
-            if (poutEl)  poutEl.textContent  = '--';
-            if (deltaEl) deltaEl.textContent = '--';
-
-            const pumpStateBadgeErr = document.getElementById(`filtro-pump-state-${filterId}`);
-            if (pumpStateBadgeErr) { pumpStateBadgeErr.textContent = '--'; pumpStateBadgeErr.className = 'metric-value'; }
-
-            if (metricsEl) metricsEl.style.display = 'none';
-            if (stateEl)   stateEl.style.display   = 'none';
-            if (footerEl)  footerEl.style.display  = 'none';
-            if (alarmEl)   alarmEl.style.display   = 'block';
+            if (metricsEl)    metricsEl.style.display    = 'none';
+            if (statePanelEl) statePanelEl.style.display = 'none';
+            if (pumpPanelEl)  pumpPanelEl.style.display  = 'none';
+            if (footerEl)     footerEl.style.display     = 'none';
+            if (alarmEl)      alarmEl.style.display      = 'block';
         }
     }
 
