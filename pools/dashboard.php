@@ -397,6 +397,187 @@ $filters = fetch_all_safe(
 </div>
 
 <script>
+// ── Funções globais do painel de filtros (chamadas por onclick) ───────────────
+const STATE_CSS = {
+    'Em Filtração':        'filtracao',
+    'Pré-coat':            'precoat',
+    'Interrompido':        'interrompido',
+    'Enchimento/Drenagem': 'enchimento',
+    'Bump':                'bump',
+    'Bomba a Arrancar':    'arrancando',
+    'Parado':              'parado',
+    'Inativo':             'inativo',
+};
+
+function fmtVal(v, dec = 2) {
+    const n = parseFloat(v);
+    return Number.isFinite(n) ? n.toFixed(dec) : '--';
+}
+
+function lsIndicator(open, closed) {
+    if (open)   return '<span class="badge bg-success">Aberta</span>';
+    if (closed) return '<span class="badge bg-secondary">Fechada</span>';
+    return '<span class="badge bg-warning text-dark">Indeterminado</span>';
+}
+
+function pumpStatusBadge(running, fault) {
+    if (fault)   return '<span class="badge bg-danger">FALHA</span>';
+    if (running) return '<span class="badge bg-success">Em Serviço</span>';
+    return '<span class="badge bg-secondary">Parada</span>';
+}
+
+function buildFiltroModal(data) {
+    const fb = data.feedback_bits  || {};
+    const ls = data.limit_switches || {};
+
+    const stateClass = STATE_CSS[data.filter_state] || '';
+    const faultHtml  = data.activeFault
+        ? '<span class="badge bg-danger ms-2"><i class="fas fa-exclamation-triangle me-1"></i>FALHA ATIVA</span>'
+        : '<span class="badge bg-success ms-2">Online</span>';
+
+    return `
+    <div class="mb-3 p-3 rounded" style="background:#2b3035;border:1px solid #495057">
+        <div class="d-flex align-items-center gap-2 mb-1">
+            <span class="filtro-state-panel metric-value ${stateClass}" style="font-size:1.6rem">${data.filter_state || '--'}</span>
+            ${faultHtml}
+        </div>
+        <small class="text-secondary">${data.ip_address} &bull; Slave ${data.slave_id}</small>
+    </div>
+
+    <div class="row g-3 mb-3">
+        <div class="col-md-6">
+            <div class="p-3 rounded h-100" style="background:#2b3035;border:1px solid #495057">
+                <h6 class="text-secondary mb-3"><i class="fas fa-tachometer-alt me-1"></i>Pressões</h6>
+                <div class="d-flex justify-content-between mb-2">
+                    <span class="text-white-50">Entrada (Pin)</span>
+                    <span class="font-monospace fw-bold" style="color:#5bc8f5">${fmtVal(data.pin)} bar</span>
+                </div>
+                <div class="d-flex justify-content-between mb-2">
+                    <span class="text-white-50">Saída (Pout)</span>
+                    <span class="font-monospace fw-bold" style="color:#6ee0a0">${fmtVal(data.pout)} bar</span>
+                </div>
+                <div class="d-flex justify-content-between mb-2">
+                    <span class="text-white-50">Diferencial (ΔP)</span>
+                    <span class="font-monospace fw-bold" style="color:#f5a623">${fmtVal(data.delta_p)} bar</span>
+                </div>
+                <div class="d-flex justify-content-between">
+                    <span class="text-white-50">Ar Pneumático</span>
+                    <span class="font-monospace fw-bold">${fmtVal(data.pneumatic_air)} bar</span>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-6">
+            <div class="p-3 rounded h-100" style="background:#2b3035;border:1px solid #495057">
+                <h6 class="text-secondary mb-3"><i class="fas fa-water me-1"></i>Caudal &amp; Setpoints</h6>
+                <div class="d-flex justify-content-between mb-2">
+                    <span class="text-white-50">Caudal Filtrado</span>
+                    <span class="font-monospace fw-bold" style="color:#0dcaf0">${fmtVal(data.flow, 1)} m³/h</span>
+                </div>
+                <div class="d-flex justify-content-between mb-2">
+                    <span class="text-white-50">Setpoint VFD Ext.</span>
+                    <span class="font-monospace fw-bold">${fmtVal(data.setpoint_vfd_ext, 1)} %</span>
+                </div>
+                <div class="d-flex justify-content-between mb-2">
+                    <span class="text-white-50">Setpoint VFD Bomba 1</span>
+                    <span class="font-monospace fw-bold">${fmtVal(data.setpoint_vfd_p1, 1)} %</span>
+                </div>
+                <div class="d-flex justify-content-between">
+                    <span class="text-white-50">Setpoint VFD Bomba 2</span>
+                    <span class="font-monospace fw-bold">${fmtVal(data.setpoint_vfd_p2, 1)} %</span>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="row g-3 mb-3">
+        <div class="col-md-6">
+            <div class="p-3 rounded h-100" style="background:#2b3035;border:1px solid #495057">
+                <h6 class="text-secondary mb-3"><i class="fas fa-cogs me-1"></i>Bombas</h6>
+                <div class="d-flex justify-content-between align-items-center mb-2">
+                    <span class="text-white-50">Bomba 1</span>
+                    ${pumpStatusBadge(fb.pump1_running, fb.pump1_fault)}
+                </div>
+                <div class="d-flex justify-content-between mb-3">
+                    <span class="text-white-50 ms-2" style="font-size:0.8rem">Horas de operação</span>
+                    <span class="font-monospace">${fmtVal(data.op_hours_pump1, 1)} h</span>
+                </div>
+                <div class="d-flex justify-content-between align-items-center mb-2">
+                    <span class="text-white-50">Bomba 2</span>
+                    ${pumpStatusBadge(fb.pump2_running, fb.pump2_fault)}
+                </div>
+                <div class="d-flex justify-content-between">
+                    <span class="text-white-50 ms-2" style="font-size:0.8rem">Horas de operação</span>
+                    <span class="font-monospace">${fmtVal(data.op_hours_pump2, 1)} h</span>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-6">
+            <div class="p-3 rounded h-100" style="background:#2b3035;border:1px solid #495057">
+                <h6 class="text-secondary mb-3"><i class="fas fa-hourglass-half me-1"></i>Manutenção</h6>
+                <div class="d-flex justify-content-between mb-2">
+                    <span class="text-white-50">Horas Filtro Total</span>
+                    <span class="font-monospace fw-bold">${fmtVal(data.op_hours_filter, 1)} h</span>
+                </div>
+                <hr style="border-color:#495057;margin:8px 0">
+                <div class="d-flex justify-content-between mb-2">
+                    <span class="text-white-50">Intervalo Perlita</span>
+                    <span class="font-monospace">${fmtVal(data.interval_perlite, 0)}</span>
+                </div>
+                <div class="d-flex justify-content-between mb-2">
+                    <span class="text-white-50">Tempo Restante</span>
+                    <span class="font-monospace fw-bold" style="color:${parseFloat(data.remaining_time) < 5 ? '#dc3545' : '#dee2e6'}">${fmtVal(data.remaining_time, 1)} dias</span>
+                </div>
+                <div class="d-flex justify-content-between">
+                    <span class="text-white-50">Ciclos de Carga</span>
+                    <span class="font-monospace">${fmtVal(data.charging_cycles, 0)}</span>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="p-3 rounded" style="background:#2b3035;border:1px solid #495057">
+        <h6 class="text-secondary mb-3"><i class="fas fa-sliders-h me-1"></i>Válvulas (Fins de Curso)</h6>
+        <div class="row g-2 text-center">
+            <div class="col-4">
+                <div class="mb-1 text-white-50" style="font-size:0.75rem">INFLUENTE</div>
+                ${lsIndicator(ls.influent_open, ls.influent_closed)}
+            </div>
+            <div class="col-4">
+                <div class="mb-1 text-white-50" style="font-size:0.75rem">EFLUENTE</div>
+                ${lsIndicator(ls.effluent_open, ls.effluent_closed)}
+            </div>
+            <div class="col-4">
+                <div class="mb-1 text-white-50" style="font-size:0.75rem">PRÉ-COAT</div>
+                ${lsIndicator(ls.precoat_open, ls.precoat_closed)}
+            </div>
+        </div>
+    </div>`;
+}
+
+function openFiltroModal(filterId) {
+    const modal = new bootstrap.Modal(document.getElementById('filtroDetailModal'));
+    const card  = document.getElementById(`card-filtro-${filterId}`);
+    const data  = card ? card._filtroData : null;
+
+    const titleEl    = document.getElementById('filtroDetailModalLabel');
+    const subtitleEl = document.getElementById('filtroModalSubtitle');
+    const bodyEl     = document.getElementById('filtroModalBody');
+    const tsEl       = document.getElementById('filtroModalTs');
+
+    if (data) {
+        titleEl.textContent    = data.filter_name || 'Filtro Defender';
+        subtitleEl.textContent = data.ip_address + ' · Slave ' + data.slave_id;
+        bodyEl.innerHTML       = buildFiltroModal(data);
+        tsEl.textContent       = 'Última atualização: ' + new Date().toLocaleTimeString('pt-PT');
+    } else {
+        titleEl.textContent = 'Filtro Defender';
+        bodyEl.innerHTML    = '<div class="text-center p-4 text-secondary">Dados ainda não carregados. Aguarde o próximo ciclo de atualização.</div>';
+    }
+
+    modal.show();
+}
+// ─────────────────────────────────────────────────────────────────────────────
+
 document.addEventListener('DOMContentLoaded', function() {
 
     // ── Botão GLOBAL Alta Afluência ───────────────────────────────────────────
@@ -668,192 +849,8 @@ function createLoraCard(device) {
 
     const filtroFailCount = {};
     const FILTRO_FAIL_THRESHOLD = 2;
-    const filtroLastData = {};
 
-    const STATE_CSS = {
-        'Em Filtração':        'filtracao',
-        'Pré-coat':            'precoat',
-        'Interrompido':        'interrompido',
-        'Enchimento/Drenagem': 'enchimento',
-        'Bump':                'bump',
-        'Bomba a Arrancar':    'arrancando',
-        'Parado':              'parado',
-        'Inativo':             'inativo',
-    };
-
-    function fmtVal(v, dec = 2) {
-        const n = parseFloat(v);
-        return Number.isFinite(n) ? n.toFixed(dec) : '--';
-    }
-
-    function lsIndicator(open, closed) {
-        if (open)   return '<span class="badge bg-success">Aberta</span>';
-        if (closed) return '<span class="badge bg-secondary">Fechada</span>';
-        return '<span class="badge bg-warning text-dark">Indeterminado</span>';
-    }
-
-    function pumpStatusBadge(running, fault) {
-        if (fault)   return '<span class="badge bg-danger">FALHA</span>';
-        if (running) return '<span class="badge bg-success">Em Serviço</span>';
-        return '<span class="badge bg-secondary">Parada</span>';
-    }
-
-    function buildFiltroModal(data) {
-        const fb = data.feedback_bits  || {};
-        const ls = data.limit_switches || {};
-        const sb = data.status_bits    || {};
-
-        const stateClass = STATE_CSS[data.filter_state] || '';
-        const faultHtml  = data.activeFault
-            ? '<span class="badge bg-danger ms-2"><i class="fas fa-exclamation-triangle me-1"></i>FALHA ATIVA</span>'
-            : '<span class="badge bg-success ms-2">Online</span>';
-
-        return `
-        <div class="mb-3 p-3 rounded" style="background:#2b3035;border:1px solid #495057">
-            <div class="d-flex align-items-center gap-2 mb-1">
-                <span class="filtro-state-panel metric-value ${stateClass}" style="font-size:1.6rem">${data.filter_state || '--'}</span>
-                ${faultHtml}
-            </div>
-            <small class="text-secondary">${data.ip_address} &bull; Slave ${data.slave_id}</small>
-        </div>
-
-        <div class="row g-3 mb-3">
-            <!-- Pressões -->
-            <div class="col-md-6">
-                <div class="p-3 rounded h-100" style="background:#2b3035;border:1px solid #495057">
-                    <h6 class="text-secondary mb-3"><i class="fas fa-tachometer-alt me-1"></i>Pressões</h6>
-                    <div class="d-flex justify-content-between mb-2">
-                        <span class="text-white-50">Entrada (Pin)</span>
-                        <span class="font-monospace fw-bold" style="color:#5bc8f5">${fmtVal(data.pin)} bar</span>
-                    </div>
-                    <div class="d-flex justify-content-between mb-2">
-                        <span class="text-white-50">Saída (Pout)</span>
-                        <span class="font-monospace fw-bold" style="color:#6ee0a0">${fmtVal(data.pout)} bar</span>
-                    </div>
-                    <div class="d-flex justify-content-between mb-2">
-                        <span class="text-white-50">Diferencial (ΔP)</span>
-                        <span class="font-monospace fw-bold" style="color:#f5a623">${fmtVal(data.delta_p)} bar</span>
-                    </div>
-                    <div class="d-flex justify-content-between">
-                        <span class="text-white-50">Ar Pneumático</span>
-                        <span class="font-monospace fw-bold">${fmtVal(data.pneumatic_air)} bar</span>
-                    </div>
-                </div>
-            </div>
-            <!-- Caudal + Setpoints -->
-            <div class="col-md-6">
-                <div class="p-3 rounded h-100" style="background:#2b3035;border:1px solid #495057">
-                    <h6 class="text-secondary mb-3"><i class="fas fa-water me-1"></i>Caudal &amp; Setpoints</h6>
-                    <div class="d-flex justify-content-between mb-2">
-                        <span class="text-white-50">Caudal Filtrado</span>
-                        <span class="font-monospace fw-bold" style="color:#0dcaf0">${fmtVal(data.flow, 1)} m³/h</span>
-                    </div>
-                    <div class="d-flex justify-content-between mb-2">
-                        <span class="text-white-50">Setpoint VFD Ext.</span>
-                        <span class="font-monospace fw-bold">${fmtVal(data.setpoint_vfd_ext, 1)} %</span>
-                    </div>
-                    <div class="d-flex justify-content-between mb-2">
-                        <span class="text-white-50">Setpoint VFD Bomba 1</span>
-                        <span class="font-monospace fw-bold">${fmtVal(data.setpoint_vfd_p1, 1)} %</span>
-                    </div>
-                    <div class="d-flex justify-content-between">
-                        <span class="text-white-50">Setpoint VFD Bomba 2</span>
-                        <span class="font-monospace fw-bold">${fmtVal(data.setpoint_vfd_p2, 1)} %</span>
-                    </div>
-                </div>
-            </div>
-        </div>
-
-        <div class="row g-3 mb-3">
-            <!-- Bombas -->
-            <div class="col-md-6">
-                <div class="p-3 rounded h-100" style="background:#2b3035;border:1px solid #495057">
-                    <h6 class="text-secondary mb-3"><i class="fas fa-cogs me-1"></i>Bombas</h6>
-                    <div class="d-flex justify-content-between align-items-center mb-2">
-                        <span class="text-white-50">Bomba 1</span>
-                        ${pumpStatusBadge(fb.pump1_running, fb.pump1_fault)}
-                    </div>
-                    <div class="d-flex justify-content-between mb-3">
-                        <span class="text-white-50 ms-2" style="font-size:0.8rem">Horas de operação</span>
-                        <span class="font-monospace">${fmtVal(data.op_hours_pump1, 1)} h</span>
-                    </div>
-                    <div class="d-flex justify-content-between align-items-center mb-2">
-                        <span class="text-white-50">Bomba 2</span>
-                        ${pumpStatusBadge(fb.pump2_running, fb.pump2_fault)}
-                    </div>
-                    <div class="d-flex justify-content-between">
-                        <span class="text-white-50 ms-2" style="font-size:0.8rem">Horas de operação</span>
-                        <span class="font-monospace">${fmtVal(data.op_hours_pump2, 1)} h</span>
-                    </div>
-                </div>
-            </div>
-            <!-- Perlita + Horas Filtro -->
-            <div class="col-md-6">
-                <div class="p-3 rounded h-100" style="background:#2b3035;border:1px solid #495057">
-                    <h6 class="text-secondary mb-3"><i class="fas fa-hourglass-half me-1"></i>Manutenção</h6>
-                    <div class="d-flex justify-content-between mb-2">
-                        <span class="text-white-50">Horas Filtro Total</span>
-                        <span class="font-monospace fw-bold">${fmtVal(data.op_hours_filter, 1)} h</span>
-                    </div>
-                    <hr style="border-color:#495057;margin:8px 0">
-                    <div class="d-flex justify-content-between mb-2">
-                        <span class="text-white-50">Intervalo Perlita</span>
-                        <span class="font-monospace">${fmtVal(data.interval_perlite, 0)}</span>
-                    </div>
-                    <div class="d-flex justify-content-between mb-2">
-                        <span class="text-white-50">Tempo Restante</span>
-                        <span class="font-monospace fw-bold" style="color:${parseFloat(data.remaining_time) < 5 ? '#dc3545' : '#dee2e6'}">${fmtVal(data.remaining_time, 1)} dias</span>
-                    </div>
-                    <div class="d-flex justify-content-between">
-                        <span class="text-white-50">Ciclos de Carga</span>
-                        <span class="font-monospace">${fmtVal(data.charging_cycles, 0)}</span>
-                    </div>
-                </div>
-            </div>
-        </div>
-
-        <!-- Válvulas -->
-        <div class="p-3 rounded" style="background:#2b3035;border:1px solid #495057">
-            <h6 class="text-secondary mb-3"><i class="fas fa-sliders-h me-1"></i>Válvulas (Fins de Curso)</h6>
-            <div class="row g-2 text-center">
-                <div class="col-4">
-                    <div class="mb-1 text-white-50" style="font-size:0.75rem">INFLUENTE</div>
-                    ${lsIndicator(ls.influent_open, ls.influent_closed)}
-                </div>
-                <div class="col-4">
-                    <div class="mb-1 text-white-50" style="font-size:0.75rem">EFLUENTE</div>
-                    ${lsIndicator(ls.effluent_open, ls.effluent_closed)}
-                </div>
-                <div class="col-4">
-                    <div class="mb-1 text-white-50" style="font-size:0.75rem">PRÉ-COAT</div>
-                    ${lsIndicator(ls.precoat_open, ls.precoat_closed)}
-                </div>
-            </div>
-        </div>`;
-    }
-
-    function openFiltroModal(filterId) {
-        const modal = new bootstrap.Modal(document.getElementById('filtroDetailModal'));
-        const card  = document.getElementById(`card-filtro-${filterId}`);
-        const data  = card ? card._filtroData : null;
-
-        const titleEl    = document.getElementById('filtroDetailModalLabel');
-        const subtitleEl = document.getElementById('filtroModalSubtitle');
-        const bodyEl     = document.getElementById('filtroModalBody');
-        const tsEl       = document.getElementById('filtroModalTs');
-
-        if (data) {
-            titleEl.textContent    = data.filter_name || 'Filtro Defender';
-            subtitleEl.textContent = data.ip_address + ' · Slave ' + data.slave_id;
-            bodyEl.innerHTML       = buildFiltroModal(data);
-            tsEl.textContent       = 'Última atualização: ' + new Date().toLocaleTimeString('pt-PT');
-        } else {
-            titleEl.textContent = 'Filtro Defender';
-            bodyEl.innerHTML    = '<div class="text-center p-4 text-secondary">Dados ainda não carregados. Aguarde o próximo ciclo de atualização.</div>';
-        }
-
-        modal.show();
-    }
+    // fmtVal / lsIndicator / pumpStatusBadge / buildFiltroModal / openFiltroModal → globais (acima do DOMContentLoaded)
 
     async function updateFiltroCard(cardElement) {
         const filterId = cardElement.id.split('-')[2];

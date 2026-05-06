@@ -357,6 +357,8 @@ if ($filter_interruption) {
     $filter_state = 'Interrompido';
 } elseif ($filter_precoat) {
     $filter_state = 'Pré-coat';
+} elseif ($filter_in_service) {
+    $filter_state = 'Em Filtração';
 } elseif ($filter_fill_drain) {
     $filter_state = 'Enchimento/Drenagem';
 } elseif ($filter_bump) {
