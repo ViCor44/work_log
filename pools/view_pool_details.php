@@ -732,10 +732,11 @@ document.addEventListener('DOMContentLoaded', function() {
 	}
 
     // Função para ir buscar o histórico
-        async function fetchHistory(startDate, endDate) {
+        async function fetchHistory(startDate, endDate, extraParams = {}) {
         try {
             // 1. Buscar histórico
-            const url = `../api/get_pool_history.php?id=${tankId}&start_date=${startDate}&end_date=${endDate}`;
+            let url = `../api/get_pool_history.php?id=${tankId}&start_date=${startDate}&end_date=${endDate}`;
+            for (const [k, v] of Object.entries(extraParams)) url += `&${k}=${encodeURIComponent(v)}`;
             const response = await fetch(url);
             const data = await response.json();
             if (data.error) throw new Error(data.error);
@@ -874,11 +875,15 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 
     document.getElementById('range-24h').addEventListener('click', function() {
-        const t = todayStr();
-        document.getElementById('start_date').value = t;
+        const now = new Date();
+        const h24ago = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+        const fmt = d => d.toISOString().replace('T', ' ').substring(0, 19);
+        const s = h24ago.toISOString().split('T')[0];
+        const t = now.toISOString().split('T')[0];
+        document.getElementById('start_date').value = s;
         document.getElementById('end_date').value = t;
         setActiveRangeBtn('range-24h');
-        fetchHistory(t, t);
+        fetchHistory(s, t, { start_datetime: fmt(h24ago), end_datetime: fmt(now) });
     });
     document.getElementById('range-7d').addEventListener('click', function() {
         const s = daysAgoStr(6), t = todayStr();

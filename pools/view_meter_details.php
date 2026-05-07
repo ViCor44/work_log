@@ -331,11 +331,15 @@ document.addEventListener('DOMContentLoaded', function() {
                 });
             }
             document.getElementById('modal-range-24h').addEventListener('click', function() {
-                const t = modalTodayStr();
-                document.getElementById('modal_start_date').value = t;
+                const now = new Date();
+                const h24ago = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+                const fmt = d => d.toISOString().replace('T', ' ').substring(0, 19);
+                const s = h24ago.toISOString().split('T')[0];
+                const t = now.toISOString().split('T')[0];
+                document.getElementById('modal_start_date').value = s;
                 document.getElementById('modal_end_date').value = t;
                 setModalActiveRangeBtn('modal-range-24h');
-                fetchParameterHistory(currentParameter, currentParameterLabel);
+                fetchParameterHistory(currentParameter, currentParameterLabel, { start_datetime: fmt(h24ago), end_datetime: fmt(now) });
             });
             document.getElementById('modal-range-7d').addEventListener('click', function() {
                 const s = modalDaysAgoStr(6), t = modalTodayStr();
@@ -418,7 +422,7 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 
     // Função para ir buscar o histórico de um parâmetro específico
-    async function fetchParameterHistory(parameterName, parameterLabel) {
+    async function fetchParameterHistory(parameterName, parameterLabel, extraParams = {}) {
         currentParameter = parameterName;
         currentParameterLabel = parameterLabel;
 
@@ -426,7 +430,8 @@ document.addEventListener('DOMContentLoaded', function() {
         const endDate = document.getElementById('modal_end_date').value;
 
         try {
-            const url = `../api/get_meter_parameter_history.php?meter_id=${meterId}&parameter=${parameterName}&start_date=${startDate}&end_date=${endDate}`;
+            let url = `../api/get_meter_parameter_history.php?meter_id=${meterId}&parameter=${parameterName}&start_date=${startDate}&end_date=${endDate}`;
+            for (const [k, v] of Object.entries(extraParams)) url += `&${k}=${encodeURIComponent(v)}`;
             const response = await fetch(url);
             const data = await response.json();
             console.log('API Response:', data); // Debug API response

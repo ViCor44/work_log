@@ -21,6 +21,14 @@ $end_date = isset($_GET['end_date']) ? $_GET['end_date'] : date('Y-m-d');
 // Garante que a data final inclui o dia inteiro
 $end_date_full = $end_date . ' 23:59:59';
 
+// Override de datetime exato (usado para janelas rolantes como "últimas 24h")
+if (isset($_GET['start_datetime']) && preg_match('/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/', $_GET['start_datetime'])) {
+    $start_date = $_GET['start_datetime'];
+}
+if (isset($_GET['end_datetime']) && preg_match('/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/', $_GET['end_datetime'])) {
+    $end_date_full = $_GET['end_datetime'];
+}
+
 // Busca os dados históricos para o gráfico principal
 $stmt_history = $conn->prepare("
     SELECT log_datetime, ph_value, ph_setpoint, chlorine_value, chlorine_setpoint, ph_controller_state, cl_controller_state

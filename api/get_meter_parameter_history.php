@@ -28,6 +28,14 @@ if ($meter_id <= 0 || !in_array($parameter, $allowed_parameters)) {
 
 $end_date_full = $end_date . ' 23:59:59';
 
+// Override de datetime exato (usado para janelas rolantes como "últimas 24h")
+if (isset($_GET['start_datetime']) && preg_match('/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/', $_GET['start_datetime'])) {
+    $start_date = $_GET['start_datetime'];
+}
+if (isset($_GET['end_datetime']) && preg_match('/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/', $_GET['end_datetime'])) {
+    $end_date_full = $_GET['end_datetime'];
+}
+
 // A query agora seleciona a coluna do parâmetro de forma dinâmica e segura
 $sql = "SELECT log_datetime, `$parameter` as value 
         FROM power_meter_history 
