@@ -305,7 +305,11 @@ document.addEventListener('DOMContentLoaded', function() {
                     const label = this.dataset.label;
                     console.log('Row clicked:', parameter, label); // Debug
                     document.getElementById('historyModalTitle').textContent = `Histórico de ${label}`;
-                    fetchParameterHistory(parameter, label);
+                    currentParameter = parameter;
+                    currentParameterLabel = label;
+                    modalActiveRange = '24h';
+                    setModalActiveRangeBtn('modal-range-24h');
+                    loadCurrentModalHistory();
                     new bootstrap.Modal(document.getElementById('historyModal')).show();
                 });
             });
@@ -313,12 +317,41 @@ document.addEventListener('DOMContentLoaded', function() {
             // Evento para o filtro de datas do modal
             document.getElementById('modal-date-range-form').addEventListener('submit', function(e) {
                 e.preventDefault();
+                modalActiveRange = 'custom';
                 setModalActiveRangeBtn(null);
                 fetchParameterHistory(currentParameter, currentParameterLabel);
             });
 
-            function modalTodayStr() { return new Date().toISOString().split('T')[0]; }
-            function modalDaysAgoStr(n) { const d = new Date(); d.setDate(d.getDate() - n); return d.toISOString().split('T')[0]; }
+            let modalActiveRange = '24h';
+
+            function modalLocalDateStr(d) {
+                const pad = n => String(n).padStart(2, '0');
+                return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`;
+            }
+            function modalLocalDatetimeStr(d) {
+                const pad = n => String(n).padStart(2, '0');
+                return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+            }
+            function modalTodayStr() { return modalLocalDateStr(new Date()); }
+            function modalDaysAgoStr(n) { const d = new Date(); d.setDate(d.getDate() - n); return modalLocalDateStr(d); }
+
+            function loadCurrentModalHistory() {
+                if (modalActiveRange === '24h') {
+                    const now = new Date();
+                    const h24ago = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+                    const s = modalLocalDateStr(h24ago);
+                    const t = modalLocalDateStr(now);
+                    document.getElementById('modal_start_date').value = s;
+                    document.getElementById('modal_end_date').value = t;
+                    fetchParameterHistory(currentParameter, currentParameterLabel, {
+                        start_datetime: modalLocalDatetimeStr(h24ago),
+                        end_datetime: modalLocalDatetimeStr(now)
+                    });
+                } else {
+                    fetchParameterHistory(currentParameter, currentParameterLabel);
+                }
+            }
+
             function setModalActiveRangeBtn(activeId) {
                 ['modal-range-24h','modal-range-7d','modal-range-30d'].forEach(function(id) {
                     const btn = document.getElementById(id);
@@ -331,17 +364,12 @@ document.addEventListener('DOMContentLoaded', function() {
                 });
             }
             document.getElementById('modal-range-24h').addEventListener('click', function() {
-                const now = new Date();
-                const h24ago = new Date(now.getTime() - 24 * 60 * 60 * 1000);
-                const fmt = d => d.toISOString().replace('T', ' ').substring(0, 19);
-                const s = h24ago.toISOString().split('T')[0];
-                const t = now.toISOString().split('T')[0];
-                document.getElementById('modal_start_date').value = s;
-                document.getElementById('modal_end_date').value = t;
+                modalActiveRange = '24h';
                 setModalActiveRangeBtn('modal-range-24h');
-                fetchParameterHistory(currentParameter, currentParameterLabel, { start_datetime: fmt(h24ago), end_datetime: fmt(now) });
+                loadCurrentModalHistory();
             });
             document.getElementById('modal-range-7d').addEventListener('click', function() {
+                modalActiveRange = '7d';
                 const s = modalDaysAgoStr(6), t = modalTodayStr();
                 document.getElementById('modal_start_date').value = s;
                 document.getElementById('modal_end_date').value = t;
@@ -349,6 +377,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 fetchParameterHistory(currentParameter, currentParameterLabel);
             });
             document.getElementById('modal-range-30d').addEventListener('click', function() {
+                modalActiveRange = '30d';
                 const s = modalDaysAgoStr(29), t = modalTodayStr();
                 document.getElementById('modal_start_date').value = s;
                 document.getElementById('modal_end_date').value = t;
@@ -356,11 +385,9 @@ document.addEventListener('DOMContentLoaded', function() {
                 fetchParameterHistory(currentParameter, currentParameterLabel);
             });
             document.getElementById('modal-btn-clear-range').addEventListener('click', function() {
-                const t = modalTodayStr();
-                document.getElementById('modal_start_date').value = t;
-                document.getElementById('modal_end_date').value = t;
+                modalActiveRange = '24h';
                 setModalActiveRangeBtn('modal-range-24h');
-                fetchParameterHistory(currentParameter, currentParameterLabel);
+                loadCurrentModalHistory();
             });
 
         } catch (error) {

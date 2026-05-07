@@ -856,12 +856,38 @@ document.addEventListener('DOMContentLoaded', function() {
     
     document.getElementById('date-range-form').addEventListener('submit', function(e) {
         e.preventDefault();
+        activeRange = 'custom';
         setActiveRangeBtn(null);
         fetchHistory(document.getElementById('start_date').value, document.getElementById('end_date').value);
     });
 
-    function todayStr() { return new Date().toISOString().split('T')[0]; }
-    function daysAgoStr(n) { const d = new Date(); d.setDate(d.getDate() - n); return d.toISOString().split('T')[0]; }
+    let activeRange = '24h';
+
+    function localDateStr(d) {
+        const pad = n => String(n).padStart(2, '0');
+        return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`;
+    }
+    function localDatetimeStr(d) {
+        const pad = n => String(n).padStart(2, '0');
+        return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+    }
+    function todayStr() { return localDateStr(new Date()); }
+    function daysAgoStr(n) { const d = new Date(); d.setDate(d.getDate() - n); return localDateStr(d); }
+
+    function loadCurrentHistory() {
+        if (activeRange === '24h') {
+            const now = new Date();
+            const h24ago = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+            const s = localDateStr(h24ago);
+            const t = localDateStr(now);
+            document.getElementById('start_date').value = s;
+            document.getElementById('end_date').value = t;
+            fetchHistory(s, t, { start_datetime: localDatetimeStr(h24ago), end_datetime: localDatetimeStr(now) });
+        } else {
+            fetchHistory(document.getElementById('start_date').value, document.getElementById('end_date').value);
+        }
+    }
+
     function setActiveRangeBtn(activeId) {
         ['range-24h','range-7d','range-30d'].forEach(function(id) {
             const btn = document.getElementById(id);
@@ -875,17 +901,12 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 
     document.getElementById('range-24h').addEventListener('click', function() {
-        const now = new Date();
-        const h24ago = new Date(now.getTime() - 24 * 60 * 60 * 1000);
-        const fmt = d => d.toISOString().replace('T', ' ').substring(0, 19);
-        const s = h24ago.toISOString().split('T')[0];
-        const t = now.toISOString().split('T')[0];
-        document.getElementById('start_date').value = s;
-        document.getElementById('end_date').value = t;
+        activeRange = '24h';
         setActiveRangeBtn('range-24h');
-        fetchHistory(s, t, { start_datetime: fmt(h24ago), end_datetime: fmt(now) });
+        loadCurrentHistory();
     });
     document.getElementById('range-7d').addEventListener('click', function() {
+        activeRange = '7d';
         const s = daysAgoStr(6), t = todayStr();
         document.getElementById('start_date').value = s;
         document.getElementById('end_date').value = t;
@@ -893,6 +914,7 @@ document.addEventListener('DOMContentLoaded', function() {
         fetchHistory(s, t);
     });
     document.getElementById('range-30d').addEventListener('click', function() {
+        activeRange = '30d';
         const s = daysAgoStr(29), t = todayStr();
         document.getElementById('start_date').value = s;
         document.getElementById('end_date').value = t;
@@ -900,11 +922,9 @@ document.addEventListener('DOMContentLoaded', function() {
         fetchHistory(s, t);
     });
     document.getElementById('btn-clear-range').addEventListener('click', function() {
-        const t = todayStr();
-        document.getElementById('start_date').value = t;
-        document.getElementById('end_date').value = t;
+        activeRange = '24h';
         setActiveRangeBtn('range-24h');
-        fetchHistory(t, t);
+        loadCurrentHistory();
     });
 
     // Função para mostrar o modal de nota
@@ -966,7 +986,7 @@ document.addEventListener('DOMContentLoaded', function() {
         if (data.success) {
             // Fecha modal e recarrega histórico para atualizar notas
             bootstrap.Modal.getInstance(document.getElementById('noteModal')).hide();
-            fetchHistory(document.getElementById('start_date').value, document.getElementById('end_date').value);
+            loadCurrentHistory();
         } else {
             alert('Erro ao guardar nota: ' + (data.error || 'Erro desconhecido'));
         }
@@ -975,13 +995,12 @@ document.addEventListener('DOMContentLoaded', function() {
     // Carga inicial
     loadDynamicSetpointStatus();
     updateGauges();
-    fetchHistory(document.getElementById('start_date').value, document.getElementById('end_date').value);
+    setActiveRangeBtn('range-24h');
+    loadCurrentHistory();
     // Inicia o ciclo de atualização para os gauges a cada 10 segundos
     setInterval(updateGauges, 10000);
     // Atualiza também o histórico periodicamente para reduzir discrepância visual com os gauges.
-    setInterval(() => {
-        fetchHistory(document.getElementById('start_date').value, document.getElementById('end_date').value);
-    }, 60000);
+    setInterval(loadCurrentHistory, 60000);
 });
 </script>
 
