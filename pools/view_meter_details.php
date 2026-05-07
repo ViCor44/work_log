@@ -364,9 +364,19 @@ document.addEventListener('DOMContentLoaded', function() {
                 });
             }
             document.getElementById('modal-range-24h').addEventListener('click', function() {
-                modalActiveRange = '24h';
-                setModalActiveRangeBtn('modal-range-24h');
-                loadCurrentModalHistory();
+                if (modalActiveRange === '24h') {
+                    // Desligar: volta a mostrar desde as 00:00 do dia atual
+                    modalActiveRange = 'custom';
+                    const t = modalTodayStr();
+                    document.getElementById('modal_start_date').value = t;
+                    document.getElementById('modal_end_date').value = t;
+                    setModalActiveRangeBtn(null);
+                    fetchParameterHistory(currentParameter, currentParameterLabel);
+                } else {
+                    modalActiveRange = '24h';
+                    setModalActiveRangeBtn('modal-range-24h');
+                    loadCurrentModalHistory();
+                }
             });
             document.getElementById('modal-range-7d').addEventListener('click', function() {
                 modalActiveRange = '7d';

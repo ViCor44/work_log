@@ -901,9 +901,19 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 
     document.getElementById('range-24h').addEventListener('click', function() {
-        activeRange = '24h';
-        setActiveRangeBtn('range-24h');
-        loadCurrentHistory();
+        if (activeRange === '24h') {
+            // Desligar: volta a mostrar desde as 00:00 do dia atual
+            activeRange = 'custom';
+            const t = todayStr();
+            document.getElementById('start_date').value = t;
+            document.getElementById('end_date').value = t;
+            setActiveRangeBtn(null);
+            fetchHistory(t, t);
+        } else {
+            activeRange = '24h';
+            setActiveRangeBtn('range-24h');
+            loadCurrentHistory();
+        }
     });
     document.getElementById('range-7d').addEventListener('click', function() {
         activeRange = '7d';
