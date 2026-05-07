@@ -878,8 +878,8 @@ function createLoraCard(device) {
                     <li class="list-group-item d-flex justify-content-between align-items-center">
                         <span class="text-white-50">Sinal (RSSI/SNR)</span>
                         <span class="font-monospace fs-5">
-                            ${device.last_rssi ?? 'N/A'} <span class="unit">dBm</span> /
-                            ${device.last_snr ?? 'N/A'}
+                            ${(device.last_rssi != null ? device.last_rssi : 'N/A')} <span class="unit">dBm</span> /
+                            ${(device.last_snr != null ? device.last_snr : 'N/A')}
                         </span>
                     </li>
                 </ul>
