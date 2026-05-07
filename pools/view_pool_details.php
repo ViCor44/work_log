@@ -974,6 +974,7 @@ document.addEventListener('DOMContentLoaded', function() {
         tsEl.textContent = 'Última atualização: ' + new Date().toLocaleTimeString('pt-PT');
         modal.show();
     }
+    window.openControllerModal = openControllerModal;
     // ─────────────────────────────────────────────────────────────────────────
 
     document.getElementById('date-range-form').addEventListener('submit', function(e) {
