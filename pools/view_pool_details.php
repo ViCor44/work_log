@@ -947,8 +947,8 @@ document.addEventListener('DOMContentLoaded', function() {
                 d.C1SetPoint,
                 d.C1Value,
                 d.C1Disturbance,
-                d.C1Status ?? d.bmC1Status,
-                d.C1RunStatus ?? d.bmC1RunStatus
+                (d.C1Status != null ? d.C1Status : d.bmC1Status),
+                (d.C1RunStatus != null ? d.C1RunStatus : d.bmC1RunStatus)
             )}
             ${buildControllerSection(
                 'Controlador 2 — pH', '#6ee0a0',
@@ -956,8 +956,8 @@ document.addEventListener('DOMContentLoaded', function() {
                 d.C2SetPoint,
                 d.C2Value,
                 d.C2Disturbance,
-                d.C2Status ?? d.bmC2Status,
-                d.C2RunStatus ?? d.bmC2RunStatus
+                (d.C2Status != null ? d.C2Status : d.bmC2Status),
+                (d.C2RunStatus != null ? d.C2RunStatus : d.bmC2RunStatus)
             )}
             ${(d.temperature !== undefined || d.C3SetPoint !== undefined) ? buildControllerSection(
                 'Controlador 3 — Temperatura', '#f5a623',
@@ -965,8 +965,8 @@ document.addEventListener('DOMContentLoaded', function() {
                 d.C3SetPoint,
                 d.C3Value,
                 d.C3Disturbance,
-                d.C3Status ?? d.bmC3Status,
-                d.C3RunStatus ?? d.bmC3RunStatus
+                (d.C3Status != null ? d.C3Status : d.bmC3Status),
+                (d.C3RunStatus != null ? d.C3RunStatus : d.bmC3RunStatus)
             ) : ''}`;
 
         tsEl.textContent = 'Última atualização: ' + new Date().toLocaleTimeString('pt-PT');
