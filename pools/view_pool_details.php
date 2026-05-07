@@ -678,7 +678,8 @@ document.addEventListener('DOMContentLoaded', function() {
 	        const response = await fetch(`get_controller_data.php?ip=${controllerIp}`);
 	        const data = await response.json();
 	        if (data.error) throw new Error(data.error);
-	        lastControllerData = data; The keys here ('ph', 'cloro_livre', 'temperatura', 'ph_setpoint', 
+	        lastControllerData = data;
+	        // The keys here ('ph', 'cloro_livre', 'temperatura', 'ph_setpoint',
 	        // 'estado', and 'disturbio') must exactly match your XML/JSON file from the controller.
 	
 	        // Update Temperature Gauge
