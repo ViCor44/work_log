@@ -459,7 +459,8 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 
     // Função para ir buscar o histórico de um parâmetro específico
-    async function fetchParameterHistory(parameterName, parameterLabel, extraParams = {}) {
+    async function fetchParameterHistory(parameterName, parameterLabel, extraParams) {
+        extraParams = extraParams || {};
         currentParameter = parameterName;
         currentParameterLabel = parameterLabel;
 
@@ -468,7 +469,7 @@ document.addEventListener('DOMContentLoaded', function() {
 
         try {
             let url = `../api/get_meter_parameter_history.php?meter_id=${meterId}&parameter=${parameterName}&start_date=${startDate}&end_date=${endDate}`;
-            for (const [k, v] of Object.entries(extraParams)) url += `&${k}=${encodeURIComponent(v)}`;
+            var _epKeys = Object.keys(extraParams); for (var _i = 0; _i < _epKeys.length; _i++) { url += '&' + _epKeys[_i] + '=' + encodeURIComponent(extraParams[_epKeys[_i]]); }
             const response = await fetch(url);
             const data = await response.json();
             console.log('API Response:', data); // Debug API response

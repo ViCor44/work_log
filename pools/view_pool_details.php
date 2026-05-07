@@ -756,11 +756,12 @@ document.addEventListener('DOMContentLoaded', function() {
 	}
 
     // Função para ir buscar o histórico
-        async function fetchHistory(startDate, endDate, extraParams = {}) {
+        async function fetchHistory(startDate, endDate, extraParams) {
+        extraParams = extraParams || {};
         try {
             // 1. Buscar histórico
             let url = `../api/get_pool_history.php?id=${tankId}&start_date=${startDate}&end_date=${endDate}`;
-            for (const [k, v] of Object.entries(extraParams)) url += `&${k}=${encodeURIComponent(v)}`;
+            var _epKeys = Object.keys(extraParams); for (var _i = 0; _i < _epKeys.length; _i++) { url += '&' + _epKeys[_i] + '=' + encodeURIComponent(extraParams[_epKeys[_i]]); }
             const response = await fetch(url);
             const data = await response.json();
             if (data.error) throw new Error(data.error);
