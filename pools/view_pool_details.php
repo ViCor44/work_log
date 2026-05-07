@@ -155,7 +155,9 @@ $stmt->close();
             <div class="row">
 			    <div class="col-12 mb-3">
                     <div class="gauge-card">
-                        <h5>Cloro Livre (mg/L)</h5>
+                        <h5 class="d-flex justify-content-between align-items-center">Cloro Livre (mg/L)
+                            <button type="button" class="btn btn-sm btn-outline-info py-0 px-1" style="font-size:0.7rem" onclick="openControllerModal()" title="Ver detalhes do controlador"><i class="fas fa-info-circle"></i></button>
+                        </h5>
                         <canvas id="cloroGauge" height="150"></canvas>
                         <div id="cloro-details" class="details-box"></div>
                         <?php if (!isset($_SESSION['user_type']) || $_SESSION['user_type'] !== 'viewer'): ?>
@@ -288,6 +290,28 @@ $stmt->close();
                     </div>
                 </div>
             </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Modal detalhe Controlador Grundfos DID -->
+<div class="modal fade" id="controllerDetailModal" tabindex="-1" aria-labelledby="controllerDetailModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg modal-dialog-scrollable">
+        <div class="modal-content" style="background:#212529;color:#dee2e6;border:1px solid #495057">
+            <div class="modal-header" style="border-bottom:1px solid #495057">
+                <div>
+                    <h5 class="modal-title mb-0" id="controllerDetailModalLabel">Detalhe do Controlador</h5>
+                    <div id="controllerModalSubtitle" class="text-secondary" style="font-size:0.8rem"></div>
+                </div>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body" id="controllerModalBody">
+                <div class="text-center p-4"><i class="fas fa-spinner fa-spin fa-2x"></i></div>
+            </div>
+            <div class="modal-footer" style="border-top:1px solid #495057">
+                <span class="text-secondary me-auto" style="font-size:0.75rem" id="controllerModalTs"></span>
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Fechar</button>
             </div>
         </div>
     </div>
@@ -647,14 +671,14 @@ document.addEventListener('DOMContentLoaded', function() {
 	
     // NOVA FUNÇÃO PARA ATUALIZAR OS GAUGES EM TEMPO REAL
 	// This function replaces the existing updateGauges function in your script
+	let lastControllerData = null;
 	async function updateGauges() {
 	    if (!controllerIp) return; // Does nothing if the tank has no IP
 	    try {
 	        const response = await fetch(`get_controller_data.php?ip=${controllerIp}`);
 	        const data = await response.json();
 	        if (data.error) throw new Error(data.error);
-	
-	        // ATTENTION: The keys here ('ph', 'cloro_livre', 'temperatura', 'ph_setpoint', 
+	        lastControllerData = data; The keys here ('ph', 'cloro_livre', 'temperatura', 'ph_setpoint', 
 	        // 'estado', and 'disturbio') must exactly match your XML/JSON file from the controller.
 	
 	        // Update Temperature Gauge
@@ -854,6 +878,102 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     }
     
+    // ── Modal detalhe Controlador ─────────────────────────────────────────────
+    function ctrlStatusText(raw) {
+        const v = parseInt(raw);
+        if (isNaN(v)) return '<span class="badge bg-secondary">N/D</span>';
+        if (v === 0xFFFF) return '<span class="badge bg-secondary">Desativado</span>';
+        if (v === 0) return '<span class="badge bg-success">Sem erros</span>';
+        const errs = [];
+        if (v & 0x0001) errs.push('Erro geral');
+        if (v & 0x0002) errs.push('Erro de entrada');
+        if (v & 0x0004) errs.push('Erro de saída');
+        if (v & 0x0008) errs.push('Erro de perturbação');
+        return '<span class="badge bg-danger">' + errs.join(', ') + '</span>';
+    }
+    function ctrlRunStatusText(raw) {
+        const map = { 0: ['Parado','secondary'], 1: ['Em funcionamento','success'], 2: ['Hold / Manual','warning'] };
+        const v = parseInt(raw);
+        if (isNaN(v) || !(v in map)) return '<span class="badge bg-secondary">N/D</span>';
+        return `<span class="badge bg-${map[v][1]}">${map[v][0]}</span>`;
+    }
+    function ctrlRow(label, value, unit) {
+        const v = (value !== null && value !== undefined && !isNaN(parseFloat(value)))
+            ? parseFloat(value).toFixed(2) + (unit ? ' ' + unit : '')
+            : 'N/D';
+        return `<div class="d-flex justify-content-between mb-2"><span class="text-white-50">${label}</span><span class="font-monospace fw-bold">${v}</span></div>`;
+    }
+    function buildControllerSection(title, color, processVal, processUnit, setpoint, output, disturbance, status, runStatus) {
+        return `
+        <div class="p-3 rounded mb-3" style="background:#2b3035;border:1px solid #495057">
+            <h6 style="color:${color}" class="mb-3"><i class="fas fa-sliders-h me-1"></i>${title}</h6>
+            ${ctrlRow('Valor processo', processVal, processUnit)}
+            ${ctrlRow('Setpoint', setpoint, processUnit)}
+            ${ctrlRow('Saída / Dosagem', output, '%')}
+            ${ctrlRow('Perturbação', disturbance, '')}
+            <div class="d-flex justify-content-between mb-2"><span class="text-white-50">Estado</span><span>${ctrlStatusText(status)}</span></div>
+            <div class="d-flex justify-content-between"><span class="text-white-50">Operacional</span><span>${ctrlRunStatusText(runStatus)}</span></div>
+        </div>`;
+    }
+    function openControllerModal() {
+        const modal = new bootstrap.Modal(document.getElementById('controllerDetailModal'));
+        const bodyEl = document.getElementById('controllerModalBody');
+        const tsEl   = document.getElementById('controllerModalTs');
+        const subEl  = document.getElementById('controllerDetailModalLabel');
+
+        subEl.textContent = '<?= htmlspecialchars($tank_name) ?> — Grundfos DID';
+        document.getElementById('controllerModalSubtitle').textContent = '<?= $controller_ip ?>';
+
+        if (!lastControllerData) {
+            bodyEl.innerHTML = '<div class="text-center p-4 text-secondary">Dados ainda não carregados. Aguarde o próximo ciclo.</div>';
+            modal.show();
+            return;
+        }
+        const d = lastControllerData;
+        const alarmeBadge = (d.alarme == 0)
+            ? '<span class="badge bg-danger ms-2"><i class="fas fa-exclamation-triangle me-1"></i>ALARME ATIVO</span>'
+            : '<span class="badge bg-success ms-2"><i class="fas fa-check-circle me-1"></i>Online</span>';
+
+        bodyEl.innerHTML = `
+            <div class="mb-3 p-3 rounded" style="background:#2b3035;border:1px solid #495057">
+                <div class="d-flex align-items-center gap-2">
+                    <span class="fw-bold">Estado geral</span>${alarmeBadge}
+                </div>
+                <small class="text-secondary"><?= $controller_ip ?></small>
+            </div>
+            ${buildControllerSection(
+                'Controlador 1 — Cloro Livre', '#5bc8f5',
+                d.freeChlorine, 'mg/L',
+                d.C1SetPoint,
+                d.C1Value,
+                d.C1Disturbance,
+                d.C1Status ?? d.bmC1Status,
+                d.C1RunStatus ?? d.bmC1RunStatus
+            )}
+            ${buildControllerSection(
+                'Controlador 2 — pH', '#6ee0a0',
+                d.pH, '',
+                d.C2SetPoint,
+                d.C2Value,
+                d.C2Disturbance,
+                d.C2Status ?? d.bmC2Status,
+                d.C2RunStatus ?? d.bmC2RunStatus
+            )}
+            ${(d.temperature !== undefined || d.C3SetPoint !== undefined) ? buildControllerSection(
+                'Controlador 3 — Temperatura', '#f5a623',
+                d.temperature, '°C',
+                d.C3SetPoint,
+                d.C3Value,
+                d.C3Disturbance,
+                d.C3Status ?? d.bmC3Status,
+                d.C3RunStatus ?? d.bmC3RunStatus
+            ) : ''}`;
+
+        tsEl.textContent = 'Última atualização: ' + new Date().toLocaleTimeString('pt-PT');
+        modal.show();
+    }
+    // ─────────────────────────────────────────────────────────────────────────
+
     document.getElementById('date-range-form').addEventListener('submit', function(e) {
         e.preventDefault();
         activeRange = 'custom';
