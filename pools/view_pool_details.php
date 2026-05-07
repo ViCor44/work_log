@@ -212,19 +212,20 @@ $stmt->close();
         </div>
         <div class="col-lg-9 mb-4">
             <div class="chart-container">
-                <form class="row g-3 mb-3" id="date-range-form">
-                    <div class="col-md-4">
-                        <label for="start_date" class="form-label">Data Início</label>
-                        <input type="date" class="form-control" id="start_date" value="<?= date('Y-m-d') ?>">
+                <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-3" id="history-filter-bar">
+                    <div class="btn-group btn-group-sm" role="group" aria-label="Intervalo rápido">
+                        <button type="button" class="btn btn-info" id="range-24h">24h</button>
+                        <button type="button" class="btn btn-outline-info" id="range-7d">7 dias</button>
+                        <button type="button" class="btn btn-outline-info" id="range-30d">30 dias</button>
                     </div>
-                    <div class="col-md-4">
-                        <label for="end_date" class="form-label">Data Fim</label>
-                        <input type="date" class="form-control" id="end_date" value="<?= date('Y-m-d') ?>">
-                    </div>
-                    <div class="col-md-2 d-flex align-items-end">
-                        <button type="submit" class="btn btn-primary">Filtrar Histórico</button>
-                    </div>
-                </form>
+                    <form class="d-flex align-items-center gap-2" id="date-range-form">
+                        <input type="date" class="form-control form-control-sm" id="start_date" value="<?= date('Y-m-d') ?>" style="width:145px">
+                        <span class="text-secondary">—</span>
+                        <input type="date" class="form-control form-control-sm" id="end_date" value="<?= date('Y-m-d') ?>" style="width:145px">
+                        <button type="submit" class="btn btn-sm btn-info" title="Pesquisar"><i class="fas fa-search"></i></button>
+                        <button type="button" class="btn btn-sm btn-outline-secondary" id="btn-clear-range" title="Limpar filtro"><i class="fas fa-times"></i></button>
+                    </form>
+                </div>
                 <div id="history-stale-warning" class="alert alert-warning py-2 px-3 d-none" role="alert"></div>
 
                 <!-- Cards estatísticos Cloro Livre -->
@@ -854,7 +855,51 @@ document.addEventListener('DOMContentLoaded', function() {
     
     document.getElementById('date-range-form').addEventListener('submit', function(e) {
         e.preventDefault();
+        setActiveRangeBtn(null);
         fetchHistory(document.getElementById('start_date').value, document.getElementById('end_date').value);
+    });
+
+    function todayStr() { return new Date().toISOString().split('T')[0]; }
+    function daysAgoStr(n) { const d = new Date(); d.setDate(d.getDate() - n); return d.toISOString().split('T')[0]; }
+    function setActiveRangeBtn(activeId) {
+        ['range-24h','range-7d','range-30d'].forEach(function(id) {
+            const btn = document.getElementById(id);
+            if (!btn) return;
+            if (id === activeId) {
+                btn.classList.remove('btn-outline-info'); btn.classList.add('btn-info');
+            } else {
+                btn.classList.remove('btn-info'); btn.classList.add('btn-outline-info');
+            }
+        });
+    }
+
+    document.getElementById('range-24h').addEventListener('click', function() {
+        const t = todayStr();
+        document.getElementById('start_date').value = t;
+        document.getElementById('end_date').value = t;
+        setActiveRangeBtn('range-24h');
+        fetchHistory(t, t);
+    });
+    document.getElementById('range-7d').addEventListener('click', function() {
+        const s = daysAgoStr(6), t = todayStr();
+        document.getElementById('start_date').value = s;
+        document.getElementById('end_date').value = t;
+        setActiveRangeBtn('range-7d');
+        fetchHistory(s, t);
+    });
+    document.getElementById('range-30d').addEventListener('click', function() {
+        const s = daysAgoStr(29), t = todayStr();
+        document.getElementById('start_date').value = s;
+        document.getElementById('end_date').value = t;
+        setActiveRangeBtn('range-30d');
+        fetchHistory(s, t);
+    });
+    document.getElementById('btn-clear-range').addEventListener('click', function() {
+        const t = todayStr();
+        document.getElementById('start_date').value = t;
+        document.getElementById('end_date').value = t;
+        setActiveRangeBtn('range-24h');
+        fetchHistory(t, t);
     });
 
     // Função para mostrar o modal de nota

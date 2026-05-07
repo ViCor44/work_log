@@ -203,19 +203,20 @@ $stmt->close();
                         <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
                     </div>
                     <div class="modal-body">
-                        <form class="row g-3 mb-3" id="modal-date-range-form">
-                            <div class="col-md-4">
-                                <label for="modal_start_date" class="form-label">Data Início</label>
-                                <input type="date" class="form-control" id="modal_start_date" value="<?= date('Y-m-d') ?>">
+                        <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-3">
+                            <div class="btn-group btn-group-sm" role="group">
+                                <button type="button" class="btn btn-info" id="modal-range-24h">24h</button>
+                                <button type="button" class="btn btn-outline-info" id="modal-range-7d">7 dias</button>
+                                <button type="button" class="btn btn-outline-info" id="modal-range-30d">30 dias</button>
                             </div>
-                            <div class="col-md-4">
-                                <label for="modal_end_date" class="form-label">Data Fim</label>
-                                <input type="date" class="form-control" id="modal_end_date" value="<?= date('Y-m-d') ?>">
-                            </div>
-                            <div class="col-md-2 d-flex align-items-end">
-                                <button type="submit" class="btn btn-primary">Filtrar</button>
-                            </div>
-                        </form>
+                            <form class="d-flex align-items-center gap-2" id="modal-date-range-form">
+                                <input type="date" class="form-control form-control-sm" id="modal_start_date" value="<?= date('Y-m-d') ?>" style="width:145px">
+                                <span class="text-secondary">—</span>
+                                <input type="date" class="form-control form-control-sm" id="modal_end_date" value="<?= date('Y-m-d') ?>" style="width:145px">
+                                <button type="submit" class="btn btn-sm btn-info" title="Pesquisar"><i class="fas fa-search"></i></button>
+                                <button type="button" class="btn btn-sm btn-outline-secondary" id="modal-btn-clear-range" title="Limpar filtro"><i class="fas fa-times"></i></button>
+                            </form>
+                        </div>
                         <canvas id="parameterHistoryChart" height="120"></canvas>
                         <div id="chart-stats-container" class="chart-stats" style="display: none;"></div>
                     </div>
@@ -312,6 +313,49 @@ document.addEventListener('DOMContentLoaded', function() {
             // Evento para o filtro de datas do modal
             document.getElementById('modal-date-range-form').addEventListener('submit', function(e) {
                 e.preventDefault();
+                setModalActiveRangeBtn(null);
+                fetchParameterHistory(currentParameter, currentParameterLabel);
+            });
+
+            function modalTodayStr() { return new Date().toISOString().split('T')[0]; }
+            function modalDaysAgoStr(n) { const d = new Date(); d.setDate(d.getDate() - n); return d.toISOString().split('T')[0]; }
+            function setModalActiveRangeBtn(activeId) {
+                ['modal-range-24h','modal-range-7d','modal-range-30d'].forEach(function(id) {
+                    const btn = document.getElementById(id);
+                    if (!btn) return;
+                    if (id === activeId) {
+                        btn.classList.remove('btn-outline-info'); btn.classList.add('btn-info');
+                    } else {
+                        btn.classList.remove('btn-info'); btn.classList.add('btn-outline-info');
+                    }
+                });
+            }
+            document.getElementById('modal-range-24h').addEventListener('click', function() {
+                const t = modalTodayStr();
+                document.getElementById('modal_start_date').value = t;
+                document.getElementById('modal_end_date').value = t;
+                setModalActiveRangeBtn('modal-range-24h');
+                fetchParameterHistory(currentParameter, currentParameterLabel);
+            });
+            document.getElementById('modal-range-7d').addEventListener('click', function() {
+                const s = modalDaysAgoStr(6), t = modalTodayStr();
+                document.getElementById('modal_start_date').value = s;
+                document.getElementById('modal_end_date').value = t;
+                setModalActiveRangeBtn('modal-range-7d');
+                fetchParameterHistory(currentParameter, currentParameterLabel);
+            });
+            document.getElementById('modal-range-30d').addEventListener('click', function() {
+                const s = modalDaysAgoStr(29), t = modalTodayStr();
+                document.getElementById('modal_start_date').value = s;
+                document.getElementById('modal_end_date').value = t;
+                setModalActiveRangeBtn('modal-range-30d');
+                fetchParameterHistory(currentParameter, currentParameterLabel);
+            });
+            document.getElementById('modal-btn-clear-range').addEventListener('click', function() {
+                const t = modalTodayStr();
+                document.getElementById('modal_start_date').value = t;
+                document.getElementById('modal_end_date').value = t;
+                setModalActiveRangeBtn('modal-range-24h');
                 fetchParameterHistory(currentParameter, currentParameterLabel);
             });
 
