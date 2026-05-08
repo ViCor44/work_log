@@ -1124,8 +1124,8 @@ document.addEventListener('DOMContentLoaded', function() {
         fetchHistory(startDate, endDate, extra);
     });
 
-    // Aplicar filtro automaticamente ao mudar os campos de hora
-    ['start_time', 'end_time'].forEach(function(id) {
+    // Aplicar filtro automaticamente ao mudar qualquer campo de data ou hora
+    ['start_date', 'end_date', 'start_time', 'end_time'].forEach(function(id) {
         document.getElementById(id).addEventListener('change', function() {
             document.getElementById('date-range-form').dispatchEvent(new Event('submit', {cancelable: true}));
         });
