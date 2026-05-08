@@ -259,47 +259,55 @@ $stmt->close();
                             <div class="text-white-50" style="font-size:0.7rem">mg/L</div>
                         </div>
                     </div>
+                    <!-- Botão calc integral -->
+                    <div class="col-12 text-end" id="btn-integral-row" style="display:none">
+                        <button type="button" class="btn btn-sm btn-outline-info py-0 px-2" style="font-size:0.75rem" onclick="openIntegralModal()">
+                            <i class="fas fa-calculator me-1"></i>Integral / Consumo Hipoclorito
+                        </button>
+                    </div>
                 </div>
 
-                <!-- Painel: Integral de Dosagem / Estimativa de Consumo -->
-                <div class="card mb-3" id="integral-panel" style="background:#1a2232;border:1px solid #2a3a5a;display:none">
-                    <div class="card-header py-2 px-3 d-flex justify-content-between align-items-center" style="background:#1e2a40;border-bottom:1px solid #2a3a5a;cursor:pointer" onclick="document.getElementById('integral-body').classList.toggle('d-none')">
-                        <span style="font-size:0.85rem;color:#5bc8f5"><i class="fas fa-calculator me-2"></i>Integral de Dosagem &amp; Estimativa de Consumo</span>
-                        <i class="fas fa-chevron-down" style="font-size:0.75rem;color:#adb5bd"></i>
-                    </div>
-                    <div id="integral-body" class="card-body py-2 px-3">
-                        <div class="row g-2 mb-2">
-                            <div class="col-6">
-                                <div class="text-white-50" style="font-size:0.7rem;letter-spacing:1px">INTEGRAL DOSAGEM</div>
-                                <div id="stat-integral" class="fw-bold font-monospace" style="font-size:1.2rem;color:#5bc8f5">--</div>
-                                <div class="text-white-50" style="font-size:0.7rem">%-hora</div>
+                <!-- Modal: Integral de Dosagem / Estimativa de Consumo -->
+                <div class="modal fade" id="integralModal" tabindex="-1" aria-hidden="true">
+                    <div class="modal-dialog modal-dialog-centered">
+                        <div class="modal-content" style="background:#212529;color:#dee2e6;border:1px solid #495057">
+                            <div class="modal-header py-2" style="border-bottom:1px solid #495057">
+                                <h6 class="modal-title mb-0" style="color:#5bc8f5"><i class="fas fa-calculator me-2"></i>Integral de Dosagem &amp; Consumo Hipoclorito</h6>
+                                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
                             </div>
-                            <div class="col-6">
-                                <div class="text-white-50" style="font-size:0.7rem;letter-spacing:1px">DURAÇÃO</div>
-                                <div id="stat-integral-duration" class="fw-bold font-monospace" style="font-size:1.2rem;color:#adb5bd">--</div>
-                                <div class="text-white-50" style="font-size:0.7rem">horas</div>
+                            <div class="modal-body py-3">
+                                <div class="row g-2 mb-3">
+                                    <div class="col-6 text-center">
+                                        <div class="text-white-50" style="font-size:0.7rem;letter-spacing:1px">INTEGRAL DOSAGEM</div>
+                                        <div id="stat-integral" class="fw-bold font-monospace" style="font-size:1.4rem;color:#5bc8f5">--</div>
+                                        <div class="text-white-50" style="font-size:0.7rem">%-hora</div>
+                                    </div>
+                                    <div class="col-6 text-center">
+                                        <div class="text-white-50" style="font-size:0.7rem;letter-spacing:1px">DURAÇÃO</div>
+                                        <div id="stat-integral-duration" class="fw-bold font-monospace" style="font-size:1.4rem;color:#adb5bd">--</div>
+                                        <div class="text-white-50" style="font-size:0.7rem">horas</div>
+                                    </div>
+                                </div>
+                                <hr style="border-color:#495057;margin:0.5rem 0">
+                                <div style="font-size:0.8rem;color:#adb5bd" class="mb-2">Consumo medido no período (calibração):</div>
+                                <div class="input-group input-group-sm mb-2">
+                                    <input type="number" class="form-control" id="input-consumo" placeholder="Ex.: 390" min="0" step="0.1" style="background:#2b3035;border-color:#495057;color:#dee2e6">
+                                    <span class="input-group-text" style="background:#2b3035;border-color:#495057;color:#adb5bd">L</span>
+                                    <button class="btn btn-outline-info btn-sm" type="button" onclick="calcularFatorK()">Calcular k</button>
+                                </div>
+                                <div id="resultado-k" class="d-none p-2 rounded mb-2" style="background:#2b3035;font-size:0.82rem">
+                                    <div class="mb-1">k = <strong id="valor-k" class="text-warning">--</strong> L / %-hora</div>
+                                    <div class="text-white-50" style="font-size:0.75rem">Usa este fator nos outros períodos 10:00→10:00</div>
+                                </div>
+                                <hr style="border-color:#495057;margin:0.5rem 0">
+                                <div style="font-size:0.8rem;color:#adb5bd" class="mb-1">Estimar consumo (fator já calculado):</div>
+                                <div class="input-group input-group-sm">
+                                    <span class="input-group-text" style="background:#2b3035;border-color:#495057;color:#adb5bd">k =</span>
+                                    <input type="number" class="form-control" id="input-k-manual" placeholder="Fator k" step="0.0001" style="background:#2b3035;border-color:#495057;color:#dee2e6">
+                                    <button class="btn btn-outline-success btn-sm" type="button" onclick="estimarConsumo()">Estimar</button>
+                                </div>
+                                <div id="resultado-estimativa" class="mt-2 d-none text-success fw-bold" style="font-size:1rem"></div>
                             </div>
-                        </div>
-                        <hr style="border-color:#2a3a5a;margin:0.5rem 0">
-                        <div style="font-size:0.78rem;color:#adb5bd" class="mb-2">Consumo medido no período (para calibração):</div>
-                        <div class="input-group input-group-sm mb-2">
-                            <input type="number" class="form-control" id="input-consumo" placeholder="Ex.: 390" min="0" step="0.1" style="background:#2b3035;border-color:#495057;color:#dee2e6">
-                            <span class="input-group-text" style="background:#2b3035;border-color:#495057;color:#adb5bd">L</span>
-                            <button class="btn btn-outline-info btn-sm" type="button" onclick="calcularFatorK()">Calcular fator k</button>
-                        </div>
-                        <div id="resultado-k" class="d-none p-2 rounded" style="background:#2b3035;font-size:0.82rem">
-                            <div class="mb-1">Fator k = <strong id="valor-k" class="text-warning">--</strong> L / %-hora</div>
-                            <div class="text-white-50" style="font-size:0.75rem">Aplica este fator a qualquer período com o mesmo intervalo 10:00→10:00</div>
-                        </div>
-                        <div id="estimativa-k-panel" class="mt-2 d-none">
-                            <hr style="border-color:#2a3a5a;margin:0.5rem 0">
-                            <div style="font-size:0.78rem;color:#adb5bd" class="mb-1">Estimar consumo com fator guardado:</div>
-                            <div class="input-group input-group-sm">
-                                <span class="input-group-text" style="background:#2b3035;border-color:#495057;color:#adb5bd">k =</span>
-                                <input type="number" class="form-control" id="input-k-manual" placeholder="Fator k" step="0.0001" style="background:#2b3035;border-color:#495057;color:#dee2e6">
-                                <button class="btn btn-outline-success btn-sm" type="button" onclick="estimarConsumo()">Estimar</button>
-                            </div>
-                            <div id="resultado-estimativa" class="mt-1 d-none text-success fw-bold" style="font-size:0.9rem"></div>
                         </div>
                     </div>
                 </div>
@@ -833,6 +841,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 document.getElementById('stat-cloro-max').textContent = cMax.toFixed(2);
                 document.getElementById('stat-cloro-avg').textContent = cAvg.toFixed(2);
                 document.getElementById('stat-cloro-min').textContent = cMin.toFixed(2);
+                document.getElementById('btn-integral-row').style.removeProperty('display');
                 statsRow.style.removeProperty('display');
             } else {
                 statsRow.style.setProperty('display', 'none', 'important');
@@ -842,7 +851,7 @@ document.addEventListener('DOMContentLoaded', function() {
             (function() {
                 const dosRecords = data.history.filter(rec => rec.cl_controller_state !== null);
                 if (dosRecords.length < 2) {
-                    document.getElementById('integral-panel').style.display = 'none';
+                    document.getElementById('btn-integral-row').style.display = 'none';
                     return;
                 }
                 let integral = 0;
@@ -859,13 +868,19 @@ document.addEventListener('DOMContentLoaded', function() {
                 const durationH = (tN - t0) / 3600000;
                 document.getElementById('stat-integral').textContent = integral.toFixed(2);
                 document.getElementById('stat-integral-duration').textContent = durationH.toFixed(1);
-                document.getElementById('integral-panel').style.removeProperty('display');
+                document.getElementById('btn-integral-row').style.removeProperty('display');
                 // Guardar integral no scope para uso do fator k
                 window._lastIntegral = integral;
                 // Se já houver fator k guardado, recalcular estimativa automaticamente
                 const kIn = document.getElementById('input-k-manual').value;
                 if (kIn && parseFloat(kIn) > 0) estimarConsumo();
             })();
+
+            // Recalcular estimativa se modal estiver aberto
+            if (document.getElementById('integralModal').classList.contains('show')) {
+                const kIn = document.getElementById('input-k-manual').value;
+                if (kIn && parseFloat(kIn) > 0) estimarConsumo();
+            }
 
             // Datasets com x = log_datetime
             const phDatasetLine = data.history.map(rec => ({ x: rec.log_datetime, y: rec.ph_value }));
@@ -1064,6 +1079,11 @@ document.addEventListener('DOMContentLoaded', function() {
     }
     window.openControllerModal = openControllerModal;
 
+    function openIntegralModal() {
+        new bootstrap.Modal(document.getElementById('integralModal')).show();
+    }
+    window.openIntegralModal = openIntegralModal;
+
     // ── Integral de Dosagem / Fator k ─────────────────────────────────────────
     function calcularFatorK() {
         const consumo = parseFloat(document.getElementById('input-consumo').value);
@@ -1150,11 +1170,15 @@ document.addEventListener('DOMContentLoaded', function() {
             const t = todayStr();
             document.getElementById('start_date').value = t;
             document.getElementById('end_date').value = t;
+            document.getElementById('start_time').value = '';
+            document.getElementById('end_time').value = '';
             setActiveRangeBtn(null);
             fetchHistory(t, t);
         } else {
             activeRange = '24h';
             setActiveRangeBtn('range-24h');
+            document.getElementById('start_time').value = '';
+            document.getElementById('end_time').value = '';
             loadCurrentHistory();
         }
     });
@@ -1163,6 +1187,8 @@ document.addEventListener('DOMContentLoaded', function() {
         const s = daysAgoStr(6), t = todayStr();
         document.getElementById('start_date').value = s;
         document.getElementById('end_date').value = t;
+        document.getElementById('start_time').value = '';
+        document.getElementById('end_time').value = '';
         setActiveRangeBtn('range-7d');
         fetchHistory(s, t);
     });
@@ -1171,11 +1197,15 @@ document.addEventListener('DOMContentLoaded', function() {
         const s = daysAgoStr(29), t = todayStr();
         document.getElementById('start_date').value = s;
         document.getElementById('end_date').value = t;
+        document.getElementById('start_time').value = '';
+        document.getElementById('end_time').value = '';
         setActiveRangeBtn('range-30d');
         fetchHistory(s, t);
     });
     document.getElementById('btn-clear-range').addEventListener('click', function() {
         activeRange = '24h';
+        document.getElementById('start_time').value = '';
+        document.getElementById('end_time').value = '';
         setActiveRangeBtn('range-24h');
         loadCurrentHistory();
     });
