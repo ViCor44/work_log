@@ -261,6 +261,49 @@ $stmt->close();
                     </div>
                 </div>
 
+                <!-- Painel: Integral de Dosagem / Estimativa de Consumo -->
+                <div class="card mb-3" id="integral-panel" style="background:#1a2232;border:1px solid #2a3a5a;display:none">
+                    <div class="card-header py-2 px-3 d-flex justify-content-between align-items-center" style="background:#1e2a40;border-bottom:1px solid #2a3a5a;cursor:pointer" onclick="document.getElementById('integral-body').classList.toggle('d-none')">
+                        <span style="font-size:0.85rem;color:#5bc8f5"><i class="fas fa-calculator me-2"></i>Integral de Dosagem &amp; Estimativa de Consumo</span>
+                        <i class="fas fa-chevron-down" style="font-size:0.75rem;color:#adb5bd"></i>
+                    </div>
+                    <div id="integral-body" class="card-body py-2 px-3">
+                        <div class="row g-2 mb-2">
+                            <div class="col-6">
+                                <div class="text-white-50" style="font-size:0.7rem;letter-spacing:1px">INTEGRAL DOSAGEM</div>
+                                <div id="stat-integral" class="fw-bold font-monospace" style="font-size:1.2rem;color:#5bc8f5">--</div>
+                                <div class="text-white-50" style="font-size:0.7rem">%-hora</div>
+                            </div>
+                            <div class="col-6">
+                                <div class="text-white-50" style="font-size:0.7rem;letter-spacing:1px">DURAÇÃO</div>
+                                <div id="stat-integral-duration" class="fw-bold font-monospace" style="font-size:1.2rem;color:#adb5bd">--</div>
+                                <div class="text-white-50" style="font-size:0.7rem">horas</div>
+                            </div>
+                        </div>
+                        <hr style="border-color:#2a3a5a;margin:0.5rem 0">
+                        <div style="font-size:0.78rem;color:#adb5bd" class="mb-2">Consumo medido no período (para calibração):</div>
+                        <div class="input-group input-group-sm mb-2">
+                            <input type="number" class="form-control" id="input-consumo" placeholder="Ex.: 390" min="0" step="0.1" style="background:#2b3035;border-color:#495057;color:#dee2e6">
+                            <span class="input-group-text" style="background:#2b3035;border-color:#495057;color:#adb5bd">L</span>
+                            <button class="btn btn-outline-info btn-sm" type="button" onclick="calcularFatorK()">Calcular fator k</button>
+                        </div>
+                        <div id="resultado-k" class="d-none p-2 rounded" style="background:#2b3035;font-size:0.82rem">
+                            <div class="mb-1">Fator k = <strong id="valor-k" class="text-warning">--</strong> L / %-hora</div>
+                            <div class="text-white-50" style="font-size:0.75rem">Aplica este fator a qualquer período com o mesmo intervalo 10:00→10:00</div>
+                        </div>
+                        <div id="estimativa-k-panel" class="mt-2 d-none">
+                            <hr style="border-color:#2a3a5a;margin:0.5rem 0">
+                            <div style="font-size:0.78rem;color:#adb5bd" class="mb-1">Estimar consumo com fator guardado:</div>
+                            <div class="input-group input-group-sm">
+                                <span class="input-group-text" style="background:#2b3035;border-color:#495057;color:#adb5bd">k =</span>
+                                <input type="number" class="form-control" id="input-k-manual" placeholder="Fator k" step="0.0001" style="background:#2b3035;border-color:#495057;color:#dee2e6">
+                                <button class="btn btn-outline-success btn-sm" type="button" onclick="estimarConsumo()">Estimar</button>
+                            </div>
+                            <div id="resultado-estimativa" class="mt-1 d-none text-success fw-bold" style="font-size:0.9rem"></div>
+                        </div>
+                    </div>
+                </div>
+
                <div class="row">
                    <div class="col-12">
                        <h5 class="text-center">Histórico de Cloro Livre (mg/L)</h5>
@@ -795,6 +838,35 @@ document.addEventListener('DOMContentLoaded', function() {
                 statsRow.style.setProperty('display', 'none', 'important');
             }
 
+            // Calcular integral de dosagem (regra dos trapézios)
+            (function() {
+                const dosRecords = data.history.filter(rec => rec.cl_controller_state !== null);
+                if (dosRecords.length < 2) {
+                    document.getElementById('integral-panel').style.display = 'none';
+                    return;
+                }
+                let integral = 0;
+                let t0 = new Date(dosRecords[0].log_datetime);
+                let tN = new Date(dosRecords[dosRecords.length - 1].log_datetime);
+                for (let i = 1; i < dosRecords.length; i++) {
+                    const tA = new Date(dosRecords[i-1].log_datetime);
+                    const tB = new Date(dosRecords[i].log_datetime);
+                    const dA = parseFloat(dosRecords[i-1].cl_controller_state) || 0;
+                    const dB = parseFloat(dosRecords[i].cl_controller_state) || 0;
+                    const dtH = (tB - tA) / 3600000; // ms -> horas
+                    integral += (dA + dB) / 2 * dtH;
+                }
+                const durationH = (tN - t0) / 3600000;
+                document.getElementById('stat-integral').textContent = integral.toFixed(2);
+                document.getElementById('stat-integral-duration').textContent = durationH.toFixed(1);
+                document.getElementById('integral-panel').style.removeProperty('display');
+                // Guardar integral no scope para uso do fator k
+                window._lastIntegral = integral;
+                // Se já houver fator k guardado, recalcular estimativa automaticamente
+                const kIn = document.getElementById('input-k-manual').value;
+                if (kIn && parseFloat(kIn) > 0) estimarConsumo();
+            })();
+
             // Datasets com x = log_datetime
             const phDatasetLine = data.history.map(rec => ({ x: rec.log_datetime, y: rec.ph_value }));
             const phDatasetDosagem = data.history.map(rec => ({ x: rec.log_datetime, y: parseFloat(rec.ph_controller_state) || 0 }));
@@ -991,6 +1063,31 @@ document.addEventListener('DOMContentLoaded', function() {
         modal.show();
     }
     window.openControllerModal = openControllerModal;
+
+    // ── Integral de Dosagem / Fator k ─────────────────────────────────────────
+    function calcularFatorK() {
+        const consumo = parseFloat(document.getElementById('input-consumo').value);
+        const integral = window._lastIntegral;
+        if (!consumo || consumo <= 0 || !integral || integral <= 0) return;
+        const k = consumo / integral;
+        document.getElementById('valor-k').textContent = k.toFixed(4);
+        document.getElementById('resultado-k').classList.remove('d-none');
+        document.getElementById('input-k-manual').value = k.toFixed(4);
+        document.getElementById('estimativa-k-panel').classList.remove('d-none');
+    }
+    function estimarConsumo() {
+        const k = parseFloat(document.getElementById('input-k-manual').value);
+        const integral = window._lastIntegral;
+        if (!k || k <= 0 || !integral || integral <= 0) return;
+        const estimativa = k * integral;
+        const el = document.getElementById('resultado-estimativa');
+        el.textContent = `Estimativa: ${estimativa.toFixed(1)} L`;
+        el.classList.remove('d-none');
+        document.getElementById('estimativa-k-panel').classList.remove('d-none');
+    }
+    window.calcularFatorK = calcularFatorK;
+    window.estimarConsumo = estimarConsumo;
+    // ─────────────────────────────────────────────────────────────────────────
     // ─────────────────────────────────────────────────────────────────────────
 
     document.getElementById('date-range-form').addEventListener('submit', function(e) {
