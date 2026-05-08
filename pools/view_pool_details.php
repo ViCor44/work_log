@@ -633,6 +633,7 @@ document.addEventListener('DOMContentLoaded', function() {
     let tempGauge, phGauge, cloroGauge;
     let cloroNotes = [];
     let cloroHistoryTimestamps = [];
+    let _historyAutoRefreshPaused = false;
     let cloroHistoryValues = [];
     let cloroManualTargetSetpoint = null;
 
@@ -1089,14 +1090,16 @@ document.addEventListener('DOMContentLoaded', function() {
     function openIntegralModal() {
         new bootstrap.Modal(document.getElementById('integralModal')).show();
     }
-    // Impedir que o modal de integral cause resize nos charts
+    // Listener único para o modal integral: impede resize dos charts e pausa auto-refresh
     document.getElementById('integralModal').addEventListener('show.bs.modal', function() {
         if (cloroHistoryChart) cloroHistoryChart.options.responsive = false;
         if (phHistoryChart)    phHistoryChart.options.responsive = false;
+        _historyAutoRefreshPaused = true;
     });
     document.getElementById('integralModal').addEventListener('hidden.bs.modal', function() {
         if (cloroHistoryChart) { cloroHistoryChart.options.responsive = true; cloroHistoryChart.resize(); }
         if (phHistoryChart)    { phHistoryChart.options.responsive = true;    phHistoryChart.resize(); }
+        _historyAutoRefreshPaused = false;
     });
     window.openIntegralModal = openIntegralModal;
 
@@ -1309,10 +1312,14 @@ document.addEventListener('DOMContentLoaded', function() {
     updateGauges();
     setActiveRangeBtn('range-24h');
     loadCurrentHistory();
-    // Inicia o ciclo de atualização para os gauges a cada 10 segundos
+
+    // Ciclo de atualização: gauges sempre; histórico só se não estiver em pesquisa manual
     setInterval(updateGauges, 10000);
-    // Atualiza também o histórico periodicamente para reduzir discrepância visual com os gauges.
-    setInterval(loadCurrentHistory, 60000);
+    setInterval(function() {
+        if (!_historyAutoRefreshPaused && activeRange !== 'custom') {
+            loadCurrentHistory();
+        }
+    }, 60000);
 });
 </script>
 
