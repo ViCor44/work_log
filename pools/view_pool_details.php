@@ -220,10 +220,16 @@ $stmt->close();
                         <button type="button" class="btn btn-outline-info" id="range-7d">7 dias</button>
                         <button type="button" class="btn btn-outline-info" id="range-30d">30 dias</button>
                     </div>
-                    <form class="d-flex align-items-center gap-2" id="date-range-form">
-                        <input type="date" class="form-control form-control-sm" id="start_date" value="<?= date('Y-m-d') ?>" style="width:145px">
+                    <form class="d-flex flex-wrap align-items-center gap-2" id="date-range-form">
+                        <div class="d-flex align-items-center gap-1">
+                            <input type="date" class="form-control form-control-sm" id="start_date" value="<?= date('Y-m-d') ?>" style="width:140px">
+                            <input type="time" class="form-control form-control-sm" id="start_time" placeholder="00:00" style="width:90px">
+                        </div>
                         <span class="text-secondary">—</span>
-                        <input type="date" class="form-control form-control-sm" id="end_date" value="<?= date('Y-m-d') ?>" style="width:145px">
+                        <div class="d-flex align-items-center gap-1">
+                            <input type="date" class="form-control form-control-sm" id="end_date" value="<?= date('Y-m-d') ?>" style="width:140px">
+                            <input type="time" class="form-control form-control-sm" id="end_time" placeholder="23:59" style="width:90px">
+                        </div>
                         <button type="submit" class="btn btn-sm btn-info" title="Pesquisar"><i class="fas fa-search"></i></button>
                         <button type="button" class="btn btn-sm btn-outline-secondary" id="btn-clear-range" title="Limpar filtro"><i class="fas fa-times"></i></button>
                     </form>
@@ -991,7 +997,14 @@ document.addEventListener('DOMContentLoaded', function() {
         e.preventDefault();
         activeRange = 'custom';
         setActiveRangeBtn(null);
-        fetchHistory(document.getElementById('start_date').value, document.getElementById('end_date').value);
+        const startDate = document.getElementById('start_date').value;
+        const endDate   = document.getElementById('end_date').value;
+        const startTime = document.getElementById('start_time').value;
+        const endTime   = document.getElementById('end_time').value;
+        const extra = {};
+        if (startTime) extra.start_datetime = startDate + ' ' + startTime + ':00';
+        if (endTime)   extra.end_datetime   = endDate   + ' ' + endTime   + ':59';
+        fetchHistory(startDate, endDate, extra);
     });
 
     let activeRange = '24h';
