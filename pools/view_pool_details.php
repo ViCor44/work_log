@@ -720,7 +720,8 @@ document.addEventListener('DOMContentLoaded', function() {
             }
 	        
 	        // Update Chlorine Gauge and its Details Box
-	        const cloroValue = data.freeChlorine;
+	        const cloroValueRaw = data.freeChlorine;
+	        const cloroValue = (cloroValueRaw !== null && parseFloat(cloroValueRaw) <= -1) ? null : cloroValueRaw;
 	        const cloroSetpoint = data.C1SetPoint;
 			const cl_controllerState = data.C1Value;
 	        const cl_disturbance = data.C1Disturbance;
@@ -773,8 +774,8 @@ document.addEventListener('DOMContentLoaded', function() {
             cloroHistoryTimestamps = data.history.map(rec => rec.log_datetime);
             cloroHistoryValues = data.history.map(rec => rec.chlorine_value);
 
-            // Calcular e mostrar estatísticas Cloro Livre
-            const cloroNums = cloroHistoryValues.map(v => parseFloat(v)).filter(v => !isNaN(v) && v !== null);
+            // Calcular e mostrar estatísticas Cloro Livre (-1.00 = defeito do dispositivo, ignorado)
+            const cloroNums = cloroHistoryValues.map(v => parseFloat(v)).filter(v => !isNaN(v) && v !== null && v > -1);
             const statsRow = document.getElementById('cloro-stats-row');
             if (cloroNums.length > 0) {
                 const cMax = Math.max(...cloroNums);
@@ -792,7 +793,7 @@ document.addEventListener('DOMContentLoaded', function() {
             const phDatasetLine = data.history.map(rec => ({ x: rec.log_datetime, y: rec.ph_value }));
             const phDatasetDosagem = data.history.map(rec => ({ x: rec.log_datetime, y: parseFloat(rec.ph_controller_state) || 0 }));
             const phDatasetSetpoint = data.history.map(rec => ({ x: rec.log_datetime, y: rec.ph_setpoint }));
-            const cloroDatasetLine = data.history.map(rec => ({ x: rec.log_datetime, y: rec.chlorine_value }));
+            const cloroDatasetLine = data.history.map(rec => ({ x: rec.log_datetime, y: parseFloat(rec.chlorine_value) <= -1 ? null : rec.chlorine_value }));
             const cloroDatasetDosagem = data.history.map(rec => ({ x: rec.log_datetime, y: parseFloat(rec.cl_controller_state) || 0 }));
             const cloroDatasetSetpoint = data.history.map(rec => ({ x: rec.log_datetime, y: rec.chlorine_setpoint }));
             const cloroDatasetBaseSetpoint = (cloroManualTargetSetpoint !== null)
