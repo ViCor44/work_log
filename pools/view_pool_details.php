@@ -899,13 +899,28 @@ document.addEventListener('DOMContentLoaded', function() {
         if (isNaN(v) || !(v in map)) return '<span class="badge bg-secondary">N/D</span>';
         return `<span class="badge bg-${map[v][1]}">${map[v][0]}</span>`;
     }
+    function sensorStatusText(raw) {
+        const v = parseInt(raw);
+        if (isNaN(v)) return '<span class="badge bg-secondary">N/D</span>';
+        if (v === 0) return '<span class="badge bg-success">OK</span>';
+        const errs = [];
+        if (v & 0x0001) errs.push('Erro geral');
+        if (v & 0x0002) errs.push('Calibração');
+        if (v & 0x0004) errs.push('Sinal baixo');
+        if (v & 0x0008) errs.push('Sinal alto');
+        if (errs.length === 0) errs.push('Erro 0x' + v.toString(16).toUpperCase());
+        return '<span class="badge bg-warning text-dark">' + errs.join(', ') + '</span>';
+    }
     function ctrlRow(label, value, unit) {
         const v = (value !== null && value !== undefined && !isNaN(parseFloat(value)))
             ? parseFloat(value).toFixed(2) + (unit ? ' ' + unit : '')
             : 'N/D';
         return `<div class="d-flex justify-content-between mb-2"><span class="text-white-50">${label}</span><span class="font-monospace fw-bold">${v}</span></div>`;
     }
-    function buildControllerSection(title, color, processVal, processUnit, setpoint, output, disturbance, status, runStatus) {
+    function buildControllerSection(title, color, processVal, processUnit, setpoint, output, disturbance, status, runStatus, sensorStatus) {
+        const sensorRow = (sensorStatus !== null && sensorStatus !== undefined)
+            ? `<div class="d-flex justify-content-between mb-2"><span class="text-white-50">Estado sensor</span><span>${sensorStatusText(sensorStatus)}</span></div>`
+            : '';
         return `
         <div class="p-3 rounded mb-3" style="background:#2b3035;border:1px solid #495057">
             <h6 style="color:${color}" class="mb-3"><i class="fas fa-sliders-h me-1"></i>${title}</h6>
@@ -913,7 +928,8 @@ document.addEventListener('DOMContentLoaded', function() {
             ${ctrlRow('Setpoint', setpoint, processUnit)}
             ${ctrlRow('Saída / Dosagem', output, '%')}
             ${ctrlRow('Perturbação', disturbance, '')}
-            <div class="d-flex justify-content-between mb-2"><span class="text-white-50">Estado</span><span>${ctrlStatusText(status)}</span></div>
+            ${sensorRow}
+            <div class="d-flex justify-content-between mb-2"><span class="text-white-50">Estado controlador</span><span>${ctrlStatusText(status)}</span></div>
             <div class="d-flex justify-content-between"><span class="text-white-50">Operacional</span><span>${ctrlRunStatusText(runStatus)}</span></div>
         </div>`;
     }
@@ -945,31 +961,24 @@ document.addEventListener('DOMContentLoaded', function() {
             </div>
             ${buildControllerSection(
                 'Controlador 1 — Cloro Livre', '#5bc8f5',
-                d.freeChlorine, 'mg/L',
-                d.C1SetPoint,
-                d.C1Value,
-                d.C1Disturbance,
+                (d.C1Process != null ? d.C1Process : (d.xC1Process != null ? d.xC1Process : d.freeChlorine)), 'mg/L',
+                (d.C1SetPoint != null ? d.C1SetPoint : d.xC1Setpoint),
+                (d.C1Value != null ? d.C1Value : d.xC1Value),
+                (d.C1Disturbance != null ? d.C1Disturbance : d.xC1Disturbance),
                 (d.C1Status != null ? d.C1Status : d.bmC1Status),
-                (d.C1RunStatus != null ? d.C1RunStatus : d.bmC1RunStatus)
+                (d.C1RunStatus != null ? d.C1RunStatus : d.bmC1RunStatus),
+                (d.bmP1Status != null ? d.bmP1Status : d.P1Status)
             )}
             ${buildControllerSection(
                 'Controlador 2 — pH', '#6ee0a0',
-                d.pH, '',
-                d.C2SetPoint,
-                d.C2Value,
-                d.C2Disturbance,
+                (d.C2Process != null ? d.C2Process : (d.xC2Process != null ? d.xC2Process : d.pH)), '',
+                (d.C2SetPoint != null ? d.C2SetPoint : d.xC2Setpoint),
+                (d.C2Value != null ? d.C2Value : d.xC2Value),
+                (d.C2Disturbance != null ? d.C2Disturbance : d.xC2Disturbance),
                 (d.C2Status != null ? d.C2Status : d.bmC2Status),
-                (d.C2RunStatus != null ? d.C2RunStatus : d.bmC2RunStatus)
-            )}
-            ${(d.temperature !== undefined || d.C3SetPoint !== undefined) ? buildControllerSection(
-                'Controlador 3 — Temperatura', '#f5a623',
-                d.temperature, '°C',
-                d.C3SetPoint,
-                d.C3Value,
-                d.C3Disturbance,
-                (d.C3Status != null ? d.C3Status : d.bmC3Status),
-                (d.C3RunStatus != null ? d.C3RunStatus : d.bmC3RunStatus)
-            ) : ''}`;
+                (d.C2RunStatus != null ? d.C2RunStatus : d.bmC2RunStatus),
+                (d.bmP2Status != null ? d.bmP2Status : d.P2Status)
+            )}`;
 
         tsEl.textContent = 'Última atualização: ' + new Date().toLocaleTimeString('pt-PT');
         modal.show();
