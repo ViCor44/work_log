@@ -289,24 +289,27 @@ $stmt->close();
                                     </div>
                                 </div>
                                 <hr style="border-color:#495057;margin:0.5rem 0">
-                                <div style="font-size:0.8rem;color:#adb5bd" class="mb-2">Consumo medido no período (calibração):</div>
+                                <div style="font-size:0.8rem;color:#adb5bd" class="mb-1">Caudal máximo da bomba doseadora (Qmax):</div>
+                                <div class="input-group input-group-sm mb-2">
+                                    <input type="number" class="form-control" id="input-qmax" placeholder="Ex.: 10.0" min="0" step="0.1" style="background:#2b3035;border-color:#495057;color:#dee2e6" oninput="calcularPorQmax()">
+                                    <span class="input-group-text" style="background:#2b3035;border-color:#495057;color:#adb5bd">L/h</span>
+                                </div>
+                                <div id="resultado-qmax" class="d-none p-2 rounded mb-2" style="background:#1a2e1a;border:1px solid #2a5a2a">
+                                    <div class="text-success fw-bold" style="font-size:1.1rem" id="valor-estimativa-qmax">-- L</div>
+                                    <div class="text-white-50" style="font-size:0.72rem">= (Qmax / 100) × integral  <span id="formula-qmax"></span></div>
+                                </div>
+                                <hr style="border-color:#495057;margin:0.5rem 0">
+                                <div style="font-size:0.75rem;color:#6c757d" class="mb-1">Calibração — consumo real medido no período:</div>
                                 <div class="input-group input-group-sm mb-2">
                                     <input type="number" class="form-control" id="input-consumo" placeholder="Ex.: 390" min="0" step="0.1" style="background:#2b3035;border-color:#495057;color:#dee2e6">
                                     <span class="input-group-text" style="background:#2b3035;border-color:#495057;color:#adb5bd">L</span>
-                                    <button class="btn btn-outline-info btn-sm" type="button" onclick="calcularFatorK()">Calcular k</button>
+                                    <button class="btn btn-outline-secondary btn-sm" type="button" onclick="calcularFatorK()">Calibrar Qmax</button>
                                 </div>
-                                <div id="resultado-k" class="d-none p-2 rounded mb-2" style="background:#2b3035;font-size:0.82rem">
-                                    <div class="mb-1">k = <strong id="valor-k" class="text-warning">--</strong> L / %-hora</div>
-                                    <div class="text-white-50" style="font-size:0.75rem">Usa este fator nos outros períodos 10:00→10:00</div>
+                                <div id="resultado-k" class="d-none p-2 rounded" style="background:#2b3035;font-size:0.8rem">
+                                    Qmax calibrado ≈ <strong id="valor-qmax-calibrado" class="text-warning">--</strong> L/h
+                                    <span class="text-white-50" style="font-size:0.72rem"> (k = <span id="valor-k">--</span> L/%-h)</span>
+                                    <div class="text-white-50" style="font-size:0.72rem">Qmax preenchido acima automaticamente</div>
                                 </div>
-                                <hr style="border-color:#495057;margin:0.5rem 0">
-                                <div style="font-size:0.8rem;color:#adb5bd" class="mb-1">Estimar consumo (fator já calculado):</div>
-                                <div class="input-group input-group-sm">
-                                    <span class="input-group-text" style="background:#2b3035;border-color:#495057;color:#adb5bd">k =</span>
-                                    <input type="number" class="form-control" id="input-k-manual" placeholder="Fator k" step="0.0001" style="background:#2b3035;border-color:#495057;color:#dee2e6">
-                                    <button class="btn btn-outline-success btn-sm" type="button" onclick="estimarConsumo()">Estimar</button>
-                                </div>
-                                <div id="resultado-estimativa" class="mt-2 d-none text-success fw-bold" style="font-size:1rem"></div>
                             </div>
                         </div>
                     </div>
@@ -871,15 +874,15 @@ document.addEventListener('DOMContentLoaded', function() {
                 document.getElementById('btn-integral-row').style.removeProperty('display');
                 // Guardar integral no scope para uso do fator k
                 window._lastIntegral = integral;
-                // Se já houver fator k guardado, recalcular estimativa automaticamente
-                const kIn = document.getElementById('input-k-manual').value;
-                if (kIn && parseFloat(kIn) > 0) estimarConsumo();
+                // Se já houver Qmax guardado, recalcular estimativa automaticamente
+                const qmaxIn = document.getElementById('input-qmax').value;
+                if (qmaxIn && parseFloat(qmaxIn) > 0) calcularPorQmax();
             })();
 
             // Recalcular estimativa se modal estiver aberto
             if (document.getElementById('integralModal').classList.contains('show')) {
-                const kIn = document.getElementById('input-k-manual').value;
-                if (kIn && parseFloat(kIn) > 0) estimarConsumo();
+                const qmaxIn = document.getElementById('input-qmax').value;
+                if (qmaxIn && parseFloat(qmaxIn) > 0) calcularPorQmax();
             }
 
             // Datasets com x = log_datetime
@@ -1084,29 +1087,35 @@ document.addEventListener('DOMContentLoaded', function() {
     }
     window.openIntegralModal = openIntegralModal;
 
-    // ── Integral de Dosagem / Fator k ─────────────────────────────────────────
+    // ── Integral de Dosagem / Estimativa por Qmax ────────────────────────────
+    function calcularPorQmax() {
+        const qmax = parseFloat(document.getElementById('input-qmax').value);
+        const integral = window._lastIntegral;
+        if (!qmax || qmax <= 0 || !integral || integral <= 0) {
+            document.getElementById('resultado-qmax').classList.add('d-none');
+            return;
+        }
+        const k = qmax / 100;
+        const estimativa = k * integral;
+        document.getElementById('valor-estimativa-qmax').textContent = estimativa.toFixed(1) + ' L';
+        document.getElementById('formula-qmax').textContent = `(${qmax.toFixed(2)}/100) × ${integral.toFixed(2)}`;
+        document.getElementById('resultado-qmax').classList.remove('d-none');
+    }
     function calcularFatorK() {
         const consumo = parseFloat(document.getElementById('input-consumo').value);
         const integral = window._lastIntegral;
         if (!consumo || consumo <= 0 || !integral || integral <= 0) return;
         const k = consumo / integral;
+        const qmax = k * 100;
         document.getElementById('valor-k').textContent = k.toFixed(4);
+        document.getElementById('valor-qmax-calibrado').textContent = qmax.toFixed(2);
         document.getElementById('resultado-k').classList.remove('d-none');
-        document.getElementById('input-k-manual').value = k.toFixed(4);
-        document.getElementById('estimativa-k-panel').classList.remove('d-none');
-    }
-    function estimarConsumo() {
-        const k = parseFloat(document.getElementById('input-k-manual').value);
-        const integral = window._lastIntegral;
-        if (!k || k <= 0 || !integral || integral <= 0) return;
-        const estimativa = k * integral;
-        const el = document.getElementById('resultado-estimativa');
-        el.textContent = `Estimativa: ${estimativa.toFixed(1)} L`;
-        el.classList.remove('d-none');
-        document.getElementById('estimativa-k-panel').classList.remove('d-none');
+        // Auto-preencher Qmax e recalcular
+        document.getElementById('input-qmax').value = qmax.toFixed(2);
+        calcularPorQmax();
     }
     window.calcularFatorK = calcularFatorK;
-    window.estimarConsumo = estimarConsumo;
+    window.calcularPorQmax = calcularPorQmax;
     // ─────────────────────────────────────────────────────────────────────────
     // ─────────────────────────────────────────────────────────────────────────
 
