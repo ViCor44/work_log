@@ -318,11 +318,15 @@ $stmt->close();
                <div class="row">
                    <div class="col-12">
                        <h5 class="text-center">Histórico de Cloro Livre (mg/L)</h5>
-                       <canvas id="cloroHistoryChart" height="350" style="cursor:pointer;"></canvas>
+                       <div style="position:relative;height:350px">
+                           <canvas id="cloroHistoryChart" style="cursor:pointer;"></canvas>
+                       </div>
                    </div>
                    <div class="col-12 mb-4">
                        <h5 class="text-center">Histórico de pH</h5>
-                       <canvas id="phHistoryChart" height="350"></canvas>
+                       <div style="position:relative;height:350px">
+                           <canvas id="phHistoryChart"></canvas>
+                       </div>
                    </div>
                </div>
             <!-- Modal para adicionar nota ao ponto do gráfico -->
@@ -1085,6 +1089,15 @@ document.addEventListener('DOMContentLoaded', function() {
     function openIntegralModal() {
         new bootstrap.Modal(document.getElementById('integralModal')).show();
     }
+    // Impedir que o modal de integral cause resize nos charts
+    document.getElementById('integralModal').addEventListener('show.bs.modal', function() {
+        if (cloroHistoryChart) cloroHistoryChart.options.responsive = false;
+        if (phHistoryChart)    phHistoryChart.options.responsive = false;
+    });
+    document.getElementById('integralModal').addEventListener('hidden.bs.modal', function() {
+        if (cloroHistoryChart) { cloroHistoryChart.options.responsive = true; cloroHistoryChart.resize(); }
+        if (phHistoryChart)    { phHistoryChart.options.responsive = true;    phHistoryChart.resize(); }
+    });
     window.openIntegralModal = openIntegralModal;
 
     // ── Integral de Dosagem / Estimativa por Qmax ────────────────────────────
