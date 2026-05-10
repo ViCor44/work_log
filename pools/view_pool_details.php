@@ -290,10 +290,12 @@ $stmt->close();
                                 </div>
                                 <hr style="border-color:#495057;margin:0.5rem 0">
                                 <div style="font-size:0.8rem;color:#adb5bd" class="mb-1">Caudal máximo da bomba doseadora (Qmax):</div>
-                                <div class="input-group input-group-sm mb-2">
+                                <div class="input-group input-group-sm mb-1">
                                     <input type="number" class="form-control" id="input-qmax" placeholder="Ex.: 10.0" min="0" step="0.1" style="background:#2b3035;border-color:#495057;color:#dee2e6" oninput="calcularPorQmax()">
                                     <span class="input-group-text" style="background:#2b3035;border-color:#495057;color:#adb5bd">L/h</span>
+                                    <button class="btn btn-outline-primary btn-sm" type="button" onclick="guardarQmax()" title="Guardar Qmax na base de dados"><i class="fas fa-save"></i></button>
                                 </div>
+                                <div id="qmax-save-msg" class="d-none mb-2" style="font-size:0.75rem"></div>
                                 <div id="resultado-qmax" class="d-none p-2 rounded mb-2" style="background:#1a2e1a;border:1px solid #2a5a2a">
                                     <div class="text-success fw-bold" style="font-size:1.1rem" id="valor-estimativa-qmax">-- L</div>
                                     <div class="text-white-50" style="font-size:0.72rem">= (Qmax / 100) × integral  <span id="formula-qmax"></span></div>
@@ -1089,6 +1091,18 @@ document.addEventListener('DOMContentLoaded', function() {
 
     function openIntegralModal() {
         new bootstrap.Modal(document.getElementById('integralModal')).show();
+        // Carregar Qmax guardado da BD
+        fetch(`../api/pool_qmax.php?tank_id=${tankId}`)
+            .then(r => r.json())
+            .then(function(d) {
+                if (d.qmax) {
+                    document.getElementById('input-qmax').value = d.qmax;
+                    calcularPorQmax();
+                    const msg = document.getElementById('qmax-save-msg');
+                    msg.textContent = '\u2713 Qmax carregado da base de dados (' + d.qmax + ' L/h)';
+                    msg.className = 'mb-2 text-success'; msg.style.fontSize = '0.75rem';
+                }
+            }).catch(function() {});
     }
     // Listener único para o modal integral: impede resize dos charts e pausa auto-refresh
     document.getElementById('integralModal').addEventListener('show.bs.modal', function() {
@@ -1104,6 +1118,34 @@ document.addEventListener('DOMContentLoaded', function() {
     window.openIntegralModal = openIntegralModal;
 
     // ── Integral de Dosagem / Estimativa por Qmax ────────────────────────────
+    async function guardarQmax() {
+        const qmax = parseFloat(document.getElementById('input-qmax').value);
+        const msg = document.getElementById('qmax-save-msg');
+        if (!qmax || qmax <= 0) {
+            msg.textContent = 'Introduza um valor válido antes de guardar.';
+            msg.className = 'mb-2 text-warning'; msg.style.fontSize = '0.75rem';
+            msg.classList.remove('d-none'); return;
+        }
+        try {
+            const r = await fetch(`../api/pool_qmax.php?tank_id=${tankId}`, {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({qmax})
+            });
+            const d = await r.json();
+            if (d.success) {
+                msg.textContent = '\u2713 Qmax guardado (' + qmax.toFixed(2) + ' L/h)';
+                msg.className = 'mb-2 text-success'; msg.style.fontSize = '0.75rem';
+            } else {
+                msg.textContent = 'Erro ao guardar: ' + (d.error || 'desconhecido');
+                msg.className = 'mb-2 text-danger'; msg.style.fontSize = '0.75rem';
+            }
+        } catch(e) {
+            msg.textContent = 'Erro de ligação ao servidor.';
+            msg.className = 'mb-2 text-danger'; msg.style.fontSize = '0.75rem';
+        }
+        msg.classList.remove('d-none');
+    }
     function calcularPorQmax() {
         const qmax = parseFloat(document.getElementById('input-qmax').value);
         const integral = window._lastIntegral;
@@ -1129,9 +1171,12 @@ document.addEventListener('DOMContentLoaded', function() {
         // Auto-preencher Qmax e recalcular
         document.getElementById('input-qmax').value = qmax.toFixed(2);
         calcularPorQmax();
+        // Auto-guardar na BD após calibração
+        guardarQmax();
     }
     window.calcularFatorK = calcularFatorK;
     window.calcularPorQmax = calcularPorQmax;
+    window.guardarQmax = guardarQmax;
     // ─────────────────────────────────────────────────────────────────────────
     // ─────────────────────────────────────────────────────────────────────────
 
