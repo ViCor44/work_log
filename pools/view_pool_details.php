@@ -331,6 +331,29 @@ $stmt->close();
                        </div>
                    </div>
                </div>
+            <!-- Tabela: Histórico de Consumo Diário de Hipoclorito -->
+            <div class="mt-4" id="consumo-diario-section">
+                <div class="d-flex align-items-center justify-content-between mb-2">
+                    <h6 class="mb-0" style="color:#5bc8f5"><i class="fas fa-flask me-2"></i>Consumo Diário de Hipoclorito Estimado</h6>
+                    <span class="text-white-50" style="font-size:0.75rem">Período: 09:00 → 09:00 | últimos 30 dias</span>
+                </div>
+                <div class="table-responsive">
+                    <table class="table table-sm table-dark table-hover mb-0" style="font-size:0.82rem">
+                        <thead>
+                            <tr style="color:#adb5bd;border-bottom:1px solid #495057">
+                                <th>Dia</th>
+                                <th class="text-end">Integral (%-h)</th>
+                                <th class="text-end">Qmax (L/h)</th>
+                                <th class="text-end">Consumo Est.</th>
+                                <th class="text-end text-white-50">Registos</th>
+                            </tr>
+                        </thead>
+                        <tbody id="consumo-diario-tbody">
+                            <tr><td colspan="5" class="text-center text-white-50 py-3"><i class="fas fa-spinner fa-spin"></i> A carregar...</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
             <!-- Modal para adicionar nota ao ponto do gráfico -->
             <div class="modal fade" id="noteModal" tabindex="-1" aria-labelledby="noteModalLabel" aria-hidden="true">
                 <div class="modal-dialog">
@@ -1352,11 +1375,41 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     });
 
+    // ── Tabela de consumo diário de hipoclorito ──────────────────────────────
+    async function loadConsumoDiario() {
+        try {
+            const r = await fetch(`../api/get_hipoclorito_diario.php?tank_id=${tankId}&limit=30`);
+            const d = await r.json();
+            const tbody = document.getElementById('consumo-diario-tbody');
+            if (!d.consumo || d.consumo.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="5" class="text-center text-white-50 py-3">Sem dados ainda — o cálculo corre automaticamente todos os dias às 09:00.</td></tr>';
+                return;
+            }
+            tbody.innerHTML = d.consumo.map(function(row) {
+                const dataFmt = new Date(row.data_referencia + 'T00:00:00').toLocaleDateString('pt-PT', {weekday:'short', day:'2-digit', month:'2-digit', year:'numeric'});
+                const consumo = parseFloat(row.consumo_estimado_l);
+                const cor = consumo > 50 ? '#f8d7da' : consumo > 20 ? '#fff3cd' : '#d1e7dd';
+                return `<tr>
+                    <td>${dataFmt}</td>
+                    <td class="text-end font-monospace">${parseFloat(row.integral_dosagem).toFixed(2)}</td>
+                    <td class="text-end font-monospace">${parseFloat(row.qmax_lh).toFixed(2)}</td>
+                    <td class="text-end fw-bold font-monospace" style="color:${cor}">${consumo.toFixed(1)} L</td>
+                    <td class="text-end text-white-50">${row.n_registos}</td>
+                </tr>`;
+            }).join('');
+        } catch(e) {
+            document.getElementById('consumo-diario-tbody').innerHTML =
+                '<tr><td colspan="5" class="text-center text-danger py-2">Erro ao carregar dados.</td></tr>';
+        }
+    }
+    // ─────────────────────────────────────────────────────────────────────────
+
     // Carga inicial
     loadDynamicSetpointStatus();
     updateGauges();
     setActiveRangeBtn('range-24h');
     loadCurrentHistory();
+    loadConsumoDiario();
 
     // Ciclo de atualização: gauges sempre; histórico só se não estiver em pesquisa manual
     setInterval(updateGauges, 10000);
