@@ -60,6 +60,13 @@ require_once '../header.php';
         </div>
         <div class="col-md-4 mb-3">
             <div class="d-grid">
+                <a href="list_consumo_estimado.php" class="btn btn-outline-dark btn-lg p-3">
+                    <i class="fas fa-flask me-2"></i>Consumo Estimado (Controlador)
+                </a>
+            </div>
+        </div>
+        <div class="col-md-4 mb-3">
+            <div class="d-grid">
                 <a href="relatorio_analises.php" class="btn btn-danger btn-lg p-3">Boletim de Análises</a>
             </div>
         </div>
