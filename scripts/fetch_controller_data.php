@@ -507,17 +507,28 @@ function run_dynamic_setpoint_for_chlorine(mysqli $conn, array $pool, float $chl
             // Reversão confirmada para subida → aplica SP dinâmico
             $decision = 'abaixo_base_a_subir_confirmado';
             $followOffset = $activeAnticipationOffset;
-            // Simétrico ao caso acima da base: quanto mais abaixo da base estiver o PV,
-            // maior o offset (→ SP dinâmico fica mais abaixo do PV, reduzindo doseagem
-            // de forma mais agressiva). Encolhe à medida que o PV sobe até à base.
-            $distComponent = $activeDistanceGain * ($lockedBaseSp - $chlorine);
+            // Quando o PV está abaixo da base, ainda há défice de cloro: o objectivo
+            // é travar o overshoot sem cortar tanto a doseagem que o PV recomece a
+            // descer antes de chegar à base. Por isso a componente proporcional usa
+            // a PROXIMIDADE à base (não a distância): perto da base aplica-se mais
+            // travagem; longe da base praticamente não se trava (deixa o PID dosear).
+            $distanceBelow  = max(0.0, $lockedBaseSp - $chlorine);
+            $proximityRange = max($activeMaxFollowOffset * 2.0, 0.20); // mg/L de janela
+            $proximityFactor = 1.0 - min($distanceBelow / $proximityRange, 1.0); // 1 perto, 0 longe
+            $distComponent = $activeDistanceGain * $proximityFactor * max(0.0, $activeMaxFollowOffset - $activeMinFollowOffset);
             if ($distComponent > 0) { $followOffset += $distComponent; }
             if ($pumpPercent !== null && $pumpPercent > $activePumpMaxTarget) {
                 $followOffset += ($activePumpAdjustStep / 2);
             }
             $followOffset = clamp($followOffset, $activeMinFollowOffset, $activeMaxFollowOffset);
             $newDynSp = $chlorine - $followOffset;
-            $reason   = "{$decision} PV={$chlorine} base={$lockedBaseSp} trendSum=" . round($trendSum, 4) . " up={$upCount} down={$downCount} flat={$flatCount} conf={$trendConfidence} profile={$profileMode} bomba=" . ($pumpPercent === null ? 'N/A' : $pumpPercent) . " dist=" . round($lockedBaseSp - $chlorine, 3) . " distGain={$activeDistanceGain} offset={$followOffset}";
+            // Piso: o SP dinâmico nunca pode cair demasiado abaixo da base, caso
+            // contrário o controlador interpreta um erro muito negativo, corta a
+            // doseagem por completo e o PV pode voltar a descer antes de chegar à
+            // base. Mantém-se uma margem de doseagem proporcional ao followOffset.
+            $maxBelowBase = $activeMaxFollowOffset;
+            $newDynSp = max($newDynSp, $lockedBaseSp - $maxBelowBase);
+            $reason   = "{$decision} PV={$chlorine} base={$lockedBaseSp} trendSum=" . round($trendSum, 4) . " up={$upCount} down={$downCount} flat={$flatCount} conf={$trendConfidence} profile={$profileMode} bomba=" . ($pumpPercent === null ? 'N/A' : $pumpPercent) . " distBelow=" . round($distanceBelow, 3) . " proxFactor=" . round($proximityFactor, 3) . " distGain={$activeDistanceGain} offset={$followOffset} floor=" . round($lockedBaseSp - $maxBelowBase, 2);
         } else {
             // Abaixo da base e ainda a descer (ou estável) → PID normal, sem intervenção
             $decision = 'abaixo_base_aguarda_subida';
