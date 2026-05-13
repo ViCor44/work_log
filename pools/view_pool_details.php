@@ -955,7 +955,7 @@ document.addEventListener('DOMContentLoaded', function() {
             const notePointData = notePointIndices.map(idx => ({ x: idx, y: cloroHistoryValues[idx] }));
             const cloroDatasets = [
                 { type: 'line', label: 'Cloro (Valor)', data: cloroDatasetLine, borderColor: 'rgba(75, 192, 192, 1)', yAxisID: 'y-axis-line', fill: false, tension: 0.1 },
-                { type: 'bar', label: 'Dosagem (%)', data: cloroDatasetDosagem, backgroundColor: 'rgba(155, 89, 182, 0.55)', borderColor: 'rgba(155, 89, 182, 0.85)', borderWidth: 1, yAxisID: 'y-axis-bar' },
+                { type: 'bar', label: 'Dosagem (%)', data: cloroDatasetDosagem, backgroundColor: 'rgba(255, 159, 64, 0.30)', borderColor: 'rgba(255, 159, 64, 0.55)', borderWidth: 1, yAxisID: 'y-axis-bar' },
                 { type: 'line', label: 'Setpoint', data: cloroDatasetSetpoint, borderColor: 'rgba(255, 99, 132, 0.8)', borderWidth: 2, yAxisID: 'y-axis-line', fill: false, pointRadius: 0 },
                 {
                     type: 'line',
