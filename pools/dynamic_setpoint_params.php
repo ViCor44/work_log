@@ -36,6 +36,7 @@ $defaults = [
     'pump_min_target'     => 20.0,
     'pump_max_target'     => 35.0,
     'pump_adjust_step'    => 0.02,
+    'distance_gain'       => 0.30,
     'trend_deadband'      => 0.01,
     'trend_window_size'   => 10.0,
     'trend_min_majority'  => 2.0,
@@ -48,6 +49,7 @@ $defaults = [
     'night_pump_min_target'     => 10.0,
     'night_pump_max_target'     => 17.5,
     'night_pump_adjust_step'    => 0.01,
+    'night_distance_gain'       => 0.15,
     'night_start_hour'    => 22.0,
     'night_end_hour'      => 7.0,
     'night_disable_dynamic' => 0.0,
@@ -59,6 +61,7 @@ $defaults = [
     'ha_pump_min_target'     => 12.0,
     'ha_pump_max_target'     => 45.0,
     'ha_pump_adjust_step'    => 0.04,
+    'ha_distance_gain'       => 0.50,
     'brake_enabled'          => 1.0,
 ];
 $params = [];
@@ -193,6 +196,11 @@ foreach ($defaults as $name => $default) {
                             <input type="number" step="0.005" class="form-control" name="pump_adjust_step" id="f_pump_adjust_step" value="<?= $params['pump_adjust_step'] ?>">
                             <div class="param-hint">Quanto o offset sobe/desce por cada % de desvio da bomba.</div>
                         </div>
+                        <div class="col-md-4">
+                            <label data-bs-toggle="tooltip" data-bs-placement="top" title="Ganho proporcional à distância entre PV e SP base. O offset final é aumentado por (ganho × |PV - SP base|). Resultado: quando o PV está muito acima/abaixo da base, o SP dinâmico afasta-se mais do PV (doseagem inicial mais forte). À medida que o PV se aproxima da base, o termo encolhe e a doseagem suaviza-se. O resultado é sempre limitado pelos Offset mínimo/máximo.">Ganho por distância à base <span class="default-badge">(padrão: 0.30)</span> <span class="info-icon">?</span></label>
+                            <input type="number" step="0.01" class="form-control" name="distance_gain" id="f_distance_gain" value="<?= $params['distance_gain'] ?>">
+                            <div class="param-hint">Offset adicional = ganho × distância(PV, SP base). 0 desativa o escalamento.</div>
+                        </div>
                     </div>
 
                     <!-- FILTROS / COOLDOWN -->
@@ -262,6 +270,11 @@ foreach ($defaults as $name => $default) {
                         <div class="col-md-4">
                             <label data-bs-toggle="tooltip" data-bs-placement="top" title="Passo de ajuste da bomba no período noturno. Metade do normal por defeito.">Passo ajuste bomba (noite) <span class="default-badge">(padrão: 0.01)</span> <span class="info-icon">?</span></label>
                             <input type="number" step="0.005" class="form-control" name="night_pump_adjust_step" id="f_night_pump_adjust_step" value="<?= $params['night_pump_adjust_step'] ?>">
+                            <div class="param-hint">Perfil noturno: 50% do default normal.</div>
+                        </div>
+                        <div class="col-md-4">
+                            <label data-bs-toggle="tooltip" data-bs-placement="top" title="Ganho por distância à base em modo noturno. Tipicamente metade do valor normal para uma atuação mais suave.">Ganho por distância (noite) <span class="default-badge">(padrão: 0.15)</span> <span class="info-icon">?</span></label>
+                            <input type="number" step="0.01" class="form-control" name="night_distance_gain" id="f_night_distance_gain" value="<?= $params['night_distance_gain'] ?>">
                             <div class="param-hint">Perfil noturno: 50% do default normal.</div>
                         </div>
                     </div>
@@ -337,6 +350,11 @@ foreach ($defaults as $name => $default) {
                             <input type="number" step="0.005" class="form-control" name="ha_pump_adjust_step" id="f_ha_pump_adjust_step" value="<?= $params['ha_pump_adjust_step'] ?>">
                             <div class="param-hint">Reação mais forte à bomba em HA.</div>
                         </div>
+                        <div class="col-md-4">
+                            <label data-bs-toggle="tooltip" data-bs-placement="top" title="Ganho por distância à base em modo de alta afluência. Tipicamente o dobro do normal para acompanhar oscilações mais bruscas do PV.">Ganho por distância (HA) <span class="default-badge">(padrão: 0.50)</span> <span class="info-icon">?</span></label>
+                            <input type="number" step="0.01" class="form-control" name="ha_distance_gain" id="f_ha_distance_gain" value="<?= $params['ha_distance_gain'] ?>">
+                            <div class="param-hint">Escala mais agressivamente com a distância ao SP base.</div>
+                        </div>
                     </div>
 
                     <div class="d-flex gap-2 mt-4">
@@ -363,13 +381,13 @@ const API = '../api/dynamic_setpoint_params.php';
 
 const FIELD_NAMES = [
     'anticipation_offset','min_follow_offset','max_follow_offset',
-    'pump_min_target','pump_max_target','pump_adjust_step',
+    'pump_min_target','pump_max_target','pump_adjust_step','distance_gain',
     'trend_deadband','trend_window_size','trend_min_majority','cooldown_sec','min_send_delta','safety_disable_above_pv',
     'night_anticipation_offset','night_min_follow_offset','night_max_follow_offset',
-    'night_pump_min_target','night_pump_max_target','night_pump_adjust_step',
+    'night_pump_min_target','night_pump_max_target','night_pump_adjust_step','night_distance_gain',
     'night_start_hour','night_end_hour','night_disable_dynamic','night_min_excess_over_base','night_min_drop_delta',
     'ha_anticipation_offset','ha_min_follow_offset','ha_max_follow_offset',
-    'ha_pump_min_target','ha_pump_max_target','ha_pump_adjust_step',
+    'ha_pump_min_target','ha_pump_max_target','ha_pump_adjust_step','ha_distance_gain',
     'brake_enabled'
 ];
 

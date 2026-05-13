@@ -212,6 +212,10 @@ function run_dynamic_setpoint_for_chlorine(mysqli $conn, array $pool, float $chl
     $pumpMinTarget      = (float)(get_setting_value($conn, $pPrefix . 'pump_min_target',     null) ?? 20.0);
     $pumpMaxTarget      = (float)(get_setting_value($conn, $pPrefix . 'pump_max_target',     null) ?? 35.0);
     $pumpAdjustStep     = (float)(get_setting_value($conn, $pPrefix . 'pump_adjust_step',    null) ?? 0.02);
+    // Ganho proporcional à distância |PV - SP_base|: aumenta o followOffset quando o PV
+    // está mais longe da base, fazendo com que o SP dinâmico fique mais longe do PV (maior
+    // doseagem inicial) e diminua à medida que o PV converge para a base.
+    $distanceGain      = (float)(get_setting_value($conn, $pPrefix . 'distance_gain',       null) ?? 0.30);
     $trendDeadband      = (float)(get_setting_value($conn, $pPrefix . 'trend_deadband',      null) ?? 0.01);
     $trendWindowSize    = (int)(float)(get_setting_value($conn, $pPrefix . 'trend_window_size', null) ?? 10.0);
     if ($trendWindowSize < 3)  { $trendWindowSize = 3; }
@@ -230,6 +234,7 @@ function run_dynamic_setpoint_for_chlorine(mysqli $conn, array $pool, float $chl
     $nightPumpMinTarget      = (float)(get_setting_value($conn, $pPrefix . 'night_pump_min_target',     null) ?? 10.0);
     $nightPumpMaxTarget      = (float)(get_setting_value($conn, $pPrefix . 'night_pump_max_target',     null) ?? 17.5);
     $nightPumpAdjustStep     = (float)(get_setting_value($conn, $pPrefix . 'night_pump_adjust_step',    null) ?? 0.01);
+    $nightDistanceGain       = (float)(get_setting_value($conn, $pPrefix . 'night_distance_gain',       null) ?? 0.15);
     $nightStartHour     = (int)(float)(get_setting_value($conn, $pPrefix . 'night_start_hour', null) ?? 22.0);
     $nightEndHour       = (int)(float)(get_setting_value($conn, $pPrefix . 'night_end_hour',   null) ?? 7.0);
     $nightDisableDynamic = get_setting_value($conn, $pPrefix . 'night_disable_dynamic', '0') === '1';
@@ -251,6 +256,7 @@ function run_dynamic_setpoint_for_chlorine(mysqli $conn, array $pool, float $chl
     $haPumpMinTarget      = $pumpMinTarget;
     $haPumpMaxTarget      = $pumpMaxTarget;
     $haPumpAdjustStep     = $pumpAdjustStep;
+    $haDistanceGain       = $distanceGain;
     if ($isHighAttendance) {
         $haAnticipationOffset = (float)(get_setting_value($conn, $pPrefix . 'ha_anticipation_offset', null) ?? 0.12);
         $haMinFollowOffset    = (float)(get_setting_value($conn, $pPrefix . 'ha_min_follow_offset',   null) ?? 0.06);
@@ -258,6 +264,7 @@ function run_dynamic_setpoint_for_chlorine(mysqli $conn, array $pool, float $chl
         $haPumpMinTarget      = (float)(get_setting_value($conn, $pPrefix . 'ha_pump_min_target',     null) ?? 12.0);
         $haPumpMaxTarget      = (float)(get_setting_value($conn, $pPrefix . 'ha_pump_max_target',     null) ?? 45.0);
         $haPumpAdjustStep     = (float)(get_setting_value($conn, $pPrefix . 'ha_pump_adjust_step',    null) ?? 0.04);
+        $haDistanceGain       = (float)(get_setting_value($conn, $pPrefix . 'ha_distance_gain',       null) ?? 0.50);
     }
     // ────────────────────────────────────────────────────────────────────────
 
@@ -376,6 +383,7 @@ function run_dynamic_setpoint_for_chlorine(mysqli $conn, array $pool, float $chl
     $activePumpMinTarget      = $pumpMinTarget;
     $activePumpMaxTarget      = $pumpMaxTarget;
     $activePumpAdjustStep     = $pumpAdjustStep;
+    $activeDistanceGain       = $distanceGain;
     $profileMode = 'normal';
     if ($isNight) {
         $activeAnticipationOffset = $nightAnticipationOffset;
@@ -384,6 +392,7 @@ function run_dynamic_setpoint_for_chlorine(mysqli $conn, array $pool, float $chl
         $activePumpMinTarget      = $nightPumpMinTarget;
         $activePumpMaxTarget      = $nightPumpMaxTarget;
         $activePumpAdjustStep     = $nightPumpAdjustStep;
+        $activeDistanceGain       = $nightDistanceGain;
         $profileMode = 'night';
     } elseif ($isHighAttendance) {
         $activeAnticipationOffset = $haAnticipationOffset;
@@ -392,6 +401,7 @@ function run_dynamic_setpoint_for_chlorine(mysqli $conn, array $pool, float $chl
         $activePumpMinTarget      = $haPumpMinTarget;
         $activePumpMaxTarget      = $haPumpMaxTarget;
         $activePumpAdjustStep     = $haPumpAdjustStep;
+        $activeDistanceGain       = $haDistanceGain;
         $profileMode = 'ha';
     }
 
@@ -456,6 +466,12 @@ function run_dynamic_setpoint_for_chlorine(mysqli $conn, array $pool, float $chl
             else                       { $decision = 'acima_base_a_descer_confirmado';       }
 
             $followOffset = $activeAnticipationOffset;
+            // Componente proporcional à distância ao SP base: quanto mais alto o PV
+            // estiver acima da base, maior o offset (→ SP dinâmico fica mais longe do PV,
+            // forçando doseagem inicial mais forte). À medida que o PV cai e se aproxima
+            // da base, este termo decresce automaticamente, suavizando a doseagem.
+            $distComponent = $activeDistanceGain * ($chlorine - $lockedBaseSp);
+            if ($distComponent > 0) { $followOffset += $distComponent; }
             if ($pumpPercent !== null) {
                 if ($pumpPercent < $activePumpMinTarget) {
                     $followOffset += $activePumpAdjustStep;
@@ -467,7 +483,7 @@ function run_dynamic_setpoint_for_chlorine(mysqli $conn, array $pool, float $chl
             }
             $followOffset = clamp($followOffset, $activeMinFollowOffset, $activeMaxFollowOffset);
             $newDynSp = $chlorine + $followOffset;
-            $reason   = $decision . " PV={$chlorine} base={$lockedBaseSp} trendSum=" . round($trendSum, 4) . " up={$upCount} down={$downCount} flat={$flatCount} conf={$trendConfidence} profile={$profileMode} bomba=" . ($pumpPercent === null ? 'N/A' : $pumpPercent) . " offset={$followOffset}";
+            $reason   = $decision . " PV={$chlorine} base={$lockedBaseSp} trendSum=" . round($trendSum, 4) . " up={$upCount} down={$downCount} flat={$flatCount} conf={$trendConfidence} profile={$profileMode} bomba=" . ($pumpPercent === null ? 'N/A' : $pumpPercent) . " dist=" . round($chlorine - $lockedBaseSp, 3) . " distGain={$activeDistanceGain} offset={$followOffset}";
         } else {
             // Acima da base mas não confirmou descida.
             // Se o excesso for significativo e a bomba ainda estiver a dosear, aplica travagem ativa:
@@ -491,12 +507,17 @@ function run_dynamic_setpoint_for_chlorine(mysqli $conn, array $pool, float $chl
             // Reversão confirmada para subida → aplica SP dinâmico
             $decision = 'abaixo_base_a_subir_confirmado';
             $followOffset = $activeAnticipationOffset;
+            // Simétrico ao caso acima da base: quanto mais abaixo da base estiver o PV,
+            // maior o offset (→ SP dinâmico fica mais abaixo do PV, reduzindo doseagem
+            // de forma mais agressiva). Encolhe à medida que o PV sobe até à base.
+            $distComponent = $activeDistanceGain * ($lockedBaseSp - $chlorine);
+            if ($distComponent > 0) { $followOffset += $distComponent; }
             if ($pumpPercent !== null && $pumpPercent > $activePumpMaxTarget) {
                 $followOffset += ($activePumpAdjustStep / 2);
             }
             $followOffset = clamp($followOffset, $activeMinFollowOffset, $activeMaxFollowOffset);
             $newDynSp = $chlorine - $followOffset;
-            $reason   = "{$decision} PV={$chlorine} base={$lockedBaseSp} trendSum=" . round($trendSum, 4) . " up={$upCount} down={$downCount} flat={$flatCount} conf={$trendConfidence} profile={$profileMode} bomba=" . ($pumpPercent === null ? 'N/A' : $pumpPercent) . " offset={$followOffset}";
+            $reason   = "{$decision} PV={$chlorine} base={$lockedBaseSp} trendSum=" . round($trendSum, 4) . " up={$upCount} down={$downCount} flat={$flatCount} conf={$trendConfidence} profile={$profileMode} bomba=" . ($pumpPercent === null ? 'N/A' : $pumpPercent) . " dist=" . round($lockedBaseSp - $chlorine, 3) . " distGain={$activeDistanceGain} offset={$followOffset}";
         } else {
             // Abaixo da base e ainda a descer (ou estável) → PID normal, sem intervenção
             $decision = 'abaixo_base_aguarda_subida';

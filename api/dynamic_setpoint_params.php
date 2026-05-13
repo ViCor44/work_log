@@ -54,6 +54,7 @@ function param_defaults(): array {
         'pump_min_target'     => 20.0,
         'pump_max_target'     => 35.0,
         'pump_adjust_step'    => 0.02,
+        'distance_gain'       => 0.30,
         'trend_deadband'      => 0.01,
         'trend_window_size'   => 10.0,
         'trend_min_majority'  => 2.0,
@@ -67,6 +68,7 @@ function param_defaults(): array {
         'night_pump_min_target'     => 10.0,
         'night_pump_max_target'     => 17.5,
         'night_pump_adjust_step'    => 0.01,
+        'night_distance_gain'       => 0.15,
         'night_start_hour'    => 22.0,
         'night_end_hour'      => 7.0,
         'night_disable_dynamic' => 0.0,
@@ -79,6 +81,7 @@ function param_defaults(): array {
         'ha_pump_min_target'     => 12.0,
         'ha_pump_max_target'     => 45.0,
         'ha_pump_adjust_step'    => 0.04,
+        'ha_distance_gain'       => 0.50,
         'brake_enabled'          => 1.0,
     ];
 }
@@ -155,6 +158,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         'pump_min_target'     => ['min' => 0.0,  'max' => 100.0],
         'pump_max_target'     => ['min' => 0.0,  'max' => 100.0],
         'pump_adjust_step'    => ['min' => 0.00, 'max' => 1.0],
+        'distance_gain'       => ['min' => 0.00, 'max' => 5.0],
         'trend_deadband'      => ['min' => 0.00, 'max' => 1.0],
         'trend_window_size'   => ['min' => 3.0,  'max' => 60.0],
         'trend_min_majority'  => ['min' => 1.0,  'max' => 60.0],
@@ -167,6 +171,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         'night_pump_min_target'     => ['min' => 0.0, 'max' => 100.0],
         'night_pump_max_target'     => ['min' => 0.0, 'max' => 100.0],
         'night_pump_adjust_step'    => ['min' => 0.0, 'max' => 1.0],
+        'night_distance_gain'       => ['min' => 0.0, 'max' => 5.0],
         'night_start_hour'    => ['min' => 0.0, 'max' => 23.0],
         'night_end_hour'      => ['min' => 0.0, 'max' => 23.0],
         'night_disable_dynamic' => ['min' => 0.0, 'max' => 1.0],
@@ -178,6 +183,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         'ha_pump_min_target'     => ['min' => 0.0, 'max' => 100.0],
         'ha_pump_max_target'     => ['min' => 0.0, 'max' => 100.0],
         'ha_pump_adjust_step'    => ['min' => 0.0, 'max' => 1.0],
+        'ha_distance_gain'       => ['min' => 0.0, 'max' => 5.0],
         'brake_enabled'          => ['min' => 0.0, 'max' => 1.0],
     ];
 
