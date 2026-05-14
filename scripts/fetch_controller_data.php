@@ -461,6 +461,15 @@ function run_dynamic_setpoint_for_chlorine(mysqli $conn, array $pool, float $chl
             $decision  = 'night_travagem_ativa';
             $newDynSp  = max(round($lockedBaseSp - $brakeOffset, 2), 0.50);
             $reason    = "{$decision} PV={$chlorine} base={$lockedBaseSp} overBase=" . round($overBase, 3) . " brakeOffset={$brakeOffset} newSP={$newDynSp} bomba={$pumpPercent} hora={$hourNow}";
+        } elseif ($chlorine <= $lockedBaseSp || $overBase <= $nearBaseDeadband) {
+            // PV na base ou dentro do deadband: aplica pulso de manutenção mesmo de noite
+            // para garantir doseagem contínua mínima.
+            $phase       = (time() % (int)$nearBasePulsePeriodSec) / $nearBasePulsePeriodSec;
+            $sineVal     = abs(sin(M_PI * $phase));
+            $pulseOffset = $nearBasePulseMinOffset + $sineVal * $nearBasePulseAmplitude;
+            $decision    = 'night_pulso_manutencao';
+            $newDynSp    = $lockedBaseSp + $pulseOffset;
+            $reason      = "{$decision} PV={$chlorine} base={$lockedBaseSp} overBase=" . round($overBase, 3) . " deadband={$nearBaseDeadband} phase=" . round($phase, 3) . " sine=" . round($sineVal, 3) . " pulseOffset=" . round($pulseOffset, 3) . " newSP=" . round($newDynSp, 2) . " hora={$hourNow}";
         } else {
             $decision = 'night_dynamic_disabled';
             $newDynSp = $lockedBaseSp;
