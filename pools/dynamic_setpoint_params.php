@@ -63,6 +63,11 @@ $defaults = [
     'ha_pump_adjust_step'    => 0.04,
     'ha_distance_gain'       => 0.50,
     'brake_enabled'          => 1.0,
+    // Pulso de manutenção (PV perto da base)
+    'near_base_deadband'          => 0.05,
+    'near_base_pulse_min_offset'  => 0.03,
+    'near_base_pulse_amplitude'   => 0.05,
+    'near_base_pulse_period_sec'  => 600.0,
 ];
 $params = [];
 foreach ($defaults as $name => $default) {
@@ -357,6 +362,32 @@ foreach ($defaults as $name => $default) {
                         </div>
                     </div>
 
+                    <!-- PULSO DE MANUTENÇÃO -->
+                    <div class="section-title mt-3">Pulso de Manutenção (PV perto da base)</div>
+                    <p style="color:#b0bec5; font-size:0.82rem; margin-bottom:0.75rem;">Quando o PV está igual ou muito próximo do SP base (dentro do deadband), o algoritmo em vez de enviar SP = base envia um SP oscilatório levemente superior à base, garantindo que há sempre um erro positivo e a bomba não para de dosear.</p>
+                    <div class="row g-3 mb-3">
+                        <div class="col-md-3">
+                            <label data-bs-toggle="tooltip" data-bs-placement="top" title="Distância máxima entre PV e SP base para ativar o pulso de manutenção. Se |PV - base| ≤ deadband, o modo de pulso atua em vez de restaurar o SP base.">Deadband perto da base (mg/L) <span class="default-badge">(padrão: 0.05)</span> <span class="info-icon">?</span></label>
+                            <input type="number" step="0.01" class="form-control" name="near_base_deadband" id="f_near_base_deadband" value="<?= $params['near_base_deadband'] ?>">
+                            <div class="param-hint">|PV - base| ≤ deadband → aplica pulso de manutenção.</div>
+                        </div>
+                        <div class="col-md-3">
+                            <label data-bs-toggle="tooltip" data-bs-placement="top" title="Offset mínimo garantido acima do SP base durante o pulso. O SP dinâmico nunca desce abaixo de SP base + este valor, assegurando sempre um erro positivo mínimo.">Offset mínimo do pulso (mg/L) <span class="default-badge">(padrão: 0.03)</span> <span class="info-icon">?</span></label>
+                            <input type="number" step="0.005" class="form-control" name="near_base_pulse_min_offset" id="f_near_base_pulse_min_offset" value="<?= $params['near_base_pulse_min_offset'] ?>">
+                            <div class="param-hint">SP ≥ SP base + offset mínimo sempre que pulso ativo.</div>
+                        </div>
+                        <div class="col-md-3">
+                            <label data-bs-toggle="tooltip" data-bs-placement="top" title="Amplitude da oscilação do pulso. O SP oscila entre (base + min_offset) e (base + min_offset + amplitude) ao longo do período. Amplitude = 0 desativa a oscilação (SP fixo em base + min_offset).">Amplitude do pulso (mg/L) <span class="default-badge">(padrão: 0.05)</span> <span class="info-icon">?</span></label>
+                            <input type="number" step="0.005" class="form-control" name="near_base_pulse_amplitude" id="f_near_base_pulse_amplitude" value="<?= $params['near_base_pulse_amplitude'] ?>">
+                            <div class="param-hint">SP oscila entre min e min+amplitude ao longo do período.</div>
+                        </div>
+                        <div class="col-md-3">
+                            <label data-bs-toggle="tooltip" data-bs-placement="top" title="Período da oscilação sinusoidal em segundos. Como o worker corre de 5 em 5 min (300s), um período de 600s (10 min) produz 2 ciclos entre cada execução — suficiente para variar o SP de forma suave. Mínimo: 60s.">Período do pulso (seg) <span class="default-badge">(padrão: 600)</span> <span class="info-icon">?</span></label>
+                            <input type="number" step="30" min="60" max="7200" class="form-control" name="near_base_pulse_period_sec" id="f_near_base_pulse_period_sec" value="<?= $params['near_base_pulse_period_sec'] ?>">
+                            <div class="param-hint">Período da oscilação em segundos (mín. 60 s).</div>
+                        </div>
+                    </div>
+
                     <div class="d-flex gap-2 mt-4">
                         <button type="submit" class="btn btn-primary px-4">Guardar Parâmetros</button>
                         <button type="button" class="btn btn-outline-warning px-4" id="btn-reset-defaults">↩ Restaurar Defaults</button>
@@ -388,7 +419,8 @@ const FIELD_NAMES = [
     'night_start_hour','night_end_hour','night_disable_dynamic','night_min_excess_over_base','night_min_drop_delta',
     'ha_anticipation_offset','ha_min_follow_offset','ha_max_follow_offset',
     'ha_pump_min_target','ha_pump_max_target','ha_pump_adjust_step','ha_distance_gain',
-    'brake_enabled'
+    'brake_enabled',
+    'near_base_deadband','near_base_pulse_min_offset','near_base_pulse_amplitude','near_base_pulse_period_sec'
 ];
 
 function showToast(msg, type = 'success') {

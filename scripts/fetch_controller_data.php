@@ -241,6 +241,15 @@ function run_dynamic_setpoint_for_chlorine(mysqli $conn, array $pool, float $chl
     $nightMinExcessOverBase = (float)(get_setting_value($conn, $pPrefix . 'night_min_excess_over_base', null) ?? 0.25);
     $nightMinDropDelta  = (float)(get_setting_value($conn, $pPrefix . 'night_min_drop_delta', null) ?? 0.02);
     $brakeEnabled       = get_setting_value($conn, $pPrefix . 'brake_enabled', '1') !== '0';
+    // Pulso de manutenção quando PV ≈ SP base
+    $nearBaseDeadband       = (float)(get_setting_value($conn, $pPrefix . 'near_base_deadband',         null) ?? 0.05);
+    $nearBasePulseMinOffset = (float)(get_setting_value($conn, $pPrefix . 'near_base_pulse_min_offset', null) ?? 0.03);
+    $nearBasePulseAmplitude = (float)(get_setting_value($conn, $pPrefix . 'near_base_pulse_amplitude',  null) ?? 0.05);
+    $nearBasePulsePeriodSec = (float)(get_setting_value($conn, $pPrefix . 'near_base_pulse_period_sec', null) ?? 600.0);
+    $nearBaseDeadband       = max(0.0, $nearBaseDeadband);
+    $nearBasePulseMinOffset = max(0.0, $nearBasePulseMinOffset);
+    $nearBasePulseAmplitude = max(0.0, $nearBasePulseAmplitude);
+    $nearBasePulsePeriodSec = max(60.0, $nearBasePulsePeriodSec);
 
     $nightStartHour = max(0, min(23, $nightStartHour));
     $nightEndHour   = max(0, min(23, $nightEndHour));
@@ -495,6 +504,17 @@ function run_dynamic_setpoint_for_chlorine(mysqli $conn, array $pool, float $chl
                 $decision  = 'acima_base_travagem_ativa';
                 $newDynSp  = max(round($lockedBaseSp - $brakeOffset, 2), 0.50);
                 $reason    = "{$decision} PV={$chlorine} base={$lockedBaseSp} overBase=" . round($overBase, 3) . " brakeOffset={$brakeOffset} newSP={$newDynSp} bomba={$pumpPercent}";
+            } elseif ($overBase <= $nearBaseDeadband) {
+                // PV está dentro do deadband da base (igual ou ligeiramente acima):
+                // aplica pulso de manutenção oscilatório para garantir sempre doseagem.
+                // SP = SP_base + minOffset + amplitude × |sin(π × t / período)|
+                // O SP fica sempre acima do SP_base → erro positivo → bomba nunca para.
+                $phase       = (time() % (int)$nearBasePulsePeriodSec) / $nearBasePulsePeriodSec;
+                $sineVal     = abs(sin(M_PI * $phase));
+                $pulseOffset = $nearBasePulseMinOffset + $sineVal * $nearBasePulseAmplitude;
+                $decision    = 'perto_base_pulso_manutencao';
+                $newDynSp    = $lockedBaseSp + $pulseOffset;
+                $reason      = "{$decision} PV={$chlorine} base={$lockedBaseSp} overBase=" . round($overBase, 3) . " deadband={$nearBaseDeadband} phase=" . round($phase, 3) . " sine=" . round($sineVal, 3) . " pulseOffset=" . round($pulseOffset, 3) . " newSP=" . round($newDynSp, 2);
             } else {
                 $decision = 'acima_base_aguarda_descida';
                 $newDynSp = $lockedBaseSp;
@@ -536,10 +556,13 @@ function run_dynamic_setpoint_for_chlorine(mysqli $conn, array $pool, float $chl
             $reason   = "{$decision} PV={$chlorine} base={$lockedBaseSp} trendSum=" . round($trendSum, 4) . " up={$upCount} down={$downCount} flat={$flatCount} conf={$trendConfidence}";
         }
     } else {
-        // PV exatamente sobre a base
-        $decision = 'restaurar_base';
-        $newDynSp = $lockedBaseSp;
-        $reason   = "{$decision} PV={$chlorine} base={$lockedBaseSp}";
+        // PV exatamente sobre a base — aplica pulso de manutenção para garantir doseagem contínua.
+        $phase       = (time() % (int)$nearBasePulsePeriodSec) / $nearBasePulsePeriodSec;
+        $sineVal     = abs(sin(M_PI * $phase));
+        $pulseOffset = $nearBasePulseMinOffset + $sineVal * $nearBasePulseAmplitude;
+        $decision    = 'na_base_pulso_manutencao';
+        $newDynSp    = $lockedBaseSp + $pulseOffset;
+        $reason      = "{$decision} PV={$chlorine} base={$lockedBaseSp} phase=" . round($phase, 3) . " sine=" . round($sineVal, 3) . " pulseOffset=" . round($pulseOffset, 3) . " newSP=" . round($newDynSp, 2);
     }
 
     // Segurança baseada na operação: quando segue o PV, o SP dinâmico fica sempre
