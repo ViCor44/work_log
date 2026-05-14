@@ -242,14 +242,18 @@ function run_dynamic_setpoint_for_chlorine(mysqli $conn, array $pool, float $chl
     $nightMinDropDelta  = (float)(get_setting_value($conn, $pPrefix . 'night_min_drop_delta', null) ?? 0.02);
     $brakeEnabled       = get_setting_value($conn, $pPrefix . 'brake_enabled', '1') !== '0';
     // Pulso de manutenção quando PV ≈ SP base
-    $nearBaseDeadband       = (float)(get_setting_value($conn, $pPrefix . 'near_base_deadband',         null) ?? 0.05);
-    $nearBasePulseMinOffset = (float)(get_setting_value($conn, $pPrefix . 'near_base_pulse_min_offset', null) ?? 0.03);
-    $nearBasePulseAmplitude = (float)(get_setting_value($conn, $pPrefix . 'near_base_pulse_amplitude',  null) ?? 0.05);
-    $nearBasePulsePeriodSec = (float)(get_setting_value($conn, $pPrefix . 'near_base_pulse_period_sec', null) ?? 600.0);
-    $nearBaseDeadband       = max(0.0, $nearBaseDeadband);
-    $nearBasePulseMinOffset = max(0.0, $nearBasePulseMinOffset);
-    $nearBasePulseAmplitude = max(0.0, $nearBasePulseAmplitude);
-    $nearBasePulsePeriodSec = max(60.0, $nearBasePulsePeriodSec);
+    $nearBaseDeadband            = (float)(get_setting_value($conn, $pPrefix . 'near_base_deadband',               null) ?? 0.05);
+    $nearBasePulseMinOffset      = (float)(get_setting_value($conn, $pPrefix . 'near_base_pulse_min_offset',       null) ?? 0.03);
+    $nearBasePulseAmplitude      = (float)(get_setting_value($conn, $pPrefix . 'near_base_pulse_amplitude',        null) ?? 0.05);
+    $nearBasePulsePeriodSec      = (float)(get_setting_value($conn, $pPrefix . 'near_base_pulse_period_sec',       null) ?? 600.0);
+    $nightNearBasePulseMinOffset = (float)(get_setting_value($conn, $pPrefix . 'night_near_base_pulse_min_offset', null) ?? 0.015);
+    $nightNearBasePulseAmplitude = (float)(get_setting_value($conn, $pPrefix . 'night_near_base_pulse_amplitude',  null) ?? 0.025);
+    $nearBaseDeadband            = max(0.0,  $nearBaseDeadband);
+    $nearBasePulseMinOffset      = max(0.0,  $nearBasePulseMinOffset);
+    $nearBasePulseAmplitude      = max(0.0,  $nearBasePulseAmplitude);
+    $nearBasePulsePeriodSec      = max(60.0, $nearBasePulsePeriodSec);
+    $nightNearBasePulseMinOffset = max(0.0,  $nightNearBasePulseMinOffset);
+    $nightNearBasePulseAmplitude = max(0.0,  $nightNearBasePulseAmplitude);
 
     $nightStartHour = max(0, min(23, $nightStartHour));
     $nightEndHour   = max(0, min(23, $nightEndHour));
@@ -463,10 +467,10 @@ function run_dynamic_setpoint_for_chlorine(mysqli $conn, array $pool, float $chl
             $reason    = "{$decision} PV={$chlorine} base={$lockedBaseSp} overBase=" . round($overBase, 3) . " brakeOffset={$brakeOffset} newSP={$newDynSp} bomba={$pumpPercent} hora={$hourNow}";
         } elseif ($chlorine <= $lockedBaseSp || $overBase <= $nearBaseDeadband) {
             // PV na base ou dentro do deadband: aplica pulso de manutenção mesmo de noite
-            // para garantir doseagem contínua mínima.
+            // para garantir doseagem contínua mínima (amplitude atenuada vs. diurno).
             $phase       = (time() % (int)$nearBasePulsePeriodSec) / $nearBasePulsePeriodSec;
             $sineVal     = abs(sin(M_PI * $phase));
-            $pulseOffset = $nearBasePulseMinOffset + $sineVal * $nearBasePulseAmplitude;
+            $pulseOffset = $nightNearBasePulseMinOffset + $sineVal * $nightNearBasePulseAmplitude;
             $decision    = 'night_pulso_manutencao';
             $newDynSp    = $lockedBaseSp + $pulseOffset;
             $reason      = "{$decision} PV={$chlorine} base={$lockedBaseSp} overBase=" . round($overBase, 3) . " deadband={$nearBaseDeadband} phase=" . round($phase, 3) . " sine=" . round($sineVal, 3) . " pulseOffset=" . round($pulseOffset, 3) . " newSP=" . round($newDynSp, 2) . " hora={$hourNow}";

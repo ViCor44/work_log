@@ -84,10 +84,13 @@ function param_defaults(): array {
         'ha_distance_gain'       => 0.50,
         'brake_enabled'          => 1.0,
         // Pulso de manutenção (PV perto da base)
-        'near_base_deadband'          => 0.05,
-        'near_base_pulse_min_offset'  => 0.03,
-        'near_base_pulse_amplitude'   => 0.05,
-        'near_base_pulse_period_sec'  => 600.0,
+        'near_base_deadband'               => 0.05,
+        'near_base_pulse_min_offset'       => 0.03,
+        'near_base_pulse_amplitude'        => 0.05,
+        'near_base_pulse_period_sec'       => 600.0,
+        // Pulso de manutenção noturno (atenuado)
+        'night_near_base_pulse_min_offset' => 0.015,
+        'night_near_base_pulse_amplitude'  => 0.025,
     ];
 }
 
@@ -191,10 +194,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         'ha_distance_gain'       => ['min' => 0.0, 'max' => 5.0],
         'brake_enabled'          => ['min' => 0.0, 'max' => 1.0],
         // Pulso de manutenção
-        'near_base_deadband'          => ['min' => 0.0, 'max' => 1.0],
-        'near_base_pulse_min_offset'  => ['min' => 0.0, 'max' => 2.0],
-        'near_base_pulse_amplitude'   => ['min' => 0.0, 'max' => 2.0],
-        'near_base_pulse_period_sec'  => ['min' => 60.0, 'max' => 7200.0],
+        'near_base_deadband'               => ['min' => 0.0, 'max' => 1.0],
+        'near_base_pulse_min_offset'       => ['min' => 0.0, 'max' => 2.0],
+        'near_base_pulse_amplitude'        => ['min' => 0.0, 'max' => 2.0],
+        'near_base_pulse_period_sec'       => ['min' => 60.0, 'max' => 7200.0],
+        // Pulso de manutenção noturno
+        'night_near_base_pulse_min_offset' => ['min' => 0.0, 'max' => 2.0],
+        'night_near_base_pulse_amplitude'  => ['min' => 0.0, 'max' => 2.0],
     ];
 
     foreach ($defaults as $name => $default) {
