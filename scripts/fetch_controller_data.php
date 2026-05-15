@@ -511,8 +511,12 @@ function run_dynamic_setpoint_for_chlorine(mysqli $conn, array $pool, float $chl
             // Se o excesso for significativo e a bomba ainda estiver a dosear, aplica travagem ativa:
             // envia SP ligeiramente abaixo da base para criar erro negativo maior e
             // desfazer o windup integral do controlador físico mais depressa.
+            // EXCEPÇÃO: se o último delta já é claramente negativo (PV a começar a cair),
+            // não aplica travagem — seria contraproducente suprimir doseagem quando o
+            // cloro já está em queda. Em vez disso, aplica antecipação precoce leve.
             $overBase = $chlorine - $lockedBaseSp;
-            if ($brakeEnabled && $overBase > 0.10 && $pumpPercent !== null && $pumpPercent > 5.0) {
+            $pvStartingToFall = ($deltaPv1 !== null && $deltaPv1 < -$trendDeadband);
+            if ($brakeEnabled && $overBase > 0.10 && $pumpPercent !== null && $pumpPercent > 5.0 && !$pvStartingToFall) {
                 $brakeOffset = round(min($overBase * 0.25, 0.25), 2); // até 25% do excesso, máx 0.25 mg/L
                 $decision  = 'acima_base_travagem_ativa';
                 $newDynSp  = max(round($lockedBaseSp - $brakeOffset, 2), 0.50);
@@ -528,6 +532,18 @@ function run_dynamic_setpoint_for_chlorine(mysqli $conn, array $pool, float $chl
                 $decision    = 'perto_base_pulso_manutencao';
                 $newDynSp    = $lockedBaseSp + $pulseOffset;
                 $reason      = "{$decision} PV={$chlorine} base={$lockedBaseSp} overBase=" . round($overBase, 3) . " deadband={$nearBaseDeadband} phase=" . round($phase, 3) . " sine=" . round($sineVal, 3) . " pulseOffset=" . round($pulseOffset, 3) . " newSP=" . round($newDynSp, 2);
+            } elseif ($pvStartingToFall) {
+                // PV ainda não confirmou descida pela janela completa, mas o último
+                // delta é claramente negativo → antecipação precoce: envia SP acima do
+                // PV com offset reduzido (metade do normal) para iniciar doseagem antes
+                // da queda se aprofundar, sem ser tão agressivo como a confirmação plena.
+                $earlyOffset = max($activeMinFollowOffset, $activeAnticipationOffset * 0.5);
+                $distComponent = $activeDistanceGain * 0.5 * ($chlorine - $lockedBaseSp);
+                if ($distComponent > 0) { $earlyOffset += $distComponent; }
+                $earlyOffset = clamp($earlyOffset, $activeMinFollowOffset, $activeMaxFollowOffset * 0.6);
+                $decision = 'acima_base_antecipacao_precoce';
+                $newDynSp = $chlorine + $earlyOffset;
+                $reason   = "{$decision} PV={$chlorine} base={$lockedBaseSp} delta1=" . round($deltaPv1 ?? 0.0, 4) . " deadband={$trendDeadband} earlyOffset={$earlyOffset} newSP=" . round($newDynSp, 2) . " profile={$profileMode}";
             } else {
                 $decision = 'acima_base_aguarda_descida';
                 $newDynSp = $lockedBaseSp;
