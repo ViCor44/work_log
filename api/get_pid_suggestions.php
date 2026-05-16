@@ -89,8 +89,8 @@ $stmt_tank->close();
 
 // Agora busca também o estado do controlador de cloro
 $historySql = $hasRange
-    ? "SELECT log_datetime, ph_value, ph_setpoint, chlorine_value, chlorine_setpoint, cl_controller_state FROM controller_history WHERE tank_id = ? AND log_datetime BETWEEN ? AND ? ORDER BY log_datetime ASC"
-    : "SELECT log_datetime, ph_value, ph_setpoint, chlorine_value, chlorine_setpoint, cl_controller_state FROM controller_history WHERE tank_id = ? AND log_datetime >= ? ORDER BY log_datetime ASC";
+    ? "SELECT log_datetime, ph_value, ph_setpoint, chlorine_value, chlorine_setpoint, chlorine_base_setpoint, cl_controller_state FROM controller_history WHERE tank_id = ? AND log_datetime BETWEEN ? AND ? ORDER BY log_datetime ASC"
+    : "SELECT log_datetime, ph_value, ph_setpoint, chlorine_value, chlorine_setpoint, chlorine_base_setpoint, cl_controller_state FROM controller_history WHERE tank_id = ? AND log_datetime >= ? ORDER BY log_datetime ASC";
 $stmt = $conn->prepare($historySql);
 if (!$stmt) {
     return_json_error('Erro ao preparar consulta de histórico: ' . $conn->error, 500);
@@ -772,7 +772,9 @@ foreach ($history as $row) {
     $ph = floatOrNull($row['ph_value']);
     $ph_sp = floatOrNull($row['ph_setpoint']);
     $cl = floatOrNull($row['chlorine_value']);
-    $cl_sp = floatOrNull($row['chlorine_setpoint']);
+    // Usa o SP base fixo quando disponível (SP dinâmico inativo ou não registado);
+    // cai para chlorine_setpoint (SP lido do controlador) como fallback.
+    $cl_sp = floatOrNull($row['chlorine_base_setpoint'] ?? null) ?? floatOrNull($row['chlorine_setpoint']);
 
     if ($ph !== null && $ph_sp !== null) {
         $phErrors[] = $ph - $ph_sp;

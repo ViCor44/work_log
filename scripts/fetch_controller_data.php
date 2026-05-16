@@ -664,8 +664,8 @@ if (!$settingsReady) {
 // Prepara a query de INSERT uma vez para ser reutilizada.
 $stmt_insert = $conn->prepare("
     INSERT INTO controller_history 
-    (tank_id, ph_value, ph_setpoint, chlorine_value, chlorine_setpoint, temperature_value, cl_controller_state, ph_controller_state, cl_disturbance, ph_disturbance) 
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    (tank_id, ph_value, ph_setpoint, chlorine_value, chlorine_setpoint, chlorine_base_setpoint, temperature_value, cl_controller_state, ph_controller_state, cl_disturbance, ph_disturbance) 
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 ");
 
 echo "A iniciar a busca de dados dos controladores...\n";
@@ -717,8 +717,12 @@ foreach ($pools_with_controllers as $pool) {
                 $ph_disturbio = isset($data['C2Disturbance']) ? $data['C2Disturbance'] : null;
 				$cl_disturbio = isset($data['C1Disturbance']) ? $data['C1Disturbance'] : null;
 
+                // SP base fixo do utilizador (chave em settings). NULL se SP dinâmico ainda
+                // não inicializado para este tanque — COALESCE na query de análise resolve.
+                $cloro_base_sp = float_or_null(get_setting_value($conn, 'dynamic_setpoint_tank_' . $tank_id . '_ctrl_1_base_sp', null));
+
                 // 5. Insere os dados na tabela de histórico.
-                $stmt_insert->bind_param("idddddssss", $tank_id, $ph, $ph_sp, $cloro, $cloro_sp, $temp, $cl_estado, $ph_estado, $cl_disturbio, $ph_disturbio);
+                $stmt_insert->bind_param("iddddddssss", $tank_id, $ph, $ph_sp, $cloro, $cloro_sp, $cloro_base_sp, $temp, $cl_estado, $ph_estado, $cl_disturbio, $ph_disturbio);
                 $stmt_insert->execute();
 
                 echo "Dados do tanque '" . $pool['name'] . "' inseridos com sucesso.\n";

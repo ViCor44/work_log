@@ -386,7 +386,7 @@ function fetch_tank_pid($conn, $tank) {
 }
 
 function analyze_tank($conn, $tankId, $startDate) {
-    $stmt = $conn->prepare("SELECT log_datetime, chlorine_value, chlorine_setpoint, cl_controller_state FROM controller_history WHERE tank_id = ? AND log_datetime >= ? ORDER BY log_datetime ASC");
+    $stmt = $conn->prepare("SELECT log_datetime, chlorine_value, chlorine_setpoint, chlorine_base_setpoint, cl_controller_state FROM controller_history WHERE tank_id = ? AND log_datetime >= ? ORDER BY log_datetime ASC");
     if (!$stmt) {
         return null;
     }
@@ -406,7 +406,8 @@ function analyze_tank($conn, $tankId, $startDate) {
     $series = [];
     foreach ($history as $row) {
         $value = float_or_null($row['chlorine_value']);
-        $setpoint = float_or_null($row['chlorine_setpoint']);
+        // Usa SP base fixo quando disponível; fallback para SP lido do controlador.
+        $setpoint = float_or_null($row['chlorine_base_setpoint'] ?? null) ?? float_or_null($row['chlorine_setpoint']);
         if ($value === null || $setpoint === null) {
             continue;
         }
