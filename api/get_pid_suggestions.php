@@ -736,7 +736,7 @@ function pidRecommendations($mode, $stats, $currentPid, $context = []) {
     // Guard rails: limita variação por ciclo e impõe envelopes seguros.
     $suggestedP = clampPidSuggestion($p, $suggestedP, 0.01, 100.0, 0.10);
     $suggestedI = clampPidSuggestion($i, $suggestedI, 0.0, 7200.0, 0.15);
-    $suggestedD = clampPidSuggestion($d, $suggestedD, 0.0, 3600.0, 0.20);
+    $suggestedD = clampPidSuggestion($d, $suggestedD, 0.0, 999.0, 0.20);
 
     if (count($suggestions) === 0) {
         $suggestions[] = 'Controlador parece estável para o período analisado. Ajustes menores podem focar em otimização fina.';
