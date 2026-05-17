@@ -342,6 +342,11 @@ function pid_recommendations($stats, $currentPid, $responseDelaySec, $recovery) 
         $severity = 'CRITICO';
     }
 
+    // Máximos do controlador
+    if ($suggestedD !== null) {
+        $suggestedD = min(999.0, $suggestedD);
+    }
+
     return [
         'severity' => $severity,
         'values' => [
