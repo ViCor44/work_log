@@ -271,17 +271,17 @@ $stmt->close();
         });
     }
 
-    function openAcceptModal(suggestedP, suggestedI, suggestedD, reason, canAccept) {
+    function openAcceptModal(suggestedP, suggestedI, suggestedD, reason, canAccept, currentP, currentI, currentD) {
         if (!canAccept) {
             alert('Período de monitorização ativo. Não é possível aceitar nova sugestão neste momento.');
             return;
         }
         currentSuggestionData = { p: suggestedP, i: suggestedI, d: suggestedD };
         
-        // Valores atuais (se disponível)
-        document.getElementById('currentP').value = suggestedP || 'N/A';
-        document.getElementById('currentI').value = suggestedI || 'N/A';
-        document.getElementById('currentD').value = suggestedD || 'N/A';
+        // Valores atuais
+        document.getElementById('currentP').value = (currentP !== undefined && currentP !== null) ? currentP : 'N/A';
+        document.getElementById('currentI').value = (currentI !== undefined && currentI !== null) ? currentI : 'N/A';
+        document.getElementById('currentD').value = (currentD !== undefined && currentD !== null) ? currentD : 'N/A';
         
         // Suggestões editáveis
         document.getElementById('suggestedP').value = suggestedP || '';
@@ -680,7 +680,7 @@ $stmt->close();
                         html += `
                             <div class="row mb-4">
                                 <div class="col-md-12">
-                                    <button class="btn btn-success btn-lg w-100" onclick="openAcceptModal(${data.chlorine.suggested_values.p}, ${data.chlorine.suggested_values.i}, ${data.chlorine.suggested_values.d}, 'Sugestão automática aceita - Análise de ${data.days} dias de histórico de controle', ${data.chlorine.can_accept_suggestion})">
+                                    <button class="btn btn-success btn-lg w-100" onclick="openAcceptModal(${data.chlorine.suggested_values.p}, ${data.chlorine.suggested_values.i}, ${data.chlorine.suggested_values.d}, 'Sugestão automática aceita - Análise de ${data.days} dias de histórico de controle', ${data.chlorine.can_accept_suggestion}, ${data.current_pid ? data.current_pid.p : null}, ${data.current_pid ? data.current_pid.i : null}, ${data.current_pid ? data.current_pid.d : null})">
                                         <i class="fas fa-check-circle me-2"></i>Aceitar Sugestão e Gravar
                                     </button>
                                 </div>
