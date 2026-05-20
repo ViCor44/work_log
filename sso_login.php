@@ -117,13 +117,15 @@ try {
     // ── 6. Iniciar sessão local ───────────────────────────────
     session_regenerate_id(true);
 
-    // Variáveis genéricas — a maioria dos sistemas usa estas.
-    // Se o teu sistema precisar de nomes diferentes, acrescenta linhas aqui.
-    // Ex: $_SESSION['loggedin'] = true; ou $_SESSION['username'] = $user['username'];
-    $_SESSION['user_id'] = $user[$idField];
-    $_SESSION['user']    = $user;
+    $_SESSION['user_id']    = $user[$idField];
+    $_SESSION['username']   = $user['username']   ?? '';
+    $_SESSION['first_name'] = $user['first_name'] ?? '';
+    $_SESSION['last_name']  = $user['last_name']  ?? '';
+    $_SESSION['user_type']  = $user['user_type']  ?? 'user';
 
-    header('Location: ' . $system['redirect_ok']);
+    // ── 7. Redirecionar conforme o role ──────────────────────
+    $dashboard = ($user['user_type'] === 'admin') ? 'admin_dashboard.php' : 'user_dashboard.php';
+    header('Location: ' . $dashboard);
     exit;
 
 } catch (PDOException $e) {
@@ -131,52 +133,3 @@ try {
     header('Location: ' . $redirectError . '?error=sso_db_error');
     exit;
 }
-
-// 2️⃣ Marcar token como usado
-$pdoSuper->prepare("
-    UPDATE admin_tokens SET used = 1 WHERE token = ?
-")->execute([$token]);
-
-// 3️⃣ Mapear admin → user do WorkLog
-$stmt = $pdoSuper->prepare("
-    SELECT user_id
-    FROM admin_user_map
-    WHERE admin_id = ? AND system_key = ?
-");
-$stmt->execute([$t['admin_id'], $t['system_key']]);
-$map = $stmt->fetch();
-
-if (!$map) {
-    exit('Admin não mapeado no WorkLog.');
-}
-
-// 4️⃣ Buscar utilizador local no WorkLog
-$stmt = $conn->prepare("
-    SELECT *
-    FROM users
-    WHERE id = ? AND accepted = 1
-    LIMIT 1
-");
-$stmt->bind_param("i", $map['user_id']);
-$stmt->execute();
-$result = $stmt->get_result();
-
-if ($result->num_rows === 0) {
-    header('Location: login.php');
-    exit;
-}
-
-$user = $result->fetch_assoc();
-
-// 5️⃣ Criar sessão (IGUAL ao login normal)
-session_regenerate_id(true);
-
-$_SESSION['user_id']    = $user['id'];
-$_SESSION['username']   = $user['username'];
-$_SESSION['first_name'] = $user['first_name'];
-$_SESSION['last_name']  = $user['last_name'];
-$_SESSION['user_type']  = $user['user_type']; // admin | user
-
-// 6❣ Redirecionar para login_process.php (trata o routing por role)
-header('Location: login_process.php');
-exit;
