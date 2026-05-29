@@ -704,9 +704,14 @@ function identifyFopdtChlorine($series) {
     $preWindowSec       = 600;        // 10 min antes do degrau para baseline
     $postWindowSec      = 5400;       // 90 min após degrau para observar resposta
     $minResponseDelta   = 0.05;       // mg/L mínimo para considerar resposta válida
-    $setpointStableTol  = 0.05;       // setpoint praticamente constante na janela
+    $uHoldTolPct        = 4.0;        // tolerância (%) para considerar u "mantido" após o degrau
 
+    // Nota: com setpoint dinâmico ativo o SP varia continuamente. Como, em regime
+    // permanente, y depende de u (não diretamente do SP), basta exigir que u
+    // permaneça aproximadamente constante na janela de resposta para que ΔY/ΔU
+    // seja uma estimativa válida do ganho do processo.
     $Ks = []; $taus = []; $Ls = [];
+    $spDriftSeen = false;
 
     for ($i = 1; $i < $n - 1; $i++) {
         $prev = $series[$i - 1];
@@ -727,23 +732,26 @@ function identifyFopdtChlorine($series) {
         $y0 = array_sum($baseVals) / count($baseVals);
         $spStart = array_sum($baseSp) / count($baseSp);
 
-        // Resposta pós-degrau (recolhe pontos sem nova alteração grande de u nem mudança de setpoint)
+        // Resposta pós-degrau: aceita-se variação do setpoint (compatível com SP
+        // dinâmico), mas exige-se que u permaneça aproximadamente constante para
+        // que a resposta observada possa ser atribuída ao degrau de u.
         $resp = [];
         $aborted = false;
+        $spMin = $spStart; $spMax = $spStart;
         for ($k = $i + 1; $k < $n; $k++) {
             $dt = $series[$k]['ts'] - $t0;
             if ($dt > $postWindowSec) break;
-            // Aborta se outro degrau grande no atuador
-            if (abs((float)$series[$k]['controller'] - (float)$curr['controller']) > ($stepThreshold * 1.25)) {
+            // Aborta se u sair da banda em torno do novo patamar (degrau não foi mantido)
+            if (abs((float)$series[$k]['controller'] - (float)$curr['controller']) > $uHoldTolPct) {
                 $aborted = true; break;
             }
-            // Aborta se setpoint mudar de forma relevante
-            if (abs((float)$series[$k]['setpoint'] - $spStart) > $setpointStableTol) {
-                $aborted = true; break;
-            }
+            $spK = (float)$series[$k]['setpoint'];
+            if ($spK < $spMin) $spMin = $spK;
+            if ($spK > $spMax) $spMax = $spK;
             $resp[] = ['t' => $dt, 'y' => (float)$series[$k]['value']];
         }
         if (count($resp) < 8) continue;
+        if (($spMax - $spMin) > 0.05) $spDriftSeen = true;
 
         // Estado final estimado: média do último terço da janela
         $third = (int)max(3, floor(count($resp) / 3));
@@ -785,7 +793,7 @@ function identifyFopdtChlorine($series) {
 
     $events = count($Ks);
     if ($events === 0) {
-        $empty['reasons'] = ['Não foram encontrados degraus do atuador com resposta limpa no período (necessário ΔU>=8% e setpoint estável).'];
+        $empty['reasons'] = ['Não foram encontrados degraus do atuador mantidos no período (necessário ΔU>=8% e u estável na janela de resposta).'];
         return $empty;
     }
 
@@ -810,6 +818,7 @@ function identifyFopdtChlorine($series) {
     elseif ($events >= 2 && $disp < 0.60) $confidence = 'media';
     if ($events < 2) $reasons[] = 'Apenas um evento de degrau identificado.';
     if ($disp >= 0.60) $reasons[] = 'Eventos com forte dispersão entre si.';
+    if ($spDriftSeen) $reasons[] = 'Setpoint variável (SP dinâmico) durante as janelas analisadas: K/τ/L estimados assumindo u constante.';
 
     return [
         'available' => true,

@@ -672,7 +672,7 @@ $stmt->close();
                         modelBlock = `<div class="alert alert-secondary mb-0">
                             Modelo do processo (FOPDT) não disponível.
                             ${pm && pm.reasons && pm.reasons.length ? '<br><small>' + pm.reasons.join(' ') + '</small>' : ''}
-                            Sem eventos limpos de arranque/paragem da bomba, as sugestões caem para heurísticas conservadoras.
+                            Sem degraus mantidos do atuador da bomba, as sugestões caem para heurísticas conservadoras.
                         </div>`;
                     }
 
