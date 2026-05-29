@@ -631,136 +631,511 @@ function calcDisturbanceRecovery($series) {
     ];
 }
 
+/**
+ * Median helper.
+ */
+function medianOf($values) {
+    $values = array_values(array_filter($values, function($v) { return is_numeric($v); }));
+    $n = count($values);
+    if ($n === 0) return null;
+    sort($values);
+    if ($n % 2 === 1) return (float)$values[(int)floor($n / 2)];
+    return ((float)$values[$n / 2 - 1] + (float)$values[$n / 2]) / 2.0;
+}
+
+/**
+ * Detect actuator saturation from cl_controller_state (0..100 %).
+ */
+function detectActuatorSaturation($series) {
+    $total = 0; $atMax = 0; $atMin = 0; $values = [];
+    foreach ($series as $p) {
+        if (!isset($p['controller']) || $p['controller'] === null) continue;
+        $v = (float)$p['controller'];
+        $total++;
+        $values[] = $v;
+        if ($v >= 95.0) $atMax++;
+        if ($v <= 5.0) $atMin++;
+    }
+    if ($total === 0) {
+        return [
+            'samples' => 0,
+            'pct_at_max' => 0.0,
+            'pct_at_min' => 0.0,
+            'mean' => null,
+            'saturated_high' => false,
+            'saturated_low' => false,
+        ];
+    }
+    $pctMax = ($atMax / $total) * 100.0;
+    $pctMin = ($atMin / $total) * 100.0;
+    return [
+        'samples' => $total,
+        'pct_at_max' => round($pctMax, 1),
+        'pct_at_min' => round($pctMin, 1),
+        'mean' => round(array_sum($values) / $total, 2),
+        // Considera saturado se passar >25% do tempo no limite
+        'saturated_high' => $pctMax > 25.0,
+        'saturated_low'  => $pctMin > 25.0,
+    ];
+}
+
+/**
+ * First-Order-Plus-Dead-Time process identification from observed step events
+ * in the dosing actuator (cl_controller_state).
+ *
+ * Returns model parameters (median across events) and a confidence label.
+ *
+ * Model used by Lambda tuning:
+ *   y(s)/u(s) = K * exp(-L s) / (tau s + 1)
+ */
+function identifyFopdtChlorine($series) {
+    $n = count($series);
+    $empty = [
+        'available' => false,
+        'events' => 0,
+        'K' => null, 'tau_sec' => null, 'L_sec' => null,
+        'confidence' => 'baixa',
+        'reasons' => ['Sem eventos de degrau utilizáveis.'],
+    ];
+    if ($n < 20) return $empty;
+
+    // Parâmetros de procura
+    $stepThreshold      = 8.0;        // % de mudança mínima no atuador para considerar degrau
+    $preWindowSec       = 600;        // 10 min antes do degrau para baseline
+    $postWindowSec      = 5400;       // 90 min após degrau para observar resposta
+    $minResponseDelta   = 0.05;       // mg/L mínimo para considerar resposta válida
+    $setpointStableTol  = 0.05;       // setpoint praticamente constante na janela
+
+    $Ks = []; $taus = []; $Ls = [];
+
+    for ($i = 1; $i < $n - 1; $i++) {
+        $prev = $series[$i - 1];
+        $curr = $series[$i];
+        if ($prev['controller'] === null || $curr['controller'] === null) continue;
+        $du = (float)$curr['controller'] - (float)$prev['controller'];
+        if (abs($du) < $stepThreshold) continue;
+
+        // Baseline antes do degrau
+        $t0  = (int)$curr['ts'];
+        $baseVals = []; $baseSp = [];
+        for ($j = $i - 1; $j >= 0; $j--) {
+            if (($t0 - $series[$j]['ts']) > $preWindowSec) break;
+            $baseVals[] = (float)$series[$j]['value'];
+            $baseSp[]   = (float)$series[$j]['setpoint'];
+        }
+        if (count($baseVals) < 3) continue;
+        $y0 = array_sum($baseVals) / count($baseVals);
+        $spStart = array_sum($baseSp) / count($baseSp);
+
+        // Resposta pós-degrau (recolhe pontos sem nova alteração grande de u nem mudança de setpoint)
+        $resp = [];
+        $aborted = false;
+        for ($k = $i + 1; $k < $n; $k++) {
+            $dt = $series[$k]['ts'] - $t0;
+            if ($dt > $postWindowSec) break;
+            // Aborta se outro degrau grande no atuador
+            if (abs((float)$series[$k]['controller'] - (float)$curr['controller']) > ($stepThreshold * 1.25)) {
+                $aborted = true; break;
+            }
+            // Aborta se setpoint mudar de forma relevante
+            if (abs((float)$series[$k]['setpoint'] - $spStart) > $setpointStableTol) {
+                $aborted = true; break;
+            }
+            $resp[] = ['t' => $dt, 'y' => (float)$series[$k]['value']];
+        }
+        if (count($resp) < 8) continue;
+
+        // Estado final estimado: média do último terço da janela
+        $third = (int)max(3, floor(count($resp) / 3));
+        $tail  = array_slice($resp, -$third);
+        $ys    = array_sum(array_column($tail, 'y')) / count($tail);
+        $deltaY = $ys - $y0;
+        if (abs($deltaY) < $minResponseDelta) continue;
+
+        // Ganho estático K = ΔY / ΔU
+        $K = $deltaY / $du;
+        // Para cloro esperamos K positivo (mais bomba → mais cloro). Rejeita sinais incoerentes.
+        if ($K <= 0) continue;
+
+        // Dead-time L: tempo até a resposta sair de uma banda de 5% de ΔY a partir do baseline
+        $noiseBand = max(0.02, abs($deltaY) * 0.05);
+        $L = null;
+        foreach ($resp as $pt) {
+            if (abs($pt['y'] - $y0) >= $noiseBand) { $L = $pt['t']; break; }
+        }
+        if ($L === null || $L <= 0) continue;
+
+        // Constante de tempo τ: tempo (a partir de L) para atingir 63.2% de ΔY
+        $target = $y0 + 0.632 * $deltaY;
+        $tau = null;
+        foreach ($resp as $pt) {
+            if ($pt['t'] < $L) continue;
+            $cond = $deltaY > 0 ? ($pt['y'] >= $target) : ($pt['y'] <= $target);
+            if ($cond) { $tau = max(1.0, $pt['t'] - $L); break; }
+        }
+        if ($tau === null || $tau <= 0) continue;
+
+        $Ks[]   = $K;
+        $taus[] = $tau;
+        $Ls[]   = $L;
+
+        // Salta a janela já consumida para evitar contar o mesmo evento várias vezes
+        $i = $k;
+    }
+
+    $events = count($Ks);
+    if ($events === 0) {
+        $empty['reasons'] = ['Não foram encontrados degraus do atuador com resposta limpa no período (necessário ΔU>=8% e setpoint estável).'];
+        return $empty;
+    }
+
+    $Kmed   = medianOf($Ks);
+    $tauMed = medianOf($taus);
+    $Lmed   = medianOf($Ls);
+
+    // Dispersão relativa para confiança
+    $spread = function($arr, $med) {
+        if (!$arr || !$med) return 1.0;
+        $diffs = array_map(function($v) use ($med) { return abs($v - $med); }, $arr);
+        return (array_sum($diffs) / count($diffs)) / max(1e-6, abs($med));
+    };
+    $spK   = $spread($Ks,   $Kmed);
+    $spTau = $spread($taus, $tauMed);
+    $spL   = $spread($Ls,   $Lmed);
+    $disp  = ($spK + $spTau + $spL) / 3.0;
+
+    $confidence = 'baixa';
+    $reasons = [];
+    if ($events >= 4 && $disp < 0.35) $confidence = 'alta';
+    elseif ($events >= 2 && $disp < 0.60) $confidence = 'media';
+    if ($events < 2) $reasons[] = 'Apenas um evento de degrau identificado.';
+    if ($disp >= 0.60) $reasons[] = 'Eventos com forte dispersão entre si.';
+
+    return [
+        'available' => true,
+        'events' => $events,
+        'K'        => round((float)$Kmed,   4),   // mg/L por % de atuador
+        'tau_sec'  => (int)round((float)$tauMed),
+        'L_sec'    => (int)round((float)$Lmed),
+        'dispersion' => round($disp, 3),
+        'confidence' => $confidence,
+        'reasons' => $reasons,
+    ];
+}
+
+/**
+ * Lambda (IMC) tuning para PID interactivo (ideal) sobre FOPDT.
+ *   Kc = (2τ + L) / (2K(λ + L))
+ *   Ti = τ + L/2
+ *   Td = (τ L) / (2τ + L)
+ * λ é a constante de tempo desejada em malha fechada (maior λ → resposta mais lenta/robusta).
+ */
+function lambdaTuningFromFopdt($fopdt, $aggressiveness = 'equilibrado') {
+    if (!$fopdt || empty($fopdt['available'])) return null;
+    $K   = (float)$fopdt['K'];
+    $tau = (float)$fopdt['tau_sec'];
+    $L   = (float)$fopdt['L_sec'];
+    if ($K <= 0 || $tau <= 0 || $L <= 0) return null;
+
+    switch ($aggressiveness) {
+        case 'agressivo':   $lambda = max($tau * 0.5, 1.5 * $L); break;
+        case 'conservador': $lambda = max($tau * 1.5, 5.0 * $L); break;
+        case 'equilibrado':
+        default:            $lambda = max($tau,       3.0 * $L); break;
+    }
+
+    $Kc = (2.0 * $tau + $L) / (2.0 * $K * ($lambda + $L));
+    $Ti = $tau + ($L / 2.0);
+    $Td = ($tau * $L) / (2.0 * $tau + $L);
+
+    // Envelopes de segurança absolutos (mesmos do clampPidSuggestion)
+    $Kc = max(0.01, min(100.0, $Kc));
+    $Ti = max(0.0,  min(7200.0, $Ti));
+    $Td = max(0.0,  min(3600.0, $Td));
+
+    return [
+        'lambda_sec' => (int)round($lambda),
+        'aggressiveness' => $aggressiveness,
+        'p' => $Kc,
+        'i' => $Ti,
+        'd' => $Td,
+    ];
+}
+
+/**
+ * Avalia se a última alteração de PID melhorou ou piorou o controlo,
+ * combinando deltas de MAE e desvio padrão.
+ *
+ * Retorna outcome ∈ {better, neutral, worse, unknown} e score (-100..100, positivo = melhor).
+ */
+function evaluateLastChangeOutcome($impact) {
+    if (!$impact || empty($impact['before']) || empty($impact['after'])) {
+        return ['outcome' => 'unknown', 'score' => 0, 'detail' => 'Sem dados antes/depois suficientes.'];
+    }
+    $beforeMae = (float)($impact['before']['mean_abs'] ?? 0);
+    $afterMae  = (float)($impact['after']['mean_abs']  ?? 0);
+    $beforeStd = (float)($impact['before']['stdev']    ?? 0);
+    $afterStd  = (float)($impact['after']['stdev']     ?? 0);
+
+    if ($beforeMae <= 0 && $beforeStd <= 0) {
+        return ['outcome' => 'unknown', 'score' => 0, 'detail' => 'Métricas de referência inválidas.'];
+    }
+
+    // Variação relativa (negativa = melhor). Cap a ±100%.
+    $relMae = $beforeMae > 0 ? max(-1.0, min(1.0, ($afterMae - $beforeMae) / $beforeMae)) : 0;
+    $relStd = $beforeStd > 0 ? max(-1.0, min(1.0, ($afterStd - $beforeStd) / $beforeStd)) : 0;
+
+    // Score positivo = melhoria. Pesos: 60% precisão, 40% estabilidade.
+    $score = -((0.60 * $relMae) + (0.40 * $relStd)) * 100.0;
+    $score = round(max(-100.0, min(100.0, $score)), 1);
+
+    if ($score >= 10)  $outcome = 'better';
+    elseif ($score <= -10) $outcome = 'worse';
+    else $outcome = 'neutral';
+
+    $detail = sprintf(
+        'MAE %s%.1f%% e desvio padrão %s%.1f%% face às 24h anteriores.',
+        $relMae >= 0 ? '+' : '', $relMae * 100,
+        $relStd >= 0 ? '+' : '', $relStd * 100
+    );
+
+    return ['outcome' => $outcome, 'score' => $score, 'detail' => $detail];
+}
+
 function pidRecommendations($mode, $stats, $currentPid, $context = []) {
-    $suggestions = [];
+    // -------------------------------------------------------------------------
+    // Motor de sugestão híbrido (modelo FOPDT + adaptativo histórico + segurança).
+    // Princípios:
+    //   1. Se há modelo de processo válido (FOPDT identificado), o alvo principal
+    //      é o tuning Lambda (IMC). Heurísticas servem só de ajuste fino.
+    //   2. Se a última alteração piorou (worse), propomos REVERTER 50% (passo
+    //      em direcção aos valores anteriores) em vez de empurrar mais.
+    //   3. Se o atuador está saturado em "high", aumentos de Kp ficam bloqueados
+    //      (mais ganho não ajuda quando a bomba já está no máximo).
+    //   4. Confiança insuficiente OU melhoria recente (better) → não sugerir
+    //      números novos, manter ("não mexer no que está a melhorar").
+    //   5. Passo por ciclo limitado a 10–15 % (modo equilibrado).
+    // -------------------------------------------------------------------------
+
+    $suggestions     = [];
+    $rationale       = [];
+    $diagnostics     = [];
+
     $p = isset($currentPid['p']) ? floatOrNull($currentPid['p']) : null;
     $i = isset($currentPid['i']) ? floatOrNull($currentPid['i']) : null;
     $d = isset($currentPid['d']) ? floatOrNull($currentPid['d']) : null;
-    $responseDelaySec = isset($context['mean_response_delay_sec']) && is_numeric($context['mean_response_delay_sec'])
-        ? (float)$context['mean_response_delay_sec']
-        : null;
 
-    $targetMap = ['ph' => 0.15, 'chlorine' => 0.25];
-    $tightMap = ['ph' => 0.1, 'chlorine' => 0.20];
+    $fopdt      = isset($context['fopdt']) && is_array($context['fopdt']) ? $context['fopdt'] : null;
+    $modelTune  = isset($context['model_tuning']) && is_array($context['model_tuning']) ? $context['model_tuning'] : null;
+    $saturation = isset($context['saturation']) && is_array($context['saturation']) ? $context['saturation'] : null;
+    $learning   = isset($context['learning']) && is_array($context['learning']) ? $context['learning'] : null;
+    $previousPid = isset($context['previous_pid']) && is_array($context['previous_pid']) ? $context['previous_pid'] : null;
+    $confidence  = isset($context['confidence']) && is_array($context['confidence']) ? $context['confidence'] : null;
+    $recovery    = isset($context['recovery']) && is_array($context['recovery']) ? $context['recovery'] : [];
 
-    $errThreshold = isset($targetMap[$mode]) ? $targetMap[$mode] : 0.2;
-    $tightThreshold = isset($tightMap[$mode]) ? $tightMap[$mode] : 0.15;
-
-    // Sugestões de valores
-    $suggestedP = $p;
-    $suggestedI = $i;
-    $suggestedD = $d;
-
-    $hasOscillations = $stats['stdev'] > max($errThreshold, 0.2);
-    $hasHighError = $stats['mean_abs'] > $errThreshold;
-    $hasBias = abs($stats['mean']) > ($tightThreshold * 0.75) && $stats['sign_change_rate'] < 0.35;
-    $hasRapidReversals = $stats['sign_change_rate'] > 0.45 && isset($stats['derivative_mean']) && $stats['derivative_mean'] > 0.0002;
-    $recovery = isset($context['recovery']) && is_array($context['recovery']) ? $context['recovery'] : [];
-    $slowRecovery = isset($recovery['mean_recovery_sec']) && $recovery['mean_recovery_sec'] !== null && $recovery['mean_recovery_sec'] > 1800;
-    $slowStabilization = isset($recovery['mean_stabilization_sec']) && $recovery['mean_stabilization_sec'] !== null && $recovery['mean_stabilization_sec'] > 3000;
-    $hasUnrecovered = isset($recovery['unrecovered_count']) && (int)$recovery['unrecovered_count'] > 0;
-    $disturbanceHeavy = isset($recovery['disturbance_count']) && (int)$recovery['disturbance_count'] >= 2;
     $zeroGlitches = isset($context['zero_glitch_count']) ? (int)$context['zero_glitch_count'] : 0;
     $zeroObserved = isset($context['zero_observed_count']) ? (int)$context['zero_observed_count'] : 0;
 
-    // Semente de Ti com base no atraso médio observado do processo.
-    $defaultTiSec = ($mode === 'chlorine') ? 1200.0 : 300.0;
-    $tiSeedSec = ($responseDelaySec !== null && $responseDelaySec > 0)
-        ? max(300.0, min(7200.0, $responseDelaySec))
-        : $defaultTiSec;
+    $samples = isset($stats['samples']) ? (int)$stats['samples'] : 0;
+    $errMean    = isset($stats['mean'])     ? (float)$stats['mean']     : 0.0;
+    $errMeanAbs = isset($stats['mean_abs']) ? (float)$stats['mean_abs'] : 0.0;
+    $errStdev   = isset($stats['stdev'])    ? (float)$stats['stdev']    : 0.0;
+    $signRate   = isset($stats['sign_change_rate']) ? (float)$stats['sign_change_rate'] : 0.0;
 
-    // Prioridade: oscilações indicam instabilidade, então reduzir P e aumentar D
-    if ($hasOscillations) {
-        $suggestions[] = 'Oscilações detectadas (desvio padrão ' . round($stats['stdev'], 3) . '); reduzir Kp e aumentar Kd para estabilizar.';
-        if ($p !== null) $suggestedP = $p * 0.90; // Reduz 10%
-        if ($d !== null) $suggestedD = $d * 1.20; // Aumenta 20%
-    } elseif ($hasHighError) {
-        // Só aumenta P se não houver oscilações
-        $suggestions[] = 'Erro médio alto (' . round($stats['mean_abs'], 3) . ') indica que o sistema está fora do setpoint; considere aumentar Kp gradualmente (+10-20%).';
-        if ($p !== null) $suggestedP = $p * 1.15; // Aumenta 15%
+    $errThreshold   = ($mode === 'chlorine') ? 0.25 : 0.15;
+    $tightThreshold = ($mode === 'chlorine') ? 0.20 : 0.10;
+    $hasOscillations = $errStdev > max($errThreshold, 0.2);
+    $hasHighError    = $errMeanAbs > $errThreshold;
+    $hasBias         = abs($errMean) > ($tightThreshold * 0.75) && $signRate < 0.35;
+
+    // ---------- Camada 0: confiança mínima --------------------------------------
+    $confLevel = $confidence['level'] ?? 'baixa';
+    if ($samples < 30 || $confLevel === 'baixa') {
+        $suggestions[] = 'Amostragem reduzida ou confiança baixa ('
+            . $samples . ' amostras, confiança ' . $confLevel
+            . '). Sem alteração proposta — aguardar mais dados antes de mexer no PID.';
+        $rationale[]  = 'Manter atual (confiança insuficiente).';
+        return [
+            'suggestions'      => $suggestions,
+            'suggestedValues'  => ['p' => $p, 'i' => $i, 'd' => $d],
+            'strategy'         => 'manter',
+            'rationale'        => $rationale,
+            'diagnostics'      => $diagnostics,
+        ];
     }
 
-    if ($hasBias) {
-        if ($i === null || $i <= 0) {
-            $suggestions[] = 'Viés persistente (média ' . round($stats['mean'], 3) . ') sugere integral ineficaz (Ti=0 ou não configurado); considere definir Ti > 0 para ativar ação integral.';
-            $suggestedI = round($hasOscillations ? ($tiSeedSec * 1.5) : $tiSeedSec, 2);
-            $suggestions[] = 'Ti inicial sugerido com base na dinâmica do processo: ' . round($suggestedI, 2) . ' (na unidade do controlador).';
-        } elseif ($i >= 500) {
-            $suggestions[] = 'Viés persistente (média ' . round($stats['mean'], 3) . ') sugere integral muito fraca (Ti muito alto: ' . round($i, 2) . '); reduzir Ti em 20-30% para fortalecer ação integral.';
-            $suggestedI = $i * 0.75; // Reduz Ti 25%
-        } else {
-            $suggestions[] = 'Viés persistente (média ' . round($stats['mean'], 3) . ') sugere integral fraca; considere reduzir Ti em 10-15% (Ki aumenta).';
-            $suggestedI = $i * 0.88; // Reduz Ti 12%
+    // ---------- Camada 1: adaptativo — reagir à última alteração -----------------
+    $lastOutcome = $learning['outcome'] ?? 'unknown';
+    if ($lastOutcome === 'worse' && $previousPid && isset($previousPid['p'])) {
+        $prevP = floatOrNull($previousPid['p'] ?? null);
+        $prevI = floatOrNull($previousPid['i'] ?? null);
+        $prevD = floatOrNull($previousPid['d'] ?? null);
+
+        // Caminhar 50% de volta para os valores anteriores.
+        $revertP = ($p !== null && $prevP !== null) ? ($p + ($prevP - $p) * 0.5) : $p;
+        $revertI = ($i !== null && $prevI !== null) ? ($i + ($prevI - $i) * 0.5) : $i;
+        $revertD = ($d !== null && $prevD !== null) ? ($d + ($prevD - $d) * 0.5) : $d;
+
+        // Aplica clamps de envelope mas não restringe a 15% (revert é intencional).
+        $revertP = $revertP !== null ? max(0.01, min(100.0,  (float)$revertP)) : null;
+        $revertI = $revertI !== null ? max(0.0,  min(7200.0, (float)$revertI)) : null;
+        $revertD = $revertD !== null ? max(0.0,  min(3600.0, (float)$revertD)) : null;
+
+        $suggestions[] = 'A última alteração de PID parece ter piorado o controlo ('
+            . ($learning['detail'] ?? '') . '). Sugerimos reverter 50% em direção aos valores anteriores.';
+        if ($p !== null) $suggestions[] = 'Kp: ' . round($p, 4) . ' → ' . round($revertP, 4)
+            . ' (anterior: ' . round($prevP, 4) . ')';
+        if ($i !== null) $suggestions[] = 'Ti: ' . round($i, 2) . ' → ' . round($revertI, 2)
+            . ' (anterior: ' . ($prevI !== null ? round($prevI, 2) : 'N/A') . ')';
+        if ($d !== null) $suggestions[] = 'Td: ' . round($d, 2) . ' → ' . round($revertD, 2)
+            . ' (anterior: ' . ($prevD !== null ? round($prevD, 2) : 'N/A') . ')';
+        $rationale[] = 'Reverter parcialmente a última alteração que se mostrou prejudicial.';
+
+        return [
+            'suggestions'     => $suggestions,
+            'suggestedValues' => ['p' => $revertP, 'i' => $revertI, 'd' => $revertD],
+            'strategy'        => 'reverter',
+            'rationale'       => $rationale,
+            'diagnostics'     => $diagnostics,
+        ];
+    }
+
+    if ($lastOutcome === 'better') {
+        $suggestions[] = 'A última alteração melhorou o controlo ('
+            . ($learning['detail'] ?? '') . '). Manter sintonia atual e continuar a observar.';
+        $rationale[]  = 'Não mexer no que está a melhorar.';
+        return [
+            'suggestions'     => $suggestions,
+            'suggestedValues' => ['p' => $p, 'i' => $i, 'd' => $d],
+            'strategy'        => 'manter',
+            'rationale'       => $rationale,
+            'diagnostics'     => $diagnostics,
+        ];
+    }
+
+    // ---------- Camada 2: deteção de problema físico (saturação) -----------------
+    $saturatedHigh = !empty($saturation['saturated_high']);
+    if ($saturatedHigh) {
+        $suggestions[] = 'Atenção: a bomba de cloro esteve no máximo durante '
+            . ($saturation['pct_at_max'] ?? 0) . '% do período. Isto indica problema físico (capacidade da bomba, caudal de recirculação ou demanda de cloro acima do disponível), não de sintonia. '
+            . 'Bloqueamos qualquer aumento de Kp porque mais ganho não ajuda quando o atuador está saturado.';
+        $diagnostics[] = 'actuator_saturated_high';
+    }
+    if (!empty($saturation['saturated_low'])) {
+        $suggestions[] = 'A bomba esteve em 0% durante '
+            . ($saturation['pct_at_min'] ?? 0) . '% do período (cloro residual elevado ou pouca demanda).';
+        $diagnostics[] = 'actuator_saturated_low';
+    }
+
+    // ---------- Camada 3: alvo baseado em modelo (Lambda/IMC) ---------------------
+    $targetP = $p; $targetI = $i; $targetD = $d;
+    $strategy = 'heuristica';
+
+    if ($modelTune && isset($modelTune['p']) && (($fopdt['confidence'] ?? 'baixa') !== 'baixa')) {
+        $targetP = (float)$modelTune['p'];
+        $targetI = (float)$modelTune['i'];
+        $targetD = (float)$modelTune['d'];
+        $strategy = 'modelo_lambda';
+        $rationale[] = sprintf(
+            'Modelo FOPDT identificado a partir de %d evento(s) de degrau (K=%.4f mg/L por %%, τ=%ds, L=%ds). '
+            . 'Aplicado tuning Lambda equilibrado (λ=%ds): Kc=%.4f, Ti=%.0fs, Td=%.0fs.',
+            (int)($fopdt['events'] ?? 0), (float)($fopdt['K'] ?? 0),
+            (int)($fopdt['tau_sec'] ?? 0), (int)($fopdt['L_sec'] ?? 0),
+            (int)($modelTune['lambda_sec'] ?? 0),
+            $targetP, $targetI, $targetD
+        );
+        // Se o alvo do modelo está dentro de ±15% do atual, recomendar manter
+        $closeP = ($p !== null && $p > 0) ? (abs($targetP - $p) / $p) <= 0.15 : false;
+        if ($closeP && !$hasOscillations && !$hasHighError && !$hasBias) {
+            $suggestions[] = 'O modelo do processo confirma que a sintonia atual está dentro da banda recomendada (±15% do alvo Lambda). Sem necessidade de alterar.';
+            return [
+                'suggestions'     => $suggestions,
+                'suggestedValues' => ['p' => $p, 'i' => $i, 'd' => $d],
+                'strategy'        => 'manter',
+                'rationale'       => $rationale,
+                'diagnostics'     => $diagnostics,
+            ];
+        }
+        $suggestions[] = 'Tuning sugerido pelo modelo do processo (Lambda/IMC): '
+            . 'Kp ' . round($targetP, 4) . ', Ti ' . round($targetI, 0) . 's, Td ' . round($targetD, 0) . 's.';
+    } else {
+        // Sem modelo válido → heurísticas conservadoras como fallback.
+        $rationale[] = 'Modelo FOPDT não disponível (não houve degraus do atuador limpos suficientes); usado ajuste heurístico conservador.';
+        if ($hasOscillations) {
+            if ($p !== null) $targetP = $p * 0.92;     // -8 %
+            if ($d !== null) $targetD = $d * 1.10;     // +10 %
+            $suggestions[] = 'Oscilações detetadas (desvio padrão ' . round($errStdev, 3) . '). Reduzir Kp ~8% e aumentar Td ~10%.';
+        } elseif ($hasHighError && !$saturatedHigh) {
+            if ($p !== null) $targetP = $p * 1.10;     // +10 %
+            $suggestions[] = 'Erro médio absoluto elevado (' . round($errMeanAbs, 3) . '). Aumentar Kp ~10%.';
+        }
+        if ($hasBias) {
+            if ($i === null || $i <= 0) {
+                $defaultTi = isset($context['mean_response_delay_sec']) && $context['mean_response_delay_sec'] > 0
+                    ? max(300.0, min(7200.0, (float)$context['mean_response_delay_sec'] * 2.0))
+                    : (($mode === 'chlorine') ? 1200.0 : 300.0);
+                $targetI = $defaultTi;
+                $suggestions[] = 'Viés persistente sem ação integral (Ti=0). Semear Ti=' . round($defaultTi, 0) . 's.';
+            } else {
+                $targetI = $i * 0.90;
+                $suggestions[] = 'Viés persistente (média ' . round($errMean, 3) . '). Reduzir Ti ~10% para reforçar ação integral.';
+            }
         }
     }
 
-    // Reforço: se Ti estiver ausente/zero e houver erro significativo,
-    // oferece um Ti inicial mesmo quando o viés não foi classificado como persistente.
-    if (($i === null || $i <= 0) && $suggestedI === $i) {
-        $needsIntegralKickstart = $hasHighError && !$hasRapidReversals;
-        if ($needsIntegralKickstart) {
-            $suggestedI = round($hasOscillations ? ($tiSeedSec * 1.6) : ($tiSeedSec * 1.2), 2);
-            $suggestions[] = 'Ti não definido (ou igual a 0) com erro elevado; sugerido Ti inicial de ' . round($suggestedI, 2) . ' (na unidade do controlador) para introduzir ação integral de forma gradual.';
-        }
+    // ---------- Camada 4: segurança — saturação bloqueia aumento de Kp -----------
+    if ($saturatedHigh && $p !== null && $targetP > $p) {
+        $diagnostics[] = 'kp_increase_blocked_due_to_saturation';
+        $suggestions[] = 'Aumento de Kp anulado: atuador saturado.';
+        $targetP = $p;
     }
 
-    if ($hasRapidReversals) {
-        $suggestions[] = 'Erro com muitas reversões rápidas; aumentar Td para amortecer.';
-        if ($d !== null) $suggestedD = $d * 1.25; // Aumenta Td 25%
-        // Não reduz Kp aqui se já foi reduzido por oscilações
-        if (!$hasOscillations && $p !== null) $suggestedP = $p * 0.95; // Reduz ligeiramente Kp
-    }
+    // ---------- Camada 5: clamp por ciclo (equilibrado: P 10%, I 15%, D 15%) -----
+    $suggestedP = clampPidSuggestion($p, $targetP, 0.01, 100.0,  0.10);
+    $suggestedI = clampPidSuggestion($i, $targetI, 0.0,  7200.0, 0.15);
+    $suggestedD = clampPidSuggestion($d, $targetD, 0.0,  3600.0, 0.15);
 
-    if (($slowRecovery || $disturbanceHeavy) && !$hasOscillations) {
-        $suggestions[] = 'Quedas externas com recuperação lenta; ajustar Kp/Ti para reduzir tempo de retorno ao setpoint.';
-        if ($p !== null) $suggestedP = $p * 1.08;
-        if ($suggestedI !== null && $suggestedI > 0) $suggestedI = $suggestedI * 0.90;
+    // ---------- Notas adicionais ------------------------------------------------
+    if (!empty($recovery['unrecovered_count'])) {
+        $suggestions[] = 'Foram detetadas '
+            . (int)$recovery['unrecovered_count'] . ' perturbações sem recuperação completa — manter cautela.';
     }
-
-    if ($slowStabilization && $d !== null) {
-        $suggestions[] = 'Após recuperar, a estabilização ainda está lenta; aumentar Td de forma moderada.';
-        $suggestedD = $d * 1.10;
-    }
-
-    if ($hasUnrecovered) {
-        $suggestions[] = 'Foram detetadas perturbações sem recuperação completa no período; manter ajustes conservadores e monitorizar.';
-    }
-
     if ($zeroObserved > 0) {
-        $suggestions[] = 'Foram observadas ' . $zeroObserved . ' leituras em zero/quase zero no período.';
-    }
-    if ($zeroGlitches > 0) {
-        $suggestions[] = 'Dessas, ' . $zeroGlitches . ' foram classificadas como sequências curtas (1-2 leituras) de zero espúrio e ignoradas na estatística principal.';
+        $suggestions[] = 'Observadas ' . $zeroObserved . ' leituras em zero/quase zero ('
+            . $zeroGlitches . ' filtradas como espúrias).';
     }
 
-    // Guard rails: limita variação por ciclo e impõe envelopes seguros.
-    $suggestedP = clampPidSuggestion($p, $suggestedP, 0.01, 100.0, 0.10);
-    $suggestedI = clampPidSuggestion($i, $suggestedI, 0.0, 7200.0, 0.15);
-    $suggestedD = clampPidSuggestion($d, $suggestedD, 0.0, 999.0, 0.20);
-
-    if (count($suggestions) === 0) {
-        $suggestions[] = 'Controlador parece estável para o período analisado. Ajustes menores podem focar em otimização fina.';
+    // Se tudo igual no fim → estabilidade ok
+    $changedP = ($p !== null && $suggestedP !== null && abs($suggestedP - $p) > 1e-6);
+    $changedI = ($i !== null && $suggestedI !== null && abs($suggestedI - $i) > 1e-6);
+    $changedD = ($d !== null && $suggestedD !== null && abs($suggestedD - $d) > 1e-6);
+    if (!$changedP && !$changedI && !$changedD) {
+        $suggestions[] = 'Após avaliação, nenhuma alteração compensa o risco de toque no PID. Manter sintonia atual.';
+        $strategy = 'manter';
     }
 
     if ($p !== null) {
         $suggestions[] = 'Kp atual: ' . $p . ' → Sugerido: ' . round($suggestedP, 6);
     }
     if ($i !== null || $suggestedI !== null) {
-        $currentIText = ($i === null || $i <= 0) ? 'não definido/0' : (string)$i;
+        $currentIText  = ($i === null || $i <= 0) ? 'não definido/0' : (string)$i;
         $suggestedIText = $suggestedI !== null ? round($suggestedI, 2) : 'N/A';
-        $suggestions[] = 'Ti atual: ' . $currentIText . ' → Sugerido: ' . $suggestedIText . ' (∼ Ki ajustado).';
+        $suggestions[] = 'Ti atual: ' . $currentIText . ' → Sugerido: ' . $suggestedIText . 's.';
     }
     if ($d !== null) {
-        $suggestions[] = 'Td atual: ' . $d . ' → Sugerido: ' . round($suggestedD, 2) . ' (∼ Kd ajustado).';
+        $suggestions[] = 'Td atual: ' . $d . ' → Sugerido: ' . round($suggestedD, 2) . 's.';
     }
 
     return [
-        'suggestions' => $suggestions,
+        'suggestions'     => $suggestions,
         'suggestedValues' => [
             'p' => $suggestedP,
             'i' => $suggestedI !== null ? (float)$suggestedI : null,
-            'd' => $suggestedD !== null ? (float)$suggestedD : null
-        ]
+            'd' => $suggestedD !== null ? (float)$suggestedD : null,
+        ],
+        'strategy'        => $strategy,
+        'rationale'       => $rationale,
+        'diagnostics'     => $diagnostics,
     ];
 }
 
@@ -917,33 +1292,62 @@ $statsForRecommendations = $clStats ?: [
     'derivative_mean' => 0.0,
 ];
 
-$recommendationsResult = pidRecommendations('chlorine', $statsForRecommendations, $tankPid, [
-    'mean_response_delay_sec' => $cl_mean_delay,
-    'recovery' => $clRecovery,
-    'zero_glitch_count' => $zeroGlitchCount,
-    'zero_observed_count' => $zeroObservedCount,
-]);
-$recommendations = [
-    'chlorine' => $recommendationsResult['suggestions'],
-];
-$suggestedValues = $recommendationsResult['suggestedValues'];
-
-// Últimas alterações de PID registradas
+// --- Histórico de alterações de PID (carregado cedo para alimentar o motor adaptativo) ---
+$pid_change_history = [];
 $stmt_history = $conn->prepare("SELECT changed_at, p, i, d, reason, changed_by FROM tank_pid_changes WHERE tank_id = ? ORDER BY changed_at DESC LIMIT 5");
 if ($stmt_history) {
     $stmt_history->bind_param('i', $tank_id);
     if ($stmt_history->execute()) {
         $pid_change_history = $stmt_history->get_result()->fetch_all(MYSQLI_ASSOC);
-    } else {
-        $pid_change_history = [];
     }
     $stmt_history->close();
-} else {
-    // Tabela pode não existir ainda, é normal
-    $pid_change_history = [];
 }
 
-// Verificar se há bloqueio de 72 horas após última aceitação de sugestão
+// --- Identificação FOPDT do processo (K, τ, L) e tuning Lambda baseado em modelo ---
+$fopdt        = identifyFopdtChlorine($cleanSeries);
+$modelTuning  = lambdaTuningFromFopdt($fopdt, 'equilibrado');
+$saturation   = detectActuatorSaturation($cleanSeries);
+
+// --- Avaliação adaptativa: impacto da última alteração e valor "anterior" para revert ---
+$beforeAfterImpact = null;
+if (!empty($pid_change_history) && isset($pid_change_history[0]['changed_at'])) {
+    $beforeAfterImpact = calcBeforeAfterImpact($cleanSeries, $pid_change_history[0]['changed_at']);
+}
+$lastOutcome = evaluateLastChangeOutcome($beforeAfterImpact);
+
+$previousPid = null;
+if (isset($pid_change_history[1])) {
+    $previousPid = [
+        'p' => floatOrNull($pid_change_history[1]['p'] ?? null),
+        'i' => floatOrNull($pid_change_history[1]['i'] ?? null),
+        'd' => floatOrNull($pid_change_history[1]['d'] ?? null),
+        'changed_at' => $pid_change_history[1]['changed_at'] ?? null,
+    ];
+}
+
+$recommendationsResult = pidRecommendations('chlorine', $statsForRecommendations, $tankPid, [
+    'mean_response_delay_sec' => $cl_mean_delay,
+    'recovery' => $clRecovery,
+    'zero_glitch_count' => $zeroGlitchCount,
+    'zero_observed_count' => $zeroObservedCount,
+    'fopdt' => $fopdt,
+    'model_tuning' => $modelTuning,
+    'saturation' => $saturation,
+    'learning' => $lastOutcome,
+    'previous_pid' => $previousPid,
+    'confidence' => $confidence,
+]);
+$recommendations = [
+    'chlorine' => $recommendationsResult['suggestions'],
+];
+$suggestedValues = $recommendationsResult['suggestedValues'];
+$strategy = $recommendationsResult['strategy'] ?? 'heuristica';
+$rationale = $recommendationsResult['rationale'] ?? [];
+$diagnosticsFlags = $recommendationsResult['diagnostics'] ?? [];
+
+// Últimas alterações de PID registradas (já carregadas acima)
+
+// Verificar se há bloqueio de 48 horas após última aceitação de sugestão
 $lastChangeTime = null;
 $canAcceptSuggestion = true;
 $blockReason = null;
@@ -953,17 +1357,14 @@ if ($pid_change_history && count($pid_change_history) > 0) {
     $lastChangeTime = strtotime($lastChange['changed_at']);
     $hoursSinceLastChange = (time() - $lastChangeTime) / 3600;
 
-    if ($hoursSinceLastChange < 72) {
+    if ($hoursSinceLastChange < 48) {
         $canAcceptSuggestion = false;
-        $remainingHours = ceil(72 - $hoursSinceLastChange);
+        $remainingHours = ceil(48 - $hoursSinceLastChange);
         $blockReason = "Período de monitorização ativo. Última alteração foi há " . round($hoursSinceLastChange, 1) . " horas. Aguarde mais " . $remainingHours . " horas para aceitar nova sugestão.";
     }
 }
 
-$beforeAfterImpact = null;
-if (!empty($pid_change_history) && isset($pid_change_history[0]['changed_at'])) {
-    $beforeAfterImpact = calcBeforeAfterImpact($cleanSeries, $pid_change_history[0]['changed_at']);
-}
+// $beforeAfterImpact já calculado mais acima.
 
 $actionPlan = buildActionPlan(
     $clStats ?: ['mean_abs' => 1, 'stdev' => 1],
@@ -1006,7 +1407,17 @@ $response = [
             'sparkline' => $trendSparkline
         ],
         'before_after_impact' => $beforeAfterImpact,
-        'action_plan' => $actionPlan
+        'action_plan' => $actionPlan,
+        // --- Novos campos do motor híbrido (modelo + adaptativo) ---
+        'process_model'      => $fopdt,
+        'model_tuning'       => $modelTuning,
+        'saturation'         => $saturation,
+        'learning'           => array_merge($lastOutcome, [
+            'previous_pid' => $previousPid,
+        ]),
+        'strategy'           => $strategy,
+        'rationale'          => $rationale,
+        'diagnostics_flags'  => $diagnosticsFlags,
     ],
     'current_pid' => $tankPid,
     'pid_change_history' => $pid_change_history,
