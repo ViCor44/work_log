@@ -61,7 +61,7 @@ if ($stmt->get_result()->num_rows === 0) {
 }
 $stmt->close();
 
-// Verifica bloqueio de 72 horas após última alteração (ignorado em modo force)
+// Verifica bloqueio de 48 horas após última alteração (ignorado em modo force)
 $stmt_block = $conn->prepare("SELECT changed_at FROM tank_pid_changes WHERE tank_id = ? ORDER BY changed_at DESC LIMIT 1");
 if ($stmt_block && !$force) {
     $stmt_block->bind_param('i', $tank_id);
@@ -72,8 +72,8 @@ if ($stmt_block && !$force) {
             $last_change_time = strtotime($last_change['changed_at']);
             $hours_since_last_change = (time() - $last_change_time) / 3600;
 
-            if ($hours_since_last_change < 72) {
-                $remaining_hours = ceil(72 - $hours_since_last_change);
+            if ($hours_since_last_change < 48) {
+                $remaining_hours = ceil(48 - $hours_since_last_change);
                 return_json_response([
                     'error' => 'Período de monitorização ativo. Última alteração foi há ' . round($hours_since_last_change, 1) . ' horas. Aguarde mais ' . $remaining_hours . ' horas para aceitar nova sugestão.'
                 ], 429); // 429 Too Many Requests

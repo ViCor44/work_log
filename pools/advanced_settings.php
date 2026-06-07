@@ -638,6 +638,99 @@ $stmt->close();
                     `;
                 }
 
+                // -------------------- Novo motor: Modelo + Saturação + Aprendizagem --------------------
+                const pm = data.chlorine.process_model;
+                const mt = data.chlorine.model_tuning;
+                const sat = data.chlorine.saturation;
+                const lrn = data.chlorine.learning;
+                const strat = data.chlorine.strategy;
+
+                if (pm || sat || lrn) {
+                    let modelBlock = '';
+                    if (pm && pm.available) {
+                        const confBadge = pm.confidence === 'alta' ? 'success' : (pm.confidence === 'media' ? 'warning' : 'secondary');
+                        modelBlock = `
+                            <table class="stats-table">
+                                <tr><th>Parâmetro</th><th>Valor</th><th>Significado</th></tr>
+                                <tr><td>Eventos de degrau</td><td>${pm.events}</td><td>Quantos arranques/paragens da bomba foram analisados</td></tr>
+                                <tr><td>Ganho estático K</td><td>${Number(pm.K).toFixed(4)} mg/L por %</td><td>Quanto cloro sobe por cada % de bomba</td></tr>
+                                <tr><td>Constante de tempo τ</td><td>${pm.tau_sec}s (${(pm.tau_sec/60).toFixed(1)} min)</td><td>Tempo até 63% da resposta</td></tr>
+                                <tr><td>Dead-time L</td><td>${pm.L_sec}s (${(pm.L_sec/60).toFixed(1)} min)</td><td>Atraso entre acionar a bomba e ver o efeito</td></tr>
+                                <tr><td>Dispersão entre eventos</td><td>${(pm.dispersion*100).toFixed(0)}%</td><td>Quão consistente é o modelo</td></tr>
+                                <tr><td>Confiança</td><td><span class="badge badge-${confBadge}">${pm.confidence.toUpperCase()}</span></td><td>Fiabilidade do modelo identificado</td></tr>
+                            </table>
+                        `;
+                        if (mt) {
+                            modelBlock += `
+                                <p class="mt-2 small text-muted">
+                                    <strong>Tuning Lambda/IMC (equilibrado, λ=${mt.lambda_sec}s):</strong>
+                                    Kp=${Number(mt.p).toFixed(4)} · Ti=${Number(mt.i).toFixed(0)}s · Td=${Number(mt.d).toFixed(0)}s
+                                </p>
+                            `;
+                        }
+                    } else {
+                        modelBlock = `<div class="alert alert-secondary mb-0">
+                            Modelo do processo (FOPDT) não disponível.
+                            ${pm && pm.reasons && pm.reasons.length ? '<br><small>' + pm.reasons.join(' ') + '</small>' : ''}
+                            Sem degraus mantidos do atuador da bomba, as sugestões caem para heurísticas conservadoras.
+                        </div>`;
+                    }
+
+                    let satBlock = '';
+                    if (sat && sat.samples > 0) {
+                        const satColor = sat.saturated_high ? 'danger' : (sat.saturated_low ? 'warning' : 'success');
+                        satBlock = `
+                            <ul class="mb-0">
+                                <li>Bomba no <strong>máximo</strong>: ${sat.pct_at_max}% do tempo</li>
+                                <li>Bomba a <strong>zero</strong>: ${sat.pct_at_min}% do tempo</li>
+                                <li>Dosagem média: ${sat.mean}%</li>
+                                ${sat.saturated_high ? '<li class="text-danger"><strong>Saturação alta detetada</strong> — problema físico (capacidade da bomba ou demanda excessiva), não de sintonia. Aumentos de Kp são bloqueados pelo motor.</li>' : ''}
+                            </ul>
+                        `;
+                    } else {
+                        satBlock = '<p class="mb-0 text-muted">Sem dados de atuador suficientes.</p>';
+                    }
+
+                    let learnBlock = '';
+                    if (lrn && lrn.outcome && lrn.outcome !== 'unknown') {
+                        const outColor = lrn.outcome === 'better' ? 'success' : (lrn.outcome === 'worse' ? 'danger' : 'secondary');
+                        const outLabel = { better: 'Melhorou', worse: 'Piorou', neutral: 'Neutro' }[lrn.outcome] || lrn.outcome;
+                        learnBlock = `
+                            <p class="mb-1"><strong>Última alteração:</strong> <span class="badge badge-${outColor}">${outLabel}</span> (score ${lrn.score})</p>
+                            <p class="mb-1 small text-muted">${lrn.detail || ''}</p>
+                            ${lrn.previous_pid ? `<p class="mb-0 small">Valores antes da última alteração: Kp=${lrn.previous_pid.p ?? 'N/A'}, Ti=${lrn.previous_pid.i ?? 'N/A'}, Td=${lrn.previous_pid.d ?? 'N/A'}</p>` : ''}
+                        `;
+                    } else {
+                        learnBlock = '<p class="mb-0 text-muted">Sem alteração anterior com dados antes/depois suficientes para avaliar.</p>';
+                    }
+
+                    const stratLabel = {
+                        manter: 'Manter sintonia atual',
+                        modelo_lambda: 'Tuning baseado em modelo (Lambda/IMC)',
+                        reverter: 'Reverter última alteração',
+                        heuristica: 'Heurística conservadora (sem modelo)'
+                    }[strat] || strat;
+
+                    html += `
+                        <div class="row mb-4">
+                            <div class="col-md-12">
+                                <h6 class="text-primary"><i class="fas fa-brain"></i> Motor Inteligente de Tuning</h6>
+                                <p class="mb-2"><strong>Estratégia aplicada:</strong> <span class="badge badge-info">${stratLabel}</span></p>
+                            </div>
+                            <div class="col-md-6">
+                                <h6 class="text-secondary"><i class="fas fa-microchip"></i> Modelo do Processo (FOPDT)</h6>
+                                ${modelBlock}
+                            </div>
+                            <div class="col-md-6">
+                                <h6 class="text-secondary"><i class="fas fa-tachometer-alt"></i> Estado do Atuador</h6>
+                                ${satBlock}
+                                <h6 class="text-secondary mt-3"><i class="fas fa-graduation-cap"></i> Avaliação da Última Alteração</h6>
+                                ${learnBlock}
+                            </div>
+                        </div>
+                    `;
+                }
+
                 // Recomendações detalhadas
                 if (suggestions && suggestions.length > 0) {
                     html += `
