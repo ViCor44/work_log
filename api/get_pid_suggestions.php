@@ -662,6 +662,16 @@ function pidRecommendations($mode, $stats, $currentPid, $context = []) {
     $disturbanceHeavy = isset($recovery['disturbance_count']) && (int)$recovery['disturbance_count'] >= 2;
     $zeroGlitches = isset($context['zero_glitch_count']) ? (int)$context['zero_glitch_count'] : 0;
     $zeroObserved = isset($context['zero_observed_count']) ? (int)$context['zero_observed_count'] : 0;
+    $controllerZeroPct = isset($context['controller_zero_pct']) && is_numeric($context['controller_zero_pct'])
+        ? (float)$context['controller_zero_pct']
+        : null;
+    $chlorineHighAndPumpAtMin = (
+        $mode === 'chlorine'
+        && isset($stats['mean'])
+        && $stats['mean'] > ($tightThreshold * 0.75)
+        && $controllerZeroPct !== null
+        && $controllerZeroPct >= 40.0
+    );
 
     // Semente de Ti com base no atraso médio observado do processo.
     $defaultTiSec = ($mode === 'chlorine') ? 1200.0 : 300.0;
@@ -669,15 +679,28 @@ function pidRecommendations($mode, $stats, $currentPid, $context = []) {
         ? max(300.0, min(7200.0, $responseDelaySec))
         : $defaultTiSec;
 
+    if ($chlorineHighAndPumpAtMin) {
+        $suggestions[] = 'Cloro acima do setpoint com bomba frequentemente no mínimo (' . round($controllerZeroPct, 1) . '% em 0%): neste ciclo, evitar reduzir Kp para não enviesar a leitura da resposta; priorizar monitorização da procura e anti-windup do integral.';
+    }
+
     // Prioridade: oscilações indicam instabilidade, então reduzir P e aumentar D
     if ($hasOscillations) {
-        $suggestions[] = 'Oscilações detectadas (desvio padrão ' . round($stats['stdev'], 3) . '); reduzir Kp e aumentar Kd para estabilizar.';
-        if ($p !== null) $suggestedP = $p * 0.90; // Reduz 10%
-        if ($d !== null) $suggestedD = $d * 1.20; // Aumenta 20%
+        if ($chlorineHighAndPumpAtMin) {
+            $suggestions[] = 'Oscilações detectadas (desvio padrão ' . round($stats['stdev'], 3) . ') com saturação frequente em 0%; manter Kp neste ciclo e aumentar Td moderadamente para amortecer.';
+            if ($d !== null) $suggestedD = $d * 1.12; // Aumenta 12%
+        } else {
+            $suggestions[] = 'Oscilações detectadas (desvio padrão ' . round($stats['stdev'], 3) . '); reduzir Kp e aumentar Kd para estabilizar.';
+            if ($p !== null) $suggestedP = $p * 0.90; // Reduz 10%
+            if ($d !== null) $suggestedD = $d * 1.20; // Aumenta 20%
+        }
     } elseif ($hasHighError) {
         // Só aumenta P se não houver oscilações
-        $suggestions[] = 'Erro médio alto (' . round($stats['mean_abs'], 3) . ') indica que o sistema está fora do setpoint; considere aumentar Kp gradualmente (+10-20%).';
-        if ($p !== null) $suggestedP = $p * 1.15; // Aumenta 15%
+        if ($chlorineHighAndPumpAtMin) {
+            $suggestions[] = 'Erro médio alto com cloro acima do setpoint e bomba no mínimo; evitar aumentar Kp neste ciclo e validar primeiro dinâmica de consumo/processo.';
+        } else {
+            $suggestions[] = 'Erro médio alto (' . round($stats['mean_abs'], 3) . ') indica que o sistema está fora do setpoint; considere aumentar Kp gradualmente (+10-20%).';
+            if ($p !== null) $suggestedP = $p * 1.15; // Aumenta 15%
+        }
     }
 
     if ($hasBias) {
@@ -869,6 +892,19 @@ $confidence = calcConfidence($clStats ?: ['samples' => 0], count($history), $zer
 $compositeScore = calcCompositeScore($clStats ?: ['mean_abs' => 1, 'stdev' => 1], $clRecovery, $zeroGlitchCount, $clStats ? $clStats['samples'] : 0);
 $contribution = calcContributionSplit($clStats ?: ['stdev' => 0], $clRecovery);
 
+$controllerSamples = 0;
+$controllerZeroSamples = 0;
+foreach ($cleanSeries as $point) {
+    if (!isset($point['controller']) || $point['controller'] === null || !is_numeric($point['controller'])) {
+        continue;
+    }
+    $controllerSamples++;
+    if ((float)$point['controller'] <= 0.01) {
+        $controllerZeroSamples++;
+    }
+}
+$controllerZeroPct = $controllerSamples > 0 ? (($controllerZeroSamples / $controllerSamples) * 100.0) : null;
+
 $trendValues = [];
 if ($clStats && count($clErrors) > 0) {
     $trendValues = array_slice($clErrors, -32);
@@ -922,6 +958,7 @@ $recommendationsResult = pidRecommendations('chlorine', $statsForRecommendations
     'recovery' => $clRecovery,
     'zero_glitch_count' => $zeroGlitchCount,
     'zero_observed_count' => $zeroObservedCount,
+    'controller_zero_pct' => $controllerZeroPct,
 ]);
 $recommendations = [
     'chlorine' => $recommendationsResult['suggestions'],
