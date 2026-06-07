@@ -617,7 +617,7 @@ function buildFiltroModal(data) {
                 </div>
                 <hr style="border-color:#495057;margin:8px 0">
                 <div class="d-flex justify-content-between mb-2">
-                    <span class="text-white-50">Intervalo Perlita</span>
+                    <span class="text-white-50">Intervalo Perlite</span>
                     <span class="font-monospace">${fmtVal(data.interval_perlite, 0)}</span>
                 </div>
                 <div class="d-flex justify-content-between mb-2">
@@ -629,7 +629,7 @@ function buildFiltroModal(data) {
                     <span class="font-monospace">${fmtVal(data.charging_cycles, 0)}</span>
                 </div>
                 <div class="d-flex justify-content-between">
-                    <span class="text-white-50">Última troca Perlita</span>
+                    <span class="text-white-50">Última troca Perlite</span>
                     <span class="font-monospace">${getPerliteDateLabel(data)}</span>
                 </div>
             </div>
