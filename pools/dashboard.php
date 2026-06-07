@@ -429,6 +429,12 @@ function fmtVal(v, dec = 2) {
     const n = parseFloat(v);
     return Number.isFinite(n) ? n.toFixed(dec) : '--';
 }
+function fmtDateTime(v) {
+    if (!v) return '--';
+    const d = new Date(String(v).replace(' ', 'T'));
+    if (Number.isNaN(d.getTime())) return '--';
+    return d.toLocaleString('pt-PT');
+}
 
 function lsIndicator(open, closed) {
     if (open)   return '<span class="badge bg-success">Aberta</span>';
@@ -611,6 +617,10 @@ function buildFiltroModal(data) {
                 <div class="d-flex justify-content-between">
                     <span class="text-white-50">Ciclos de Carga</span>
                     <span class="font-monospace">${fmtVal(data.charging_cycles, 0)}</span>
+                </div>
+                <div class="d-flex justify-content-between">
+                    <span class="text-white-50">Última troca Perlita</span>
+                    <span class="font-monospace">${fmtDateTime(data.last_perlite_change_at)}</span>
                 </div>
             </div>
         </div>

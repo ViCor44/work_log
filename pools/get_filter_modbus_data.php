@@ -22,6 +22,49 @@ if (!isset($_GET['id']) || !is_numeric($_GET['id'])) {
 
 $filter_id = (int) $_GET['id'];
 
+function ensure_perlite_tracking_columns(mysqli $conn): bool {
+    $hasLastChange = false;
+    $hasLastCycles = false;
+
+    $checkLastChange = $conn->query("SHOW COLUMNS FROM filter_equipment LIKE 'last_perlite_change_at'");
+    if ($checkLastChange instanceof mysqli_result) {
+        $hasLastChange = $checkLastChange->num_rows > 0;
+        $checkLastChange->close();
+    }
+
+    $checkLastCycles = $conn->query("SHOW COLUMNS FROM filter_equipment LIKE 'last_charging_cycles'");
+    if ($checkLastCycles instanceof mysqli_result) {
+        $hasLastCycles = $checkLastCycles->num_rows > 0;
+        $checkLastCycles->close();
+    }
+
+    if ($hasLastChange && $hasLastCycles) {
+        return true;
+    }
+
+    // Tenta auto-migrar para suportar registo da última troca de perlita.
+    if (!$hasLastChange) {
+        @ $conn->query("ALTER TABLE filter_equipment ADD COLUMN last_perlite_change_at DATETIME NULL DEFAULT NULL");
+    }
+    if (!$hasLastCycles) {
+        @ $conn->query("ALTER TABLE filter_equipment ADD COLUMN last_charging_cycles FLOAT NULL DEFAULT NULL");
+    }
+
+    $verifyLastChange = $conn->query("SHOW COLUMNS FROM filter_equipment LIKE 'last_perlite_change_at'");
+    $verifyLastCycles = $conn->query("SHOW COLUMNS FROM filter_equipment LIKE 'last_charging_cycles'");
+    $ok = ($verifyLastChange instanceof mysqli_result && $verifyLastChange->num_rows > 0)
+        && ($verifyLastCycles instanceof mysqli_result && $verifyLastCycles->num_rows > 0);
+
+    if ($verifyLastChange instanceof mysqli_result) {
+        $verifyLastChange->close();
+    }
+    if ($verifyLastCycles instanceof mysqli_result) {
+        $verifyLastCycles->close();
+    }
+
+    return $ok;
+}
+
 $stmt = $conn->prepare(
     "SELECT id, name, ip_address, slave_id FROM filter_equipment WHERE id = ? LIMIT 1"
 );
@@ -37,6 +80,27 @@ $stmt->close();
 if (!$filter) {
     echo json_encode(['error' => 'Filtro nao encontrado']);
     exit;
+}
+
+$perliteTrackingSupported = ensure_perlite_tracking_columns($conn);
+$lastPerliteChangeAt = null;
+$lastChargingCycles = null;
+
+if ($perliteTrackingSupported) {
+    $trackingStmt = $conn->prepare("SELECT last_perlite_change_at, last_charging_cycles FROM filter_equipment WHERE id = ? LIMIT 1");
+    if ($trackingStmt) {
+        $trackingStmt->bind_param('i', $filter_id);
+        if ($trackingStmt->execute()) {
+            $trackingRow = $trackingStmt->get_result()->fetch_assoc();
+            if ($trackingRow) {
+                $lastPerliteChangeAt = $trackingRow['last_perlite_change_at'] ?: null;
+                $lastChargingCycles = isset($trackingRow['last_charging_cycles']) && is_numeric($trackingRow['last_charging_cycles'])
+                    ? (float)$trackingRow['last_charging_cycles']
+                    : null;
+            }
+        }
+        $trackingStmt->close();
+    }
 }
 
 // ---- Mapeamento de registos Modbus (notacao 4x, 1-indexed) ----
@@ -407,6 +471,39 @@ $op_hours_pump1   = regs_to_float32($regs[29], $regs[30]);
 $op_hours_pump2   = regs_to_float32($regs[31], $regs[32]);
 $feedback_word    = isset($regs[33]) ? $regs[33] : 0;
 
+$perliteResetDetected = false;
+if ($perliteTrackingSupported && $charging_cycles !== null) {
+    // Quando o contador de ciclos cai, assume-se que houve troca/rearme de perlita.
+    if ($lastChargingCycles !== null && ($charging_cycles + 0.05) < $lastChargingCycles) {
+        $perliteResetDetected = true;
+        $lastPerliteChangeAt = date('Y-m-d H:i:s');
+    }
+
+    if ($perliteResetDetected) {
+        $updateTracking = $conn->prepare(
+            "UPDATE filter_equipment
+             SET last_perlite_change_at = NOW(), last_charging_cycles = ?, updated_at = NOW()
+             WHERE id = ?"
+        );
+        if ($updateTracking) {
+            $updateTracking->bind_param('di', $charging_cycles, $filter_id);
+            $updateTracking->execute();
+            $updateTracking->close();
+        }
+    } else {
+        $updateCycles = $conn->prepare(
+            "UPDATE filter_equipment
+             SET last_charging_cycles = ?, updated_at = NOW()
+             WHERE id = ?"
+        );
+        if ($updateCycles) {
+            $updateCycles->bind_param('di', $charging_cycles, $filter_id);
+            $updateCycles->execute();
+            $updateCycles->close();
+        }
+    }
+}
+
 $coil_result = modbus_tcp_read_coils(
     $filter['ip_address'],
     (int) $filter['slave_id'],
@@ -525,6 +622,9 @@ echo json_encode([
     'interval_perlite' => $interval_perlite,
     'remaining_time'   => $remaining_time,
     'charging_cycles'  => $charging_cycles,
+    'last_perlite_change_at' => $lastPerliteChangeAt,
+    'perlite_reset_detected' => $perliteResetDetected,
+    'perlite_tracking_supported' => $perliteTrackingSupported,
     // Compatibilidade
     'pump_state'      => $setpoint_vfd_p1,
     'precoat_coil'    => $precoat_coil,
