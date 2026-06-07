@@ -436,6 +436,16 @@ function fmtDateTime(v) {
     return d.toLocaleString('pt-PT');
 }
 
+function getPerliteDateLabel(data) {
+    if (data.last_perlite_change_at) {
+        return fmtDateTime(data.last_perlite_change_at);
+    }
+    if (data.estimated_perlite_change_at) {
+        return fmtDateTime(data.estimated_perlite_change_at) + ' (estimada)';
+    }
+    return '--';
+}
+
 function lsIndicator(open, closed) {
     if (open)   return '<span class="badge bg-success">Aberta</span>';
     if (closed) return '<span class="badge bg-secondary">Fechada</span>';
@@ -620,7 +630,7 @@ function buildFiltroModal(data) {
                 </div>
                 <div class="d-flex justify-content-between">
                     <span class="text-white-50">Última troca Perlita</span>
-                    <span class="font-monospace">${fmtDateTime(data.last_perlite_change_at)}</span>
+                    <span class="font-monospace">${getPerliteDateLabel(data)}</span>
                 </div>
             </div>
         </div>

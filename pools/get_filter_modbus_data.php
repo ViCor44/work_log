@@ -471,6 +471,19 @@ $op_hours_pump1   = regs_to_float32($regs[29], $regs[30]);
 $op_hours_pump2   = regs_to_float32($regs[31], $regs[32]);
 $feedback_word    = isset($regs[33]) ? $regs[33] : 0;
 
+$estimatedPerliteChangeAt = null;
+$usingEstimatedPerliteDate = false;
+
+if ($lastPerliteChangeAt === null && $interval_perlite !== null && $remaining_time !== null) {
+    $elapsedDays = (float)$interval_perlite - (float)$remaining_time;
+    // Estimativa conservadora apenas se os dados forem coerentes.
+    if ($elapsedDays >= 0.0 && $elapsedDays <= max(1.0, (float)$interval_perlite * 1.2)) {
+        $estimatedTs = time() - (int)round($elapsedDays * 86400);
+        $estimatedPerliteChangeAt = date('Y-m-d H:i:s', $estimatedTs);
+        $usingEstimatedPerliteDate = true;
+    }
+}
+
 $perliteResetDetected = false;
 if ($perliteTrackingSupported && $charging_cycles !== null) {
     // Quando o contador de ciclos cai, assume-se que houve troca/rearme de perlita.
@@ -490,6 +503,8 @@ if ($perliteTrackingSupported && $charging_cycles !== null) {
             $updateTracking->execute();
             $updateTracking->close();
         }
+        $estimatedPerliteChangeAt = null;
+        $usingEstimatedPerliteDate = false;
     } else {
         $updateCycles = $conn->prepare(
             "UPDATE filter_equipment
@@ -623,6 +638,8 @@ echo json_encode([
     'remaining_time'   => $remaining_time,
     'charging_cycles'  => $charging_cycles,
     'last_perlite_change_at' => $lastPerliteChangeAt,
+    'estimated_perlite_change_at' => $estimatedPerliteChangeAt,
+    'using_estimated_perlite_date' => $usingEstimatedPerliteDate,
     'perlite_reset_detected' => $perliteResetDetected,
     'perlite_tracking_supported' => $perliteTrackingSupported,
     // Compatibilidade
