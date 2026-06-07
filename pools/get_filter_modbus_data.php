@@ -476,8 +476,10 @@ $usingEstimatedPerliteDate = false;
 
 if ($lastPerliteChangeAt === null && $interval_perlite !== null && $remaining_time !== null) {
     $elapsedDays = (float)$interval_perlite - (float)$remaining_time;
-    // Estimativa conservadora apenas se os dados forem coerentes.
-    if ($elapsedDays >= 0.0 && $elapsedDays <= max(1.0, (float)$interval_perlite * 1.2)) {
+    // Aceita atraso (remaining negativo): ex. intervalo 7, restante -18 => 25 dias decorridos.
+    // Limita só para evitar datas absurdas por ruído de leitura.
+    $maxElapsedDays = max(30.0, abs((float)$interval_perlite) * 12.0);
+    if ($elapsedDays >= 0.0 && $elapsedDays <= $maxElapsedDays) {
         $estimatedTs = time() - (int)round($elapsedDays * 86400);
         $estimatedPerliteChangeAt = date('Y-m-d H:i:s', $estimatedTs);
         $usingEstimatedPerliteDate = true;
