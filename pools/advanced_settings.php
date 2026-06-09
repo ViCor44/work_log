@@ -706,6 +706,8 @@ $stmt->close();
 
                     const stratLabel = {
                         manter: 'Manter sintonia atual',
+                        ajuste_com_confianca: 'Ajuste com confiança (evidência validada)',
+                        bloqueado_por_evidencia_insuficiente: 'Bloqueado por evidência insuficiente',
                         modelo_lambda: 'Tuning baseado em modelo (Lambda/IMC)',
                         reverter: 'Reverter última alteração',
                         heuristica: 'Heurística conservadora (sem modelo)'

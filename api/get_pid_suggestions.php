@@ -680,6 +680,96 @@ function detectActuatorSaturation($series) {
 }
 
 /**
+ * Confirma se mudanças do atuador (dosagem) produzem resposta coerente no cloro.
+ * Esperado para cloro: ganho positivo (mais dosagem => mais cloro após algum atraso).
+ */
+function calcActuationDirectionEvidence($series, $meanResponseDelaySec = null) {
+    $n = count($series);
+    if ($n < 12) {
+        return [
+            'samples' => 0,
+            'agreement' => null,
+            'gain_sign' => 'unknown',
+            'reliable' => false,
+            'lag_steps' => null,
+            'reason' => 'Amostragem insuficiente para inferir direção do processo.',
+        ];
+    }
+
+    $dtSamples = [];
+    for ($i = 1; $i < $n; $i++) {
+        $dt = (int)$series[$i]['ts'] - (int)$series[$i - 1]['ts'];
+        if ($dt > 0 && $dt <= 3600) $dtSamples[] = $dt;
+    }
+    $medianDt = medianOf($dtSamples);
+    if ($medianDt === null || $medianDt <= 0) {
+        return [
+            'samples' => 0,
+            'agreement' => null,
+            'gain_sign' => 'unknown',
+            'reliable' => false,
+            'lag_steps' => null,
+            'reason' => 'Sem passo temporal válido para análise direcional.',
+        ];
+    }
+
+    $lagSteps = 2;
+    if ($meanResponseDelaySec !== null && is_numeric($meanResponseDelaySec) && (float)$meanResponseDelaySec > 0) {
+        $lagSteps = (int)round(((float)$meanResponseDelaySec) / $medianDt);
+    }
+    $lagSteps = max(1, min(12, $lagSteps));
+
+    $aligned = 0;
+    $opposed = 0;
+    $usable = 0;
+    $minActuatorStep = 1.0; // variação mínima de 1% na saída
+
+    for ($i = 1; $i < ($n - $lagSteps); $i++) {
+        if ($series[$i - 1]['controller'] === null || $series[$i]['controller'] === null) continue;
+        $du = (float)$series[$i]['controller'] - (float)$series[$i - 1]['controller'];
+        if (abs($du) < $minActuatorStep) continue;
+
+        $yNow = isset($series[$i]['value']) ? (float)$series[$i]['value'] : null;
+        $yLag = isset($series[$i + $lagSteps]['value']) ? (float)$series[$i + $lagSteps]['value'] : null;
+        if ($yNow === null || $yLag === null) continue;
+
+        $dy = $yLag - $yNow;
+        $prod = $du * $dy;
+        if (abs($prod) < 1e-6) continue;
+
+        $usable++;
+        if ($prod > 0) $aligned++;
+        else $opposed++;
+    }
+
+    if ($usable < 8) {
+        return [
+            'samples' => $usable,
+            'agreement' => null,
+            'gain_sign' => 'unknown',
+            'reliable' => false,
+            'lag_steps' => $lagSteps,
+            'reason' => 'Sem eventos de atuação suficientes para confirmar direção.',
+        ];
+    }
+
+    $agreement = $aligned / max(1, ($aligned + $opposed));
+    $gainSign = $agreement >= 0.55 ? 'positive' : ($agreement <= 0.45 ? 'negative' : 'unclear');
+    $reliable = ($gainSign === 'positive') && ($agreement >= 0.62) && ($usable >= 12);
+
+    return [
+        'samples' => $usable,
+        'agreement' => round($agreement, 3),
+        'gain_sign' => $gainSign,
+        'reliable' => $reliable,
+        'lag_steps' => $lagSteps,
+        'reason' => $reliable
+            ? 'Direção física confirmada (atuador e resposta do cloro coerentes).'
+            : 'Direção física inconclusiva/incoerente para ajuste confiável.',
+    ];
+}
+
+/**
  * First-Order-Plus-Dead-Time process identification from observed step events
  * in the dosing actuator (cl_controller_state).
  *
@@ -912,23 +1002,9 @@ function evaluateLastChangeOutcome($impact) {
 }
 
 function pidRecommendations($mode, $stats, $currentPid, $context = []) {
-    // -------------------------------------------------------------------------
-    // Motor de sugestão híbrido (modelo FOPDT + adaptativo histórico + segurança).
-    // Princípios:
-    //   1. Se há modelo de processo válido (FOPDT identificado), o alvo principal
-    //      é o tuning Lambda (IMC). Heurísticas servem só de ajuste fino.
-    //   2. Se a última alteração piorou (worse), propomos REVERTER 50% (passo
-    //      em direcção aos valores anteriores) em vez de empurrar mais.
-    //   3. Se o atuador está saturado em "high", aumentos de Kp ficam bloqueados
-    //      (mais ganho não ajuda quando a bomba já está no máximo).
-    //   4. Confiança insuficiente OU melhoria recente (better) → não sugerir
-    //      números novos, manter ("não mexer no que está a melhorar").
-    //   5. Passo por ciclo limitado a 10–15 % (modo equilibrado).
-    // -------------------------------------------------------------------------
-
-    $suggestions     = [];
-    $rationale       = [];
-    $diagnostics     = [];
+    $suggestions = [];
+    $rationale = [];
+    $diagnostics = [];
 
     $p = isset($currentPid['p']) ? floatOrNull($currentPid['p']) : null;
     $i = isset($currentPid['i']) ? floatOrNull($currentPid['i']) : null;
@@ -940,7 +1016,7 @@ function pidRecommendations($mode, $stats, $currentPid, $context = []) {
     $learning   = isset($context['learning']) && is_array($context['learning']) ? $context['learning'] : null;
     $previousPid = isset($context['previous_pid']) && is_array($context['previous_pid']) ? $context['previous_pid'] : null;
     $confidence  = isset($context['confidence']) && is_array($context['confidence']) ? $context['confidence'] : null;
-    $recovery    = isset($context['recovery']) && is_array($context['recovery']) ? $context['recovery'] : [];
+    $direction  = isset($context['direction_evidence']) && is_array($context['direction_evidence']) ? $context['direction_evidence'] : [];
 
     $zeroGlitches = isset($context['zero_glitch_count']) ? (int)$context['zero_glitch_count'] : 0;
     $zeroObserved = isset($context['zero_observed_count']) ? (int)$context['zero_observed_count'] : 0;
@@ -951,10 +1027,10 @@ function pidRecommendations($mode, $stats, $currentPid, $context = []) {
     $samples = isset($stats['samples']) ? (int)$stats['samples'] : 0;
     $errMean    = isset($stats['mean'])     ? (float)$stats['mean']     : 0.0;
     $errMeanAbs = isset($stats['mean_abs']) ? (float)$stats['mean_abs'] : 0.0;
-    $errStdev   = isset($stats['stdev'])    ? (float)$stats['stdev']    : 0.0;
-    $signRate   = isset($stats['sign_change_rate']) ? (float)$stats['sign_change_rate'] : 0.0;
+    $errThreshold = ($mode === 'chlorine') ? 0.25 : 0.15;
+    $confLevel = $confidence['level'] ?? 'baixa';
+    $confScore = isset($confidence['score']) ? (float)$confidence['score'] : 0.0;
 
-    $errThreshold   = ($mode === 'chlorine') ? 0.25 : 0.15;
     $tightThreshold = ($mode === 'chlorine') ? 0.20 : 0.10;
     $chlorineHighAndPumpAtMin = (
         $mode === 'chlorine'
@@ -962,29 +1038,69 @@ function pidRecommendations($mode, $stats, $currentPid, $context = []) {
         && $controllerZeroPct !== null
         && $controllerZeroPct >= 40.0
     );
-    $hasOscillations = $errStdev > max($errThreshold, 0.2);
-    $hasHighError    = $errMeanAbs > $errThreshold;
-    $hasBias         = abs($errMean) > ($tightThreshold * 0.75) && $signRate < 0.35;
+    $saturatedHigh = !empty($saturation['saturated_high']);
+    $directionReliable = !empty($direction['reliable']);
+    $directionPositive = (($direction['gain_sign'] ?? 'unknown') === 'positive');
+    $directionSamples = isset($direction['samples']) ? (int)$direction['samples'] : 0;
 
-    if ($chlorineHighAndPumpAtMin) {
-        $suggestions[] = 'Cloro acima do setpoint com bomba frequentemente no mínimo (' . round($controllerZeroPct, 1) . '% em 0%): neste ciclo, manter Kp para evitar recomendações contraditórias; priorizar monitorização da procura e anti-windup do integral.';
-        $diagnostics[] = 'chlorine_high_with_low_output_saturation';
+    $modelAvailable = !empty($fopdt['available']) && $modelTune && isset($modelTune['p'], $modelTune['i'], $modelTune['d']);
+    $modelConfidence = $fopdt['confidence'] ?? 'baixa';
+    $modelEvents = isset($fopdt['events']) ? (int)$fopdt['events'] : 0;
+    $modelDispersion = isset($fopdt['dispersion']) ? (float)$fopdt['dispersion'] : 1.0;
+    $modelReliable = $modelAvailable
+        && in_array($modelConfidence, ['alta', 'media'], true)
+        && $modelEvents >= 2
+        && $modelDispersion <= 0.60;
+
+    $blockedReturn = function($msg, $code) use ($p, $i, $d, &$suggestions, &$rationale, &$diagnostics) {
+        $suggestions[] = $msg;
+        $rationale[] = 'Sem evidência suficiente para alteração segura neste ciclo.';
+        $diagnostics[] = $code;
+        return [
+            'suggestions' => $suggestions,
+            'suggestedValues' => ['p' => $p, 'i' => $i, 'd' => $d],
+            'strategy' => 'bloqueado_por_evidencia_insuficiente',
+            'rationale' => $rationale,
+            'diagnostics' => $diagnostics,
+        ];
+    };
+
+    // Gate 1: qualidade mínima de dados e confiança.
+    if ($samples < 45 || $confLevel === 'baixa' || $confScore < 60.0) {
+        return $blockedReturn(
+            'Sugestão bloqueada: evidência insuficiente (' . $samples . ' amostras, confiança ' . $confLevel . ' ' . round($confScore, 1) . '%).',
+            'blocked_low_confidence'
+        );
     }
 
-    // ---------- Camada 0: confiança mínima --------------------------------------
-    $confLevel = $confidence['level'] ?? 'baixa';
-    if ($samples < 30 || $confLevel === 'baixa') {
-        $suggestions[] = 'Amostragem reduzida ou confiança baixa ('
-            . $samples . ' amostras, confiança ' . $confLevel
-            . '). Sem alteração proposta — aguardar mais dados antes de mexer no PID.';
-        $rationale[]  = 'Manter atual (confiança insuficiente).';
-        return [
-            'suggestions'      => $suggestions,
-            'suggestedValues'  => ['p' => $p, 'i' => $i, 'd' => $d],
-            'strategy'         => 'manter',
-            'rationale'        => $rationale,
-            'diagnostics'      => $diagnostics,
-        ];
+    // Gate 2: direção física do processo.
+    if ($mode === 'chlorine' && (!$directionReliable || !$directionPositive || $directionSamples < 12)) {
+        return $blockedReturn(
+            'Sugestão bloqueada: direção física atuador→cloro não comprovada (amostras úteis ' . $directionSamples . ').',
+            'blocked_direction_unreliable'
+        );
+    }
+
+    // Gate 3: sem modelo confiável, sem ajuste numérico.
+    if (!$modelReliable) {
+        return $blockedReturn(
+            'Sugestão bloqueada: modelo do processo sem confiabilidade suficiente (confiança ' . $modelConfidence . ', eventos ' . $modelEvents . ', dispersão ' . round($modelDispersion * 100, 1) . '%).',
+            'blocked_model_unreliable'
+        );
+    }
+
+    // Gate 4: limitação física evidente.
+    if ($saturatedHigh) {
+        return $blockedReturn(
+            'Sugestão bloqueada: atuador saturado em alta (' . ($saturation['pct_at_max'] ?? 0) . '% no máximo).',
+            'blocked_high_saturation'
+        );
+    }
+    if ($chlorineHighAndPumpAtMin) {
+        return $blockedReturn(
+            'Sugestão bloqueada: cloro acima do setpoint com bomba em 0% por ' . round($controllerZeroPct, 1) . '% do período.',
+            'blocked_high_chlorine_low_output'
+        );
     }
 
     // ---------- Camada 1: adaptativo — reagir à última alteração -----------------
@@ -1017,7 +1133,7 @@ function pidRecommendations($mode, $stats, $currentPid, $context = []) {
         return [
             'suggestions'     => $suggestions,
             'suggestedValues' => ['p' => $revertP, 'i' => $revertI, 'd' => $revertD],
-            'strategy'        => 'reverter',
+            'strategy'        => 'ajuste_com_confianca',
             'rationale'       => $rationale,
             'diagnostics'     => $diagnostics,
         ];
@@ -1036,90 +1152,17 @@ function pidRecommendations($mode, $stats, $currentPid, $context = []) {
         ];
     }
 
-    // ---------- Camada 2: deteção de problema físico (saturação) -----------------
-    $saturatedHigh = !empty($saturation['saturated_high']);
-    if ($saturatedHigh) {
-        $suggestions[] = 'Atenção: a bomba de cloro esteve no máximo durante '
-            . ($saturation['pct_at_max'] ?? 0) . '% do período. Isto indica problema físico (capacidade da bomba, caudal de recirculação ou demanda de cloro acima do disponível), não de sintonia. '
-            . 'Bloqueamos qualquer aumento de Kp porque mais ganho não ajuda quando o atuador está saturado.';
-        $diagnostics[] = 'actuator_saturated_high';
-    }
-    if (!empty($saturation['saturated_low'])) {
-        $suggestions[] = 'A bomba esteve em 0% durante '
-            . ($saturation['pct_at_min'] ?? 0) . '% do período (cloro residual elevado ou pouca demanda).';
-        $diagnostics[] = 'actuator_saturated_low';
-    }
-
-    // ---------- Camada 3: alvo baseado em modelo (Lambda/IMC) ---------------------
+    // Alvo baseado em modelo (Lambda/IMC) com evidência suficiente.
     $targetP = $p; $targetI = $i; $targetD = $d;
-    $strategy = 'heuristica';
+    $targetP = (float)$modelTune['p'];
+    $targetI = (float)$modelTune['i'];
+    $targetD = (float)$modelTune['d'];
 
-    if ($modelTune && isset($modelTune['p']) && (($fopdt['confidence'] ?? 'baixa') !== 'baixa')) {
-        $targetP = (float)$modelTune['p'];
-        $targetI = (float)$modelTune['i'];
-        $targetD = (float)$modelTune['d'];
-        $strategy = 'modelo_lambda';
-        $rationale[] = sprintf(
-            'Modelo FOPDT identificado a partir de %d evento(s) de degrau (K=%.4f mg/L por %%, τ=%ds, L=%ds). '
-            . 'Aplicado tuning Lambda equilibrado (λ=%ds): Kc=%.4f, Ti=%.0fs, Td=%.0fs.',
-            (int)($fopdt['events'] ?? 0), (float)($fopdt['K'] ?? 0),
-            (int)($fopdt['tau_sec'] ?? 0), (int)($fopdt['L_sec'] ?? 0),
-            (int)($modelTune['lambda_sec'] ?? 0),
-            $targetP, $targetI, $targetD
-        );
-        // Se o alvo do modelo está dentro de ±15% do atual, recomendar manter
-        $closeP = ($p !== null && $p > 0) ? (abs($targetP - $p) / $p) <= 0.15 : false;
-        if ($closeP && !$hasOscillations && !$hasHighError && !$hasBias) {
-            $suggestions[] = 'O modelo do processo confirma que a sintonia atual está dentro da banda recomendada (±15% do alvo Lambda). Sem necessidade de alterar.';
-            return [
-                'suggestions'     => $suggestions,
-                'suggestedValues' => ['p' => $p, 'i' => $i, 'd' => $d],
-                'strategy'        => 'manter',
-                'rationale'       => $rationale,
-                'diagnostics'     => $diagnostics,
-            ];
-        }
-        $suggestions[] = 'Tuning sugerido pelo modelo do processo (Lambda/IMC): '
-            . 'Kp ' . round($targetP, 4) . ', Ti ' . round($targetI, 0) . 's, Td ' . round($targetD, 0) . 's.';
-    } else {
-        // Sem modelo válido → heurísticas conservadoras como fallback.
-        $rationale[] = 'Modelo FOPDT não disponível (não houve degraus do atuador limpos suficientes); usado ajuste heurístico conservador.';
-        if ($hasOscillations) {
-            if ($p !== null) $targetP = $p * 0.92;     // -8 %
-            if ($d !== null) $targetD = $d * 1.10;     // +10 %
-            $suggestions[] = 'Oscilações detetadas (desvio padrão ' . round($errStdev, 3) . '). Reduzir Kp ~8% e aumentar Td ~10%.';
-        } elseif ($hasHighError && !$saturatedHigh) {
-            if ($p !== null) $targetP = $p * 1.10;     // +10 %
-            $suggestions[] = 'Erro médio absoluto elevado (' . round($errMeanAbs, 3) . '). Aumentar Kp ~10%.';
-        }
-        if ($hasBias) {
-            if ($i === null || $i <= 0) {
-                $defaultTi = isset($context['mean_response_delay_sec']) && $context['mean_response_delay_sec'] > 0
-                    ? max(300.0, min(7200.0, (float)$context['mean_response_delay_sec'] * 2.0))
-                    : (($mode === 'chlorine') ? 1200.0 : 300.0);
-                $targetI = $defaultTi;
-                $suggestions[] = 'Viés persistente sem ação integral (Ti=0). Semear Ti=' . round($defaultTi, 0) . 's.';
-            } else {
-                $targetI = $i * 0.90;
-                $suggestions[] = 'Viés persistente (média ' . round($errMean, 3) . '). Reduzir Ti ~10% para reforçar ação integral.';
-            }
-        }
-    }
-
-    // ---------- Camada 4: segurança de atuador e coerência operacional -----------
-    if ($chlorineHighAndPumpAtMin && $p !== null) {
-        if ($targetP !== null && abs($targetP - $p) > 1e-9) {
-            $suggestions[] = 'Ajuste de Kp neutralizado neste ciclo por cloro alto com bomba frequentemente em 0%; manter Kp e reavaliar após novo período.';
-            $diagnostics[] = 'kp_change_blocked_due_to_low_output_saturation';
-        }
-        $targetP = $p;
-    }
-
-    // ---------- Camada 4b: saturação alta bloqueia aumento de Kp -----------------
-    if ($saturatedHigh && $p !== null && $targetP > $p) {
-        $diagnostics[] = 'kp_increase_blocked_due_to_saturation';
-        $suggestions[] = 'Aumento de Kp anulado: atuador saturado.';
-        $targetP = $p;
+    // Regra anti-contradição: com cloro acima do SP, não reduzir Ti.
+    if ($mode === 'chlorine' && $errMean > ($tightThreshold * 0.5) && $i !== null && $i > 0 && $targetI < $i) {
+        $targetI = $i;
+        $diagnostics[] = 'ti_reduction_blocked_high_chlorine';
+        $suggestions[] = 'Bloqueio de segurança: redução de Ti anulada porque o cloro está acima do setpoint neste período.';
     }
 
     // ---------- Camada 5: clamp por ciclo (equilibrado: P 10%, I 15%, D 15%) -----
@@ -1128,10 +1171,6 @@ function pidRecommendations($mode, $stats, $currentPid, $context = []) {
     $suggestedD = clampPidSuggestion($d, $targetD, 0.0,  3600.0, 0.15);
 
     // ---------- Notas adicionais ------------------------------------------------
-    if (!empty($recovery['unrecovered_count'])) {
-        $suggestions[] = 'Foram detetadas '
-            . (int)$recovery['unrecovered_count'] . ' perturbações sem recuperação completa — manter cautela.';
-    }
     if ($zeroObserved > 0) {
         $suggestions[] = 'Observadas ' . $zeroObserved . ' leituras em zero/quase zero ('
             . $zeroGlitches . ' filtradas como espúrias).';
@@ -1142,9 +1181,26 @@ function pidRecommendations($mode, $stats, $currentPid, $context = []) {
     $changedI = ($i !== null && $suggestedI !== null && abs($suggestedI - $i) > 1e-6);
     $changedD = ($d !== null && $suggestedD !== null && abs($suggestedD - $d) > 1e-6);
     if (!$changedP && !$changedI && !$changedD) {
-        $suggestions[] = 'Após avaliação, nenhuma alteração compensa o risco de toque no PID. Manter sintonia atual.';
-        $strategy = 'manter';
+        $suggestions[] = 'Modelo confiável confirma sintonia atual dentro dos limites seguros por ciclo. Sem alteração.';
+        $rationale[] = 'Sem mudança líquida segura após aplicar modelo e guard rails.';
+        return [
+            'suggestions'     => $suggestions,
+            'suggestedValues' => ['p' => $p, 'i' => $i, 'd' => $d],
+            'strategy'        => 'manter',
+            'rationale'       => $rationale,
+            'diagnostics'     => $diagnostics,
+        ];
     }
+
+    $rationale[] = sprintf(
+        'Modelo FOPDT validado (K=%.4f, tau=%ds, L=%ds, dispersão=%.1f%%, confiança=%s).',
+        (float)($fopdt['K'] ?? 0),
+        (int)($fopdt['tau_sec'] ?? 0),
+        (int)($fopdt['L_sec'] ?? 0),
+        ((float)($fopdt['dispersion'] ?? 0.0)) * 100.0,
+        $modelConfidence
+    );
+    $rationale[] = 'Direção física confirmada (atuador→cloro) e gates de segurança aprovados.';
 
     if ($p !== null) {
         $suggestions[] = 'Kp atual: ' . $p . ' → Sugerido: ' . round($suggestedP, 6);
@@ -1165,7 +1221,7 @@ function pidRecommendations($mode, $stats, $currentPid, $context = []) {
             'i' => $suggestedI !== null ? (float)$suggestedI : null,
             'd' => $suggestedD !== null ? (float)$suggestedD : null,
         ],
-        'strategy'        => $strategy,
+        'strategy'        => 'ajuste_com_confianca',
         'rationale'       => $rationale,
         'diagnostics'     => $diagnostics,
     ];
@@ -1352,6 +1408,7 @@ if ($stmt_history) {
 $fopdt        = identifyFopdtChlorine($cleanSeries);
 $modelTuning  = lambdaTuningFromFopdt($fopdt, 'equilibrado');
 $saturation   = detectActuatorSaturation($cleanSeries);
+$directionEvidence = calcActuationDirectionEvidence($cleanSeries, $cl_mean_delay);
 
 // --- Avaliação adaptativa: impacto da última alteração e valor "anterior" para revert ---
 $beforeAfterImpact = null;
@@ -1379,6 +1436,7 @@ $recommendationsResult = pidRecommendations('chlorine', $statsForRecommendations
     'fopdt' => $fopdt,
     'model_tuning' => $modelTuning,
     'saturation' => $saturation,
+    'direction_evidence' => $directionEvidence,
     'learning' => $lastOutcome,
     'previous_pid' => $previousPid,
     'confidence' => $confidence,
@@ -1387,7 +1445,7 @@ $recommendations = [
     'chlorine' => $recommendationsResult['suggestions'],
 ];
 $suggestedValues = $recommendationsResult['suggestedValues'];
-$strategy = $recommendationsResult['strategy'] ?? 'heuristica';
+$strategy = $recommendationsResult['strategy'] ?? 'manter';
 $rationale = $recommendationsResult['rationale'] ?? [];
 $diagnosticsFlags = $recommendationsResult['diagnostics'] ?? [];
 
@@ -1458,6 +1516,7 @@ $response = [
         'process_model'      => $fopdt,
         'model_tuning'       => $modelTuning,
         'saturation'         => $saturation,
+        'direction_evidence' => $directionEvidence,
         'learning'           => array_merge($lastOutcome, [
             'previous_pid' => $previousPid,
         ]),
