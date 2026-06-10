@@ -383,7 +383,10 @@ $filters = fetch_all_safe(
                             </div>
                             <div class="filtro-footer d-flex justify-content-between">
                                 <span><i class="fas fa-network-wired me-1"></i><?= htmlspecialchars($filter['ip_address']) ?></span>
-                                <span>Slave <?= (int)$filter['slave_id'] ?></span>
+                                <span>
+                                    Slave <?= (int)$filter['slave_id'] ?>
+                                    <span id="filtro-perlite-badge-<?= $filter['id'] ?>" class="badge bg-danger ms-2" style="display:none;font-size:0.68rem">Trocar perlita</span>
+                                </span>
                             </div>
                             <div class="card-body text-center alarm-content" style="display:none;">
                                 <img src="../images/rj45.png" style="width: 64px; height: 64px;" alt="Erro de Comunicação">
@@ -458,6 +461,11 @@ function getPerliteDateLabel(data) {
     return '--';
 }
 
+function isPerliteReplacementDue(data) {
+    const remaining = data && data.remaining_time != null ? parseFloat(data.remaining_time) : null;
+    return Number.isFinite(remaining) && remaining <= 0;
+}
+
 function lsIndicator(open, closed) {
     if (open)   return '<span class="badge bg-success">Aberta</span>';
     if (closed) return '<span class="badge bg-secondary">Fechada</span>';
@@ -528,6 +536,7 @@ function buildFiltroModal(data) {
     const fb = data.feedback_bits  || {};
     const sb = data.status_bits    || {};
     const ls = data.limit_switches || {};
+    const perliteDue = isPerliteReplacementDue(data);
 
     // Setpoint VFD como indicador estável de qual bomba está activa
     const ACTIVE_STATES = ['Em Filtração','Pré-coat','Bump','Enchimento/Drenagem','Bomba a Arrancar'];
@@ -636,6 +645,9 @@ function buildFiltroModal(data) {
                     <span class="text-white-50">Tempo Restante</span>
                     <span class="font-monospace fw-bold" style="color:${parseFloat(data.remaining_time) < 5 ? '#dc3545' : '#dee2e6'}">${fmtVal(data.remaining_time, 1)} dias</span>
                 </div>
+                ${perliteDue ? `<div class="alert alert-danger py-1 px-2 mb-2" style="font-size:0.78rem;line-height:1.2;">
+                    <i class="fas fa-exclamation-triangle me-1"></i><strong>Substituir perlita</strong> (limite de dias atingido)
+                </div>` : ''}
                 <div class="d-flex justify-content-between">
                     <span class="text-white-50">Ciclos de Carga</span>
                     <span class="font-monospace">${fmtVal(data.charging_cycles, 0)}</span>
@@ -983,6 +995,7 @@ function createLoraCard(device) {
         const bumpInfoEl  = document.getElementById(`filtro-bump-info-${filterId}`);
         const bumpCycleEl = document.getElementById(`filtro-bump-cycle-${filterId}`);
         const perliteWarningEl = document.getElementById(`filtro-perlite-warning-${filterId}`);
+        const perliteBadgeEl = document.getElementById(`filtro-perlite-badge-${filterId}`);
 
         const metricsEl   = cardElement.querySelector('.filtro-metrics');
         const statePanelEl = cardElement.querySelector('.filtro-state-panel');
@@ -1083,11 +1096,11 @@ function createLoraCard(device) {
                 bumpCycleEl.textContent = cycles != null ? `— Ciclo ${cycles}` : '';
             }
 
-            const remainingDays = data.remaining_time != null ? parseFloat(data.remaining_time) : null;
+            const perliteDue = isPerliteReplacementDue(data);
             if (perliteWarningEl) {
-                const limitReached = Number.isFinite(remainingDays) && remainingDays <= 0;
-                perliteWarningEl.style.display = limitReached ? '' : 'none';
+                perliteWarningEl.style.display = perliteDue ? '' : 'none';
             }
+            if (perliteBadgeEl) perliteBadgeEl.style.display = perliteDue ? 'inline-block' : 'none';
 
             if (metricsEl)    metricsEl.style.display    = '';
             if (statePanelEl) statePanelEl.style.display = '';
@@ -1118,6 +1131,7 @@ function createLoraCard(device) {
             [pump1Badge, pump2Badge].forEach(b => { if (b) { b.className = 'badge bg-secondary'; b.textContent = '--'; b.style.fontSize = '0.7rem'; } });
             if (bumpInfoEl) bumpInfoEl.style.display = 'none';
             if (perliteWarningEl) perliteWarningEl.style.display = 'none';
+            if (perliteBadgeEl) perliteBadgeEl.style.display = 'none';
 
             if (metricsEl)    metricsEl.style.display    = 'none';
             if (statePanelEl) statePanelEl.style.display = 'none';
