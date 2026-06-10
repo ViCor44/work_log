@@ -289,8 +289,8 @@ $filters = fetch_all_safe(
                                 </li>
                             </ul>
                                 <div class="card-footer controller-sp-footer d-flex justify-content-end gap-2">
-                                    <span id="sp-cloro-piscina-<?= $pool['id'] ?>" class="badge controller-sp-badge">SP Cl --</span>
-                                    <span id="sp-ph-piscina-<?= $pool['id'] ?>" class="badge controller-sp-badge">SP pH --</span>
+                                    <span id="sp-cloro-piscina-<?= $pool['id'] ?>" class="badge controller-sp-badge">SP alvo Cl --</span>
+                                    <span id="sp-ph-piscina-<?= $pool['id'] ?>" class="badge controller-sp-badge">SP alvo pH --</span>
                                 </div>
                                 <div class="card-body text-center alarm-content">
                                     <img src="../images/rj45.png" style="width:64px;height:64px;" alt="Erro de Comunicação">
@@ -798,6 +798,43 @@ document.addEventListener('DOMContentLoaded', function() {
         return null;
     }
 
+    const poolTargetSpCache = {};
+    const POOL_TARGET_SP_TTL_MS = 60000;
+
+    async function getPoolTargetSetpoints(poolId, fallbackCloro, fallbackPh) {
+        const now = Date.now();
+        const cached = poolTargetSpCache[poolId];
+        if (cached && (now - cached.ts) < POOL_TARGET_SP_TTL_MS) {
+            return {
+                cloro: Number.isFinite(cached.cloro) ? cached.cloro : fallbackCloro,
+                ph: fallbackPh,
+            };
+        }
+
+        try {
+            const response = await fetch(`../api/dynamic_setpoint_config.php?tank_id=${poolId}`);
+            const data = await response.json();
+            const targetCloro = data && data.success && data.manual_base_setpoint != null
+                ? parseFloat(data.manual_base_setpoint)
+                : null;
+
+            poolTargetSpCache[poolId] = {
+                ts: now,
+                cloro: Number.isFinite(targetCloro) ? targetCloro : null,
+            };
+
+            return {
+                cloro: Number.isFinite(targetCloro) ? targetCloro : fallbackCloro,
+                ph: fallbackPh,
+            };
+        } catch (_) {
+            return {
+                cloro: fallbackCloro,
+                ph: fallbackPh,
+            };
+        }
+    }
+
     async function updatePoolDashboard(cardElement) {
         const ip = cardElement.dataset.ip;
         const poolId = cardElement.id.split('-')[2];
@@ -825,6 +862,7 @@ cardElement.querySelector('.alarm-content').style.display = 'none';
             const tempValue = parseFloat(data.temperature);
             const c1Setpoint = getNumericCandidate(data, ['C1SetPoint', 'c1_setpoint', 'chlorine_setpoint', 'cloro_setpoint']);
             const c2Setpoint = getNumericCandidate(data, ['C2SetPoint', 'c2_setpoint', 'ph_setpoint']);
+            const targetSetpoints = await getPoolTargetSetpoints(poolId, c1Setpoint, c2Setpoint);
 
             // Atualiza sempre os valores (não esconde)
             const cloroText = Number.isFinite(cloroValue)
@@ -844,8 +882,8 @@ cardElement.querySelector('.alarm-content').style.display = 'none';
             document.getElementById(`ph-${poolId}`).className = `font-monospace fw-bold fs-5 ${getValueClass('ph', phValue)}`;
 
             document.getElementById(`temp-${poolId}`).innerHTML = tempText;
-            if (spCloroEl) spCloroEl.textContent = `SP Cl ${Number.isFinite(c1Setpoint) ? c1Setpoint.toFixed(2) : '--'}`;
-            if (spPhEl) spPhEl.textContent = `SP pH ${Number.isFinite(c2Setpoint) ? c2Setpoint.toFixed(2) : '--'}`;
+            if (spCloroEl) spCloroEl.textContent = `SP alvo Cl ${Number.isFinite(targetSetpoints.cloro) ? targetSetpoints.cloro.toFixed(2) : '--'}`;
+            if (spPhEl) spPhEl.textContent = `SP alvo pH ${Number.isFinite(targetSetpoints.ph) ? targetSetpoints.ph.toFixed(2) : '--'}`;
 
             // Decide o estado visual
             const temAlarmeQuimico =
@@ -897,8 +935,8 @@ if (alarmeControlador) {
             // Mostra bloco de erro de comunicação
             cardElement.querySelector('.list-group').style.display = 'none';
             cardElement.querySelector('.alarm-content').style.display = 'block';
-            if (spCloroEl) spCloroEl.textContent = 'SP Cl --';
-            if (spPhEl) spPhEl.textContent = 'SP pH --';
+            if (spCloroEl) spCloroEl.textContent = 'SP alvo Cl --';
+            if (spPhEl) spPhEl.textContent = 'SP alvo pH --';
         }
     }
 function createLoraCard(device) {
