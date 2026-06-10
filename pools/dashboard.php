@@ -194,6 +194,15 @@ $filters = fetch_all_safe(
         text-align: center;
         display: none;
     }
+    .filtro-perlite-warning {
+        padding: 7px 14px;
+        background: rgba(220, 53, 69, 0.16);
+        border-top: 1px solid rgba(220, 53, 69, 0.45);
+        font-size: 0.78rem;
+        color: #f5c2c7;
+        text-align: center;
+        display: none;
+    }
     .filtro-footer {
         background-color: var(--scada-section-bg);
         border-top: 1px solid var(--scada-border-color);
@@ -368,6 +377,9 @@ $filters = fetch_all_safe(
                             <div class="filtro-bump-info" id="filtro-bump-info-<?= $filter['id'] ?>">
                                 <i class="fas fa-redo-alt me-1"></i><strong>BUMP</strong> &mdash; Contra-lavagem em curso
                                 <span id="filtro-bump-cycle-<?= $filter['id'] ?>" class="ms-2" style="opacity:0.8"></span>
+                            </div>
+                            <div class="filtro-perlite-warning" id="filtro-perlite-warning-<?= $filter['id'] ?>">
+                                <i class="fas fa-exclamation-triangle me-1"></i><strong>Aviso:</strong> Substituir perlita (limite de dias atingido)
                             </div>
                             <div class="filtro-footer d-flex justify-content-between">
                                 <span><i class="fas fa-network-wired me-1"></i><?= htmlspecialchars($filter['ip_address']) ?></span>
@@ -970,6 +982,7 @@ function createLoraCard(device) {
         const pump2Badge  = document.getElementById(`filtro-pump2-badge-${filterId}`);
         const bumpInfoEl  = document.getElementById(`filtro-bump-info-${filterId}`);
         const bumpCycleEl = document.getElementById(`filtro-bump-cycle-${filterId}`);
+        const perliteWarningEl = document.getElementById(`filtro-perlite-warning-${filterId}`);
 
         const metricsEl   = cardElement.querySelector('.filtro-metrics');
         const statePanelEl = cardElement.querySelector('.filtro-state-panel');
@@ -1070,6 +1083,12 @@ function createLoraCard(device) {
                 bumpCycleEl.textContent = cycles != null ? `— Ciclo ${cycles}` : '';
             }
 
+            const remainingDays = data.remaining_time != null ? parseFloat(data.remaining_time) : null;
+            if (perliteWarningEl) {
+                const limitReached = Number.isFinite(remainingDays) && remainingDays <= 0;
+                perliteWarningEl.style.display = limitReached ? '' : 'none';
+            }
+
             if (metricsEl)    metricsEl.style.display    = '';
             if (statePanelEl) statePanelEl.style.display = '';
             if (pumpPanelEl)  pumpPanelEl.style.display  = '';
@@ -1098,6 +1117,7 @@ function createLoraCard(device) {
             if (pump2Dot) pump2Dot.style.color = '#495057';
             [pump1Badge, pump2Badge].forEach(b => { if (b) { b.className = 'badge bg-secondary'; b.textContent = '--'; b.style.fontSize = '0.7rem'; } });
             if (bumpInfoEl) bumpInfoEl.style.display = 'none';
+            if (perliteWarningEl) perliteWarningEl.style.display = 'none';
 
             if (metricsEl)    metricsEl.style.display    = 'none';
             if (statePanelEl) statePanelEl.style.display = 'none';
