@@ -74,6 +74,19 @@ $filters = fetch_all_safe(
     .scada-card .font-monospace {
         color: var(--scada-text-primary);
     }
+    .controller-sp-footer {
+        background-color: var(--scada-section-bg);
+        border-top: 1px solid var(--scada-border-color);
+        padding: 6px 10px;
+    }
+    .controller-sp-badge {
+        border: 1px solid #3a6b8a;
+        background: rgba(13, 202, 240, 0.12);
+        color: #9eeaf9;
+        font-size: 0.72rem;
+        font-weight: 600;
+        letter-spacing: 0.01em;
+    }
     /* ALTERAÇÃO: Aumentado o tamanho da fonte da unidade */
     .scada-card .unit {
         font-size: 0.9rem; 
@@ -275,6 +288,10 @@ $filters = fetch_all_safe(
                                     <span id="temp-<?= $pool['id'] ?>" class="font-monospace fw-bold fs-5"><i class="fas fa-spinner fa-spin fa-xs"></i></span>
                                 </li>
                             </ul>
+                                <div class="card-footer controller-sp-footer d-flex justify-content-end gap-2">
+                                    <span id="sp-cloro-piscina-<?= $pool['id'] ?>" class="badge controller-sp-badge">SP Cl --</span>
+                                    <span id="sp-ph-piscina-<?= $pool['id'] ?>" class="badge controller-sp-badge">SP pH --</span>
+                                </div>
                                 <div class="card-body text-center alarm-content">
                                     <img src="../images/rj45.png" style="width:64px;height:64px;" alt="Erro de Comunicação">
                                     <div class="fw-bold mt-2">Erro de Comunicação</div>
@@ -785,6 +802,8 @@ document.addEventListener('DOMContentLoaded', function() {
         const ip = cardElement.dataset.ip;
         const poolId = cardElement.id.split('-')[2];
         const statusEl = document.getElementById(`status-piscina-${poolId}`);
+        const spCloroEl = document.getElementById(`sp-cloro-piscina-${poolId}`);
+        const spPhEl = document.getElementById(`sp-ph-piscina-${poolId}`);
 
         try {
             const response = await fetch(`get_controller_data.php?ip=${ip}`);
@@ -804,6 +823,8 @@ cardElement.querySelector('.alarm-content').style.display = 'none';
             const cloroValue = parseFloat(data.freeChlorine);
             const phValue   = parseFloat(data.pH);
             const tempValue = parseFloat(data.temperature);
+            const c1Setpoint = getNumericCandidate(data, ['C1SetPoint', 'c1_setpoint', 'chlorine_setpoint', 'cloro_setpoint']);
+            const c2Setpoint = getNumericCandidate(data, ['C2SetPoint', 'c2_setpoint', 'ph_setpoint']);
 
             // Atualiza sempre os valores (não esconde)
             const cloroText = Number.isFinite(cloroValue)
@@ -823,6 +844,8 @@ cardElement.querySelector('.alarm-content').style.display = 'none';
             document.getElementById(`ph-${poolId}`).className = `font-monospace fw-bold fs-5 ${getValueClass('ph', phValue)}`;
 
             document.getElementById(`temp-${poolId}`).innerHTML = tempText;
+            if (spCloroEl) spCloroEl.textContent = `SP Cl ${Number.isFinite(c1Setpoint) ? c1Setpoint.toFixed(2) : '--'}`;
+            if (spPhEl) spPhEl.textContent = `SP pH ${Number.isFinite(c2Setpoint) ? c2Setpoint.toFixed(2) : '--'}`;
 
             // Decide o estado visual
             const temAlarmeQuimico =
@@ -874,6 +897,8 @@ if (alarmeControlador) {
             // Mostra bloco de erro de comunicação
             cardElement.querySelector('.list-group').style.display = 'none';
             cardElement.querySelector('.alarm-content').style.display = 'block';
+            if (spCloroEl) spCloroEl.textContent = 'SP Cl --';
+            if (spPhEl) spPhEl.textContent = 'SP pH --';
         }
     }
 function createLoraCard(device) {
