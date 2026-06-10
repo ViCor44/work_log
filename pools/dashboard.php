@@ -1107,15 +1107,25 @@ function createLoraCard(device) {
                 perliteWarningEl.style.display = perliteDue ? '' : 'none';
             }
             if (perliteBadgeEl) {
-                perliteBadgeEl.style.display = perliteDue ? 'inline-block' : 'none';
+                const remainingDays = data.remaining_time != null ? parseFloat(data.remaining_time) : null;
+                perliteBadgeEl.style.display = 'inline-block';
                 if (perliteDue) {
                     const exceededDays = getPerliteExceededDays(data);
                     const exceededText = exceededDays != null ? exceededDays.toFixed(1) : '0.0';
+                    perliteBadgeEl.className = 'badge bg-danger ms-2';
+                    perliteBadgeEl.textContent = 'Trocar perlite';
                     perliteBadgeEl.title = `Limite ultrapassado em ${exceededText} dias`;
                     perliteBadgeEl.setAttribute('aria-label', perliteBadgeEl.title);
+                } else if (Number.isFinite(remainingDays)) {
+                    perliteBadgeEl.className = 'badge bg-success ms-2';
+                    perliteBadgeEl.textContent = 'Perlite OK';
+                    perliteBadgeEl.title = `Faltam ${remainingDays.toFixed(1)} dias para a troca`;
+                    perliteBadgeEl.setAttribute('aria-label', perliteBadgeEl.title);
                 } else {
-                    perliteBadgeEl.title = '';
-                    perliteBadgeEl.removeAttribute('aria-label');
+                    perliteBadgeEl.className = 'badge bg-secondary ms-2';
+                    perliteBadgeEl.textContent = 'Perlite N/D';
+                    perliteBadgeEl.title = 'Tempo restante para troca indisponivel';
+                    perliteBadgeEl.setAttribute('aria-label', perliteBadgeEl.title);
                 }
             }
 
