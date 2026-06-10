@@ -379,13 +379,13 @@ $filters = fetch_all_safe(
                                 <span id="filtro-bump-cycle-<?= $filter['id'] ?>" class="ms-2" style="opacity:0.8"></span>
                             </div>
                             <div class="filtro-perlite-warning" id="filtro-perlite-warning-<?= $filter['id'] ?>">
-                                <i class="fas fa-exclamation-triangle me-1"></i><strong>Aviso:</strong> Substituir perlita (limite de dias atingido)
+                                <i class="fas fa-exclamation-triangle me-1"></i><strong>Aviso:</strong> Substituir perlite (limite de dias atingido)
                             </div>
                             <div class="filtro-footer d-flex justify-content-between">
                                 <span><i class="fas fa-network-wired me-1"></i><?= htmlspecialchars($filter['ip_address']) ?></span>
                                 <span>
                                     Slave <?= (int)$filter['slave_id'] ?>
-                                    <span id="filtro-perlite-badge-<?= $filter['id'] ?>" class="badge bg-danger ms-2" style="display:none;font-size:0.68rem">Trocar perlita</span>
+                                    <span id="filtro-perlite-badge-<?= $filter['id'] ?>" class="badge bg-danger ms-2" style="display:none;font-size:0.68rem" title="">Trocar perlite</span>
                                 </span>
                             </div>
                             <div class="card-body text-center alarm-content" style="display:none;">
@@ -464,6 +464,12 @@ function getPerliteDateLabel(data) {
 function isPerliteReplacementDue(data) {
     const remaining = data && data.remaining_time != null ? parseFloat(data.remaining_time) : null;
     return Number.isFinite(remaining) && remaining <= 0;
+}
+
+function getPerliteExceededDays(data) {
+    const remaining = data && data.remaining_time != null ? parseFloat(data.remaining_time) : null;
+    if (!Number.isFinite(remaining) || remaining >= 0) return null;
+    return Math.abs(remaining);
 }
 
 function lsIndicator(open, closed) {
@@ -646,7 +652,7 @@ function buildFiltroModal(data) {
                     <span class="font-monospace fw-bold" style="color:${parseFloat(data.remaining_time) < 5 ? '#dc3545' : '#dee2e6'}">${fmtVal(data.remaining_time, 1)} dias</span>
                 </div>
                 ${perliteDue ? `<div class="alert alert-danger py-1 px-2 mb-2" style="font-size:0.78rem;line-height:1.2;">
-                    <i class="fas fa-exclamation-triangle me-1"></i><strong>Substituir perlita</strong> (limite de dias atingido)
+                    <i class="fas fa-exclamation-triangle me-1"></i><strong>Substituir perlite</strong> (limite de dias atingido)
                 </div>` : ''}
                 <div class="d-flex justify-content-between">
                     <span class="text-white-50">Ciclos de Carga</span>
@@ -1100,7 +1106,18 @@ function createLoraCard(device) {
             if (perliteWarningEl) {
                 perliteWarningEl.style.display = perliteDue ? '' : 'none';
             }
-            if (perliteBadgeEl) perliteBadgeEl.style.display = perliteDue ? 'inline-block' : 'none';
+            if (perliteBadgeEl) {
+                perliteBadgeEl.style.display = perliteDue ? 'inline-block' : 'none';
+                if (perliteDue) {
+                    const exceededDays = getPerliteExceededDays(data);
+                    const exceededText = exceededDays != null ? exceededDays.toFixed(1) : '0.0';
+                    perliteBadgeEl.title = `Limite ultrapassado em ${exceededText} dias`;
+                    perliteBadgeEl.setAttribute('aria-label', perliteBadgeEl.title);
+                } else {
+                    perliteBadgeEl.title = '';
+                    perliteBadgeEl.removeAttribute('aria-label');
+                }
+            }
 
             if (metricsEl)    metricsEl.style.display    = '';
             if (statePanelEl) statePanelEl.style.display = '';
@@ -1131,7 +1148,11 @@ function createLoraCard(device) {
             [pump1Badge, pump2Badge].forEach(b => { if (b) { b.className = 'badge bg-secondary'; b.textContent = '--'; b.style.fontSize = '0.7rem'; } });
             if (bumpInfoEl) bumpInfoEl.style.display = 'none';
             if (perliteWarningEl) perliteWarningEl.style.display = 'none';
-            if (perliteBadgeEl) perliteBadgeEl.style.display = 'none';
+            if (perliteBadgeEl) {
+                perliteBadgeEl.style.display = 'none';
+                perliteBadgeEl.title = '';
+                perliteBadgeEl.removeAttribute('aria-label');
+            }
 
             if (metricsEl)    metricsEl.style.display    = 'none';
             if (statePanelEl) statePanelEl.style.display = 'none';
