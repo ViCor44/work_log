@@ -1203,8 +1203,11 @@ function createLoraCard(device) {
         } catch (error) {
             filtroFailCount[filterId] = (filtroFailCount[filterId] || 0) + 1;
             const failCount = filtroFailCount[filterId];
-            console.error(`[filtro-${filterId}] updateFiltroCard error (${failCount}/${FILTRO_FAIL_THRESHOLD}):`, error);
+            if (failCount <= FILTRO_FAIL_THRESHOLD) {
+                console.error(`[filtro-${filterId}] updateFiltroCard error (${failCount}/${FILTRO_FAIL_THRESHOLD}):`, error);
+            }
             if (failCount < FILTRO_FAIL_THRESHOLD) return;
+            if (failCount > FILTRO_FAIL_THRESHOLD && cardElement.classList.contains('status-offline')) return;
 
             cardElement.classList.remove('border-success', 'border-secondary', 'animate-pulse-red-bs');
             cardElement.classList.add('status-offline', 'border-danger');

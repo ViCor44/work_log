@@ -116,6 +116,8 @@ const MODBUS_START = 71;  // reg 40072 (estado do filtro)
 const MODBUS_COUNT = 35;  // cobre 40072–40106 (total 35 registos)
 const MODBUS_PORT  = 502;
 const MODBUS_TIMEOUT = 5;
+const MODBUS_MAX_ATTEMPTS = 2;
+const MODBUS_RETRY_DELAY_US = 120000;
 const PRECOAT_COIL_ADDRESS = 3;
 const MODBUS_LOG_FILE = __DIR__ . '/../login_log.txt';
 
@@ -158,176 +160,302 @@ function read_socket_bytes($sock, int $expected_len, float $deadline): array {
     ];
 }
 
+function write_socket_bytes($sock, string $payload, float $deadline): array {
+    $written = 0;
+    $len = strlen($payload);
+
+    while ($written < $len && microtime(true) < $deadline) {
+        $chunk = fwrite($sock, substr($payload, $written));
+
+        if ($chunk === false) {
+            return [
+                'ok' => false,
+                'written' => $written,
+                'expected' => $len,
+            ];
+        }
+
+        if ($chunk === 0) {
+            $meta = stream_get_meta_data($sock);
+            if (!empty($meta['timed_out'])) {
+                continue;
+            }
+
+            return [
+                'ok' => false,
+                'written' => $written,
+                'expected' => $len,
+            ];
+        }
+
+        $written += $chunk;
+    }
+
+    return [
+        'ok' => ($written === $len),
+        'written' => $written,
+        'expected' => $len,
+    ];
+}
+
 function modbus_tcp_read_holding(string $ip, int $slave_id, int $start, int $count,
                                   int $port = 502, int $timeout = 3): array {
-    $sock = @fsockopen($ip, $port, $errno, $errstr, $timeout);
-    if (!$sock) {
-        return [
-            'error' => "Sem ligacao TCP ao dispositivo ($errstr)",
-            'details' => [
-                'ip' => $ip,
-                'port' => $port,
-                'slave_id' => $slave_id,
-                'timeout_s' => $timeout,
-                'errno' => $errno,
-            ],
-        ];
+    $last_error = [
+        'error' => 'Erro Modbus desconhecido',
+        'details' => [
+            'ip' => $ip,
+            'port' => $port,
+            'slave_id' => $slave_id,
+            'timeout_s' => $timeout,
+        ],
+    ];
+
+    for ($attempt = 1; $attempt <= MODBUS_MAX_ATTEMPTS; $attempt++) {
+        $sock = @fsockopen($ip, $port, $errno, $errstr, $timeout);
+        if (!$sock) {
+            $last_error = [
+                'error' => "Sem ligacao TCP ao dispositivo ($errstr)",
+                'details' => [
+                    'ip' => $ip,
+                    'port' => $port,
+                    'slave_id' => $slave_id,
+                    'timeout_s' => $timeout,
+                    'errno' => $errno,
+                    'attempt' => $attempt,
+                    'attempts' => MODBUS_MAX_ATTEMPTS,
+                ],
+            ];
+        } else {
+            stream_set_timeout($sock, $timeout);
+
+            $tid     = mt_rand(1, 0xFFFF);
+            $request = pack('nnnCCnn', $tid, 0x0000, 6, $slave_id & 0xFF, 0x03, $start, $count);
+            $deadline = microtime(true) + $timeout;
+
+            $write_status = write_socket_bytes($sock, $request, $deadline);
+            if (!$write_status['ok']) {
+                $last_error = [
+                    'error' => 'Escrita TCP incompleta para pedido Modbus',
+                    'details' => [
+                        'ip' => $ip,
+                        'port' => $port,
+                        'slave_id' => $slave_id,
+                        'timeout_s' => $timeout,
+                        'bytes_written' => $write_status['written'],
+                        'bytes_expected' => $write_status['expected'],
+                        'attempt' => $attempt,
+                        'attempts' => MODBUS_MAX_ATTEMPTS,
+                    ],
+                ];
+                fclose($sock);
+            } else {
+                // Ler cabeçalho MBAP (6 bytes)
+                $header_read = read_socket_bytes($sock, 6, $deadline);
+                $raw = $header_read['buffer'];
+                if (strlen($raw) < 6) {
+                    $last_error = [
+                        'error' => 'Cabecalho MBAP incompleto',
+                        'details' => [
+                            'ip' => $ip,
+                            'port' => $port,
+                            'slave_id' => $slave_id,
+                            'timeout_s' => $timeout,
+                            'bytes_received' => strlen($raw),
+                            'bytes_expected' => 6,
+                            'timed_out' => (bool) ($header_read['meta']['timed_out'] ?? false),
+                            'attempt' => $attempt,
+                            'attempts' => MODBUS_MAX_ATTEMPTS,
+                        ],
+                    ];
+                    fclose($sock);
+                } else {
+                    $hdr      = unpack('ntid/nproto/nlength', $raw);
+                    $body_len = (int) $hdr['length'];
+
+                    // Ler corpo PDU
+                    $body_read = read_socket_bytes($sock, $body_len, $deadline);
+                    $body = $body_read['buffer'];
+                    fclose($sock);
+
+                    if (strlen($body) < $body_len) {
+                        $last_error = [
+                            'error' => 'Dados PDU incompletos',
+                            'details' => [
+                                'ip' => $ip,
+                                'port' => $port,
+                                'slave_id' => $slave_id,
+                                'timeout_s' => $timeout,
+                                'bytes_received' => strlen($body),
+                                'bytes_expected' => $body_len,
+                                'timed_out' => (bool) ($body_read['meta']['timed_out'] ?? false),
+                                'attempt' => $attempt,
+                                'attempts' => MODBUS_MAX_ATTEMPTS,
+                            ],
+                        ];
+                    } else {
+                        if (strlen($body) < 3) {
+                            return ['error' => 'Resposta demasiado curta'];
+                        }
+
+                        $meta = unpack('Cunit/Cfc/Cbytes', substr($body, 0, 3));
+
+                        // Exceção Modbus
+                        if ($meta['fc'] & 0x80) {
+                            $code = strlen($body) > 3 ? ord($body[3]) : 0;
+                            return ['error' => "Excecao Modbus: codigo $code"];
+                        }
+
+                        $registers = [];
+                        $data_raw  = substr($body, 3);
+                        $num_regs  = (int) ($meta['bytes'] / 2);
+                        for ($i = 0; $i < $num_regs; $i++) {
+                            $w = unpack('n', substr($data_raw, $i * 2, 2));
+                            $registers[] = (int) $w[1];
+                        }
+
+                        return ['registers' => $registers];
+                    }
+                }
+            }
+        }
+
+        if ($attempt < MODBUS_MAX_ATTEMPTS) {
+            usleep(MODBUS_RETRY_DELAY_US);
+        }
     }
-    stream_set_timeout($sock, $timeout);
 
-    $tid     = mt_rand(1, 0xFFFF);
-    $request = pack('nnnCCnn', $tid, 0x0000, 6, $slave_id & 0xFF, 0x03, $start, $count);
-    fwrite($sock, $request);
-
-    $deadline = microtime(true) + $timeout;
-
-    // Ler cabeçalho MBAP (6 bytes)
-    $header_read = read_socket_bytes($sock, 6, $deadline);
-    $raw = $header_read['buffer'];
-    if (strlen($raw) < 6) {
-        fclose($sock);
-        return [
-            'error' => 'Cabecalho MBAP incompleto',
-            'details' => [
-                'ip' => $ip,
-                'port' => $port,
-                'slave_id' => $slave_id,
-                'timeout_s' => $timeout,
-                'bytes_received' => strlen($raw),
-                'bytes_expected' => 6,
-                'timed_out' => (bool) ($header_read['meta']['timed_out'] ?? false),
-            ],
-        ];
-    }
-
-    $hdr      = unpack('ntid/nproto/nlength', $raw);
-    $body_len = (int) $hdr['length'];
-
-    // Ler corpo PDU
-    $body_read = read_socket_bytes($sock, $body_len, $deadline);
-    $body = $body_read['buffer'];
-    fclose($sock);
-
-    if (strlen($body) < $body_len) {
-        return [
-            'error' => 'Dados PDU incompletos',
-            'details' => [
-                'ip' => $ip,
-                'port' => $port,
-                'slave_id' => $slave_id,
-                'timeout_s' => $timeout,
-                'bytes_received' => strlen($body),
-                'bytes_expected' => $body_len,
-                'timed_out' => (bool) ($body_read['meta']['timed_out'] ?? false),
-            ],
-        ];
-    }
-    if (strlen($body) < 3)         return ['error' => 'Resposta demasiado curta'];
-
-    $meta = unpack('Cunit/Cfc/Cbytes', substr($body, 0, 3));
-
-    // Exceção Modbus
-    if ($meta['fc'] & 0x80) {
-        $code = strlen($body) > 3 ? ord($body[3]) : 0;
-        return ['error' => "Excecao Modbus: codigo $code"];
-    }
-
-    $registers = [];
-    $data_raw  = substr($body, 3);
-    $num_regs  = (int) ($meta['bytes'] / 2);
-    for ($i = 0; $i < $num_regs; $i++) {
-        $w = unpack('n', substr($data_raw, $i * 2, 2));
-        $registers[] = (int) $w[1];
-    }
-
-    return ['registers' => $registers];
+    return $last_error;
 }
 
 function modbus_tcp_read_coils(string $ip, int $slave_id, int $start, int $count,
                                int $port = 502, int $timeout = 3): array {
-    $sock = @fsockopen($ip, $port, $errno, $errstr, $timeout);
-    if (!$sock) {
-        return [
-            'error' => "Sem ligacao TCP ao dispositivo ($errstr)",
-            'details' => [
-                'ip' => $ip,
-                'port' => $port,
-                'slave_id' => $slave_id,
-                'timeout_s' => $timeout,
-                'errno' => $errno,
-            ],
-        ];
-    }
-    stream_set_timeout($sock, $timeout);
+    $last_error = [
+        'error' => 'Erro Modbus desconhecido',
+        'details' => [
+            'ip' => $ip,
+            'port' => $port,
+            'slave_id' => $slave_id,
+            'timeout_s' => $timeout,
+        ],
+    ];
 
-    $tid     = mt_rand(1, 0xFFFF);
-    $request = pack('nnnCCnn', $tid, 0x0000, 6, $slave_id & 0xFF, 0x01, $start, $count);
-    fwrite($sock, $request);
+    for ($attempt = 1; $attempt <= MODBUS_MAX_ATTEMPTS; $attempt++) {
+        $sock = @fsockopen($ip, $port, $errno, $errstr, $timeout);
+        if (!$sock) {
+            $last_error = [
+                'error' => "Sem ligacao TCP ao dispositivo ($errstr)",
+                'details' => [
+                    'ip' => $ip,
+                    'port' => $port,
+                    'slave_id' => $slave_id,
+                    'timeout_s' => $timeout,
+                    'errno' => $errno,
+                    'attempt' => $attempt,
+                    'attempts' => MODBUS_MAX_ATTEMPTS,
+                ],
+            ];
+        } else {
+            stream_set_timeout($sock, $timeout);
 
-    $deadline = microtime(true) + $timeout;
+            $tid     = mt_rand(1, 0xFFFF);
+            $request = pack('nnnCCnn', $tid, 0x0000, 6, $slave_id & 0xFF, 0x01, $start, $count);
+            $deadline = microtime(true) + $timeout;
 
-    $header_read = read_socket_bytes($sock, 6, $deadline);
-    $raw = $header_read['buffer'];
-    if (strlen($raw) < 6) {
-        fclose($sock);
-        return [
-            'error' => 'Cabecalho MBAP incompleto',
-            'details' => [
-                'ip' => $ip,
-                'port' => $port,
-                'slave_id' => $slave_id,
-                'timeout_s' => $timeout,
-                'bytes_received' => strlen($raw),
-                'bytes_expected' => 6,
-                'timed_out' => (bool) ($header_read['meta']['timed_out'] ?? false),
-            ],
-        ];
-    }
+            $write_status = write_socket_bytes($sock, $request, $deadline);
+            if (!$write_status['ok']) {
+                $last_error = [
+                    'error' => 'Escrita TCP incompleta para pedido Modbus',
+                    'details' => [
+                        'ip' => $ip,
+                        'port' => $port,
+                        'slave_id' => $slave_id,
+                        'timeout_s' => $timeout,
+                        'bytes_written' => $write_status['written'],
+                        'bytes_expected' => $write_status['expected'],
+                        'attempt' => $attempt,
+                        'attempts' => MODBUS_MAX_ATTEMPTS,
+                    ],
+                ];
+                fclose($sock);
+            } else {
+                $header_read = read_socket_bytes($sock, 6, $deadline);
+                $raw = $header_read['buffer'];
+                if (strlen($raw) < 6) {
+                    $last_error = [
+                        'error' => 'Cabecalho MBAP incompleto',
+                        'details' => [
+                            'ip' => $ip,
+                            'port' => $port,
+                            'slave_id' => $slave_id,
+                            'timeout_s' => $timeout,
+                            'bytes_received' => strlen($raw),
+                            'bytes_expected' => 6,
+                            'timed_out' => (bool) ($header_read['meta']['timed_out'] ?? false),
+                            'attempt' => $attempt,
+                            'attempts' => MODBUS_MAX_ATTEMPTS,
+                        ],
+                    ];
+                    fclose($sock);
+                } else {
+                    $hdr      = unpack('ntid/nproto/nlength', $raw);
+                    $body_len = (int) $hdr['length'];
 
-    $hdr      = unpack('ntid/nproto/nlength', $raw);
-    $body_len = (int) $hdr['length'];
+                    $body_read = read_socket_bytes($sock, $body_len, $deadline);
+                    $body = $body_read['buffer'];
+                    fclose($sock);
 
-    $body_read = read_socket_bytes($sock, $body_len, $deadline);
-    $body = $body_read['buffer'];
-    fclose($sock);
+                    if (strlen($body) < $body_len) {
+                        $last_error = [
+                            'error' => 'Dados PDU incompletos',
+                            'details' => [
+                                'ip' => $ip,
+                                'port' => $port,
+                                'slave_id' => $slave_id,
+                                'timeout_s' => $timeout,
+                                'bytes_received' => strlen($body),
+                                'bytes_expected' => $body_len,
+                                'timed_out' => (bool) ($body_read['meta']['timed_out'] ?? false),
+                                'attempt' => $attempt,
+                                'attempts' => MODBUS_MAX_ATTEMPTS,
+                            ],
+                        ];
+                    } else {
+                        if (strlen($body) < 3) {
+                            return ['error' => 'Resposta demasiado curta'];
+                        }
 
-    if (strlen($body) < $body_len) {
-        return [
-            'error' => 'Dados PDU incompletos',
-            'details' => [
-                'ip' => $ip,
-                'port' => $port,
-                'slave_id' => $slave_id,
-                'timeout_s' => $timeout,
-                'bytes_received' => strlen($body),
-                'bytes_expected' => $body_len,
-                'timed_out' => (bool) ($body_read['meta']['timed_out'] ?? false),
-            ],
-        ];
-    }
-    if (strlen($body) < 3)         return ['error' => 'Resposta demasiado curta'];
+                        $meta = unpack('Cunit/Cfc/Cbytes', substr($body, 0, 3));
 
-    $meta = unpack('Cunit/Cfc/Cbytes', substr($body, 0, 3));
+                        if ($meta['fc'] & 0x80) {
+                            $code = strlen($body) > 3 ? ord($body[3]) : 0;
+                            return ['error' => "Excecao Modbus: codigo $code"];
+                        }
 
-    if ($meta['fc'] & 0x80) {
-        $code = strlen($body) > 3 ? ord($body[3]) : 0;
-        return ['error' => "Excecao Modbus: codigo $code"];
-    }
+                        $coil_bits = [];
+                        $data_raw  = substr($body, 3);
+                        for ($i = 0; $i < $count; $i++) {
+                            $byte_index = intdiv($i, 8);
+                            if ($byte_index >= strlen($data_raw)) {
+                                $coil_bits[] = null;
+                                continue;
+                            }
+                            $byte = ord($data_raw[$byte_index]);
+                            $bit  = ($byte >> ($i % 8)) & 0x01;
+                            $coil_bits[] = $bit;
+                        }
 
-    $coil_bits = [];
-    $data_raw  = substr($body, 3);
-    for ($i = 0; $i < $count; $i++) {
-        $byte_index = intdiv($i, 8);
-        if ($byte_index >= strlen($data_raw)) {
-            $coil_bits[] = null;
-            continue;
+                        return ['coils' => $coil_bits];
+                    }
+                }
+            }
         }
-        $byte = ord($data_raw[$byte_index]);
-        $bit  = ($byte >> ($i % 8)) & 0x01;
-        $coil_bits[] = $bit;
+
+        if ($attempt < MODBUS_MAX_ATTEMPTS) {
+            usleep(MODBUS_RETRY_DELAY_US);
+        }
     }
 
-    return ['coils' => $coil_bits];
+    return $last_error;
 }
 
 function regs_to_float32(int $hi, int $lo): ?float {
