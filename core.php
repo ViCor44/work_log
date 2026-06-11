@@ -143,6 +143,13 @@ if (isset($_SESSION['user_type']) && $_SESSION['user_type'] === 'viewer') {
 
     // Se a página atual NÃO ESTIVER na lista de páginas permitidas, redireciona para o dashboard
     if (!in_array($current_page, $allowed_pages_for_viewer)) {
+        if (strpos($_SERVER['PHP_SELF'], '/api/') !== false) {
+            header('Content-Type: application/json; charset=utf-8');
+            http_response_code(403);
+            echo json_encode(['error' => 'Acesso negado para o perfil viewer']);
+            exit;
+        }
+
         header("Location: /work_log/pools/dashboard.php");
         exit;
     }

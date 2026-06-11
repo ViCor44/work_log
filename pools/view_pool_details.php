@@ -419,6 +419,8 @@ $isViewer = isset($_SESSION['user_type']) && $_SESSION['user_type'] === 'viewer'
 document.addEventListener('DOMContentLoaded', function() {
     const tankId = <?= $tank_id ?>;
     const controllerIp = '<?= $controller_ip ?>';
+    const appBasePath = <?= json_encode(rtrim(dirname(dirname($_SERVER['SCRIPT_NAME'])), '/')); ?>;
+    const apiBasePath = appBasePath ? (appBasePath + '/api') : '/api';
     const defaultHistoryDate = '<?= date('Y-m-d') ?>';
     const pidAnalysisBtn = document.getElementById('btn-pid-analysis');
     const startDateInput = document.getElementById('start_date');
@@ -861,7 +863,7 @@ document.addEventListener('DOMContentLoaded', function() {
         extraParams = extraParams || {};
         try {
             // 1. Buscar histórico
-            let url = `/work_log/api/get_pool_history.php?id=${tankId}&start_date=${startDate}&end_date=${endDate}`;
+            let url = `${apiBasePath}/get_pool_history.php?id=${tankId}&start_date=${startDate}&end_date=${endDate}`;
             var _epKeys = Object.keys(extraParams); for (var _i = 0; _i < _epKeys.length; _i++) { url += '&' + _epKeys[_i] + '=' + encodeURIComponent(extraParams[_epKeys[_i]]); }
             const response = await fetch(url);
             const data = await readApiResponse(response);
@@ -936,7 +938,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 : [];
 
             // 2. Buscar notas deste tanque
-            const notesResp = await fetch(`/work_log/api/get_controller_notes.php?tank_id=${tankId}`);
+            const notesResp = await fetch(`${apiBasePath}/get_controller_notes.php?tank_id=${tankId}`);
             const notesData = await readApiResponse(notesResp);
             cloroNotes = notesData.notes || [];
 
