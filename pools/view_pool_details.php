@@ -861,10 +861,10 @@ document.addEventListener('DOMContentLoaded', function() {
         extraParams = extraParams || {};
         try {
             // 1. Buscar histórico
-            let url = `../api/get_pool_history.php?id=${tankId}&start_date=${startDate}&end_date=${endDate}`;
+            let url = `/work_log/api/get_pool_history.php?id=${tankId}&start_date=${startDate}&end_date=${endDate}`;
             var _epKeys = Object.keys(extraParams); for (var _i = 0; _i < _epKeys.length; _i++) { url += '&' + _epKeys[_i] + '=' + encodeURIComponent(extraParams[_epKeys[_i]]); }
             const response = await fetch(url);
-            const data = await response.json();
+            const data = await readApiResponse(response);
             if (data.error) throw new Error(data.error);
 
             updateHistoryFreshnessWarning(data.history);
@@ -936,8 +936,8 @@ document.addEventListener('DOMContentLoaded', function() {
                 : [];
 
             // 2. Buscar notas deste tanque
-            const notesResp = await fetch(`../api/get_controller_notes.php?tank_id=${tankId}`);
-            const notesData = await notesResp.json();
+            const notesResp = await fetch(`/work_log/api/get_controller_notes.php?tank_id=${tankId}`);
+            const notesData = await readApiResponse(notesResp);
             cloroNotes = notesData.notes || [];
 
             // 3. Destruir gráficos antigos

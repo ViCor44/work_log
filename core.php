@@ -133,6 +133,7 @@ if (isset($_SESSION['user_type']) && $_SESSION['user_type'] === 'viewer') {
         'get_filter_modbus_data.php', // API Modbus dos filtros no dashboard
         'get_lorawan_status.php', // A API para os dados LoRaWAN
         'get_pool_history.php',   // A API para os gráficos de histórico
+        'get_controller_notes.php', // API de leitura de notas do histórico
         'logout.php',             // A página para terminar a sessão
         'profile_modal.php'       // O modal do perfil (se tiver um ficheiro separado)
     ];
