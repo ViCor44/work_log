@@ -14,6 +14,8 @@ $tank_info = $result->fetch_assoc();
 $tank_name = $tank_info['name'];
 $controller_ip = $tank_info['controller_ip']; // Guardamos o IP
 $stmt->close();
+
+$isViewer = isset($_SESSION['user_type']) && $_SESSION['user_type'] === 'viewer';
 ?>
 <script src="/work_log/js/Chart.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns@3.0.0/dist/chartjs-adapter-date-fns.bundle.min.js"></script>
@@ -142,10 +144,17 @@ $stmt->close();
 
 <div class="container-fluid mt-4">
 <div class="d-flex justify-content-between align-items-center mb-4">
-    <h1 class="h3 mb-0">Monitorização Detalhada: <?= htmlspecialchars($tank_name) ?></h1>
+    <h1 class="h3 mb-0 d-flex align-items-center gap-2">
+        <span>Monitorização Detalhada: <?= htmlspecialchars($tank_name) ?></span>
+        <?php if ($isViewer): ?>
+            <span class="badge bg-info text-dark" title="Acesso somente leitura">Modo Viewer</span>
+        <?php endif; ?>
+    </h1>
 	    <div>
+                <?php if (!$isViewer): ?>
                 <a href="advanced_settings.php?id=<?= $tank_id ?>" class="btn btn-warning" id="btn-pid-analysis">Análise PID Inteligente</a>
                 <a href="dynamic_setpoint_params.php?id=<?= $tank_id ?>" class="btn btn-outline-info" title="Configurar parâmetros do setpoint dinâmico">⚙ Parâmetros Dinâmicos</a>
+                <?php endif; ?>
 	        <a href="dashboard.php" class="btn btn-secondary">Voltar ao Dashboard</a>
 	    </div>
 	</div>

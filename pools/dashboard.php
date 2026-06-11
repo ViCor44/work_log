@@ -29,6 +29,8 @@ $filters = fetch_all_safe(
      FROM filter_equipment
      ORDER BY name ASC"
 );
+
+$isViewer = isset($_SESSION['user_type']) && $_SESSION['user_type'] === 'viewer';
 ?>
 
 <style>
@@ -228,16 +230,23 @@ $filters = fetch_all_safe(
 
 <div class="container-fluid mt-4">
     <div class="d-flex justify-content-between align-items-center mb-4">
-        <h1 class="h2 mb-0">Painel de Monitorização</h1>
+        <h1 class="h2 mb-0 d-flex align-items-center gap-2">
+            <span>Painel de Monitorização</span>
+            <?php if ($isViewer): ?>
+                <span class="badge bg-info text-dark" title="Acesso somente leitura">Modo Viewer</span>
+            <?php endif; ?>
+        </h1>
         <div class="d-flex gap-2">
-            <?php if (!isset($_SESSION['user_type']) || $_SESSION['user_type'] !== 'viewer'): ?>
+            <?php if (!$isViewer): ?>
             <button type="button" id="btnGlobalHaToggle" class="btn btn-outline-warning" data-state="off" title="Liga/desliga Alta Afluência em todos os tanques com SP dinâmico ativo.">
                 🏊 Alta afluência GLOBAL: <span id="globalHaState">OFF</span>
             </button>
             <?php endif; ?>
+            <?php if (!$isViewer): ?>
             <a href="plano_pid.php?days=7" class="btn btn-warning">
                 <i class="fas fa-file-pdf me-1"></i>Plano PID (ver e aceitar)
             </a>
+            <?php endif; ?>
             <a href="../redirect_page.php" class="btn btn-secondary">Voltar ao Início</a>
         </div>
     </div>
