@@ -230,9 +230,11 @@ $filters = fetch_all_safe(
     <div class="d-flex justify-content-between align-items-center mb-4">
         <h1 class="h2 mb-0">Painel de Monitorização</h1>
         <div class="d-flex gap-2">
+            <?php if (!isset($_SESSION['user_type']) || $_SESSION['user_type'] !== 'viewer'): ?>
             <button type="button" id="btnGlobalHaToggle" class="btn btn-outline-warning" data-state="off" title="Liga/desliga Alta Afluência em todos os tanques com SP dinâmico ativo.">
                 🏊 Alta afluência GLOBAL: <span id="globalHaState">OFF</span>
             </button>
+            <?php endif; ?>
             <a href="plano_pid.php?days=7" class="btn btn-warning">
                 <i class="fas fa-file-pdf me-1"></i>Plano PID (ver e aceitar)
             </a>

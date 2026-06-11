@@ -65,6 +65,10 @@ if (!isset($_SESSION['user_id'])) {
     return_json_response(['error' => 'Nao autenticado'], 401);
 }
 
+if (isset($_SESSION['user_type']) && $_SESSION['user_type'] === 'viewer' && $_SERVER['REQUEST_METHOD'] !== 'GET') {
+    return_json_response(['error' => 'Sem permissao para alterar setpoints'], 403);
+}
+
 if (!ensure_settings_table($conn)) {
     return_json_response(['error' => 'Nao foi possivel preparar a configuracao de setpoint dinamico'], 500);
 }
