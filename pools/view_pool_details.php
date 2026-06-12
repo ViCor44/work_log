@@ -927,11 +927,13 @@ document.addEventListener('DOMContentLoaded', function() {
             }
 
             // Datasets com x = log_datetime
+            // Helper: trata null/'' como gap real no gráfico (em vez de zero, que escondia bars)
+            const toNum = v => (v === null || v === undefined || v === '' ? null : parseFloat(v));
             const phDatasetLine = data.history.map(rec => ({ x: rec.log_datetime, y: rec.ph_value }));
-            const phDatasetDosagem = data.history.map(rec => ({ x: rec.log_datetime, y: parseFloat(rec.ph_controller_state) || 0 }));
+            const phDatasetDosagem = data.history.map(rec => ({ x: rec.log_datetime, y: toNum(rec.ph_controller_state) }));
             const phDatasetSetpoint = data.history.map(rec => ({ x: rec.log_datetime, y: rec.ph_setpoint }));
             const cloroDatasetLine = data.history.map(rec => ({ x: rec.log_datetime, y: parseFloat(rec.chlorine_value) <= -1 ? null : rec.chlorine_value }));
-            const cloroDatasetDosagem = data.history.map(rec => ({ x: rec.log_datetime, y: parseFloat(rec.cl_controller_state) || 0 }));
+            const cloroDatasetDosagem = data.history.map(rec => ({ x: rec.log_datetime, y: toNum(rec.cl_controller_state) }));
             const cloroDatasetSetpoint = data.history.map(rec => ({ x: rec.log_datetime, y: rec.chlorine_setpoint }));
             const cloroDatasetBaseSetpoint = (cloroManualTargetSetpoint !== null)
                 ? data.history.map(rec => ({ x: rec.log_datetime, y: cloroManualTargetSetpoint }))
@@ -947,9 +949,10 @@ document.addEventListener('DOMContentLoaded', function() {
             if (cloroHistoryChart) cloroHistoryChart.destroy();
 
             // 4. Criar datasets
+            // Dosagem: linha + área (em eixo temporal, bars renderizam com largura ~1px e ficam invisíveis)
             const phDatasets = [
                 { type: 'line', label: 'pH (Valor)', data: phDatasetLine, borderColor: 'rgba(54, 162, 235, 1)', yAxisID: 'y-axis-line', fill: false, tension: 0.1 },
-                { type: 'bar', label: 'Dosagem (%)', data: phDatasetDosagem, backgroundColor: 'rgba(255, 159, 64, 0.30)', borderColor: 'rgba(255, 159, 64, 0.55)', borderWidth: 1, yAxisID: 'y-axis-bar' },
+                { type: 'line', label: 'Dosagem (%)', data: phDatasetDosagem, backgroundColor: 'rgba(255, 159, 64, 0.30)', borderColor: 'rgba(255, 159, 64, 0.85)', borderWidth: 1, yAxisID: 'y-axis-bar', fill: 'origin', pointRadius: 0, spanGaps: false },
                 { type: 'line', label: 'Setpoint', data: phDatasetSetpoint, borderColor: 'rgba(255, 99, 132, 0.8)', borderWidth: 2, yAxisID: 'y-axis-line', fill: false, pointRadius: 0 }
             ];
             // Adiciona notas ao gráfico de Cloro (exibe ponto destacado se houver nota)
@@ -966,7 +969,7 @@ document.addEventListener('DOMContentLoaded', function() {
             const notePointData = notePointIndices.map(idx => ({ x: idx, y: cloroHistoryValues[idx] }));
             const cloroDatasets = [
                 { type: 'line', label: 'Cloro (Valor)', data: cloroDatasetLine, borderColor: 'rgba(75, 192, 192, 1)', yAxisID: 'y-axis-line', fill: false, tension: 0.1 },
-                { type: 'bar', label: 'Dosagem (%)', data: cloroDatasetDosagem, backgroundColor: 'rgba(255, 159, 64, 0.30)', borderColor: 'rgba(255, 159, 64, 0.55)', borderWidth: 1, yAxisID: 'y-axis-bar' },
+                { type: 'line', label: 'Dosagem (%)', data: cloroDatasetDosagem, backgroundColor: 'rgba(255, 159, 64, 0.30)', borderColor: 'rgba(255, 159, 64, 0.85)', borderWidth: 1, yAxisID: 'y-axis-bar', fill: 'origin', pointRadius: 0, spanGaps: false },
                 { type: 'line', label: 'Setpoint', data: cloroDatasetSetpoint, borderColor: 'rgba(255, 99, 132, 0.8)', borderWidth: 2, yAxisID: 'y-axis-line', fill: false, pointRadius: 0 },
                 {
                     type: 'line',

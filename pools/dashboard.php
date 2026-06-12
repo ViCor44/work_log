@@ -780,7 +780,40 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     }
 
-    // ... (O resto do JavaScript não precisa de alterações)
+    // ---------------------------------------------------------------
+    // Helpers de memoização DOM — só atualiza o nó quando o valor muda.
+    // Evita re-render visível dos cards a cada ciclo de polling (10s).
+    // ---------------------------------------------------------------
+    function setHtmlIfChanged(el, html) {
+        if (!el) return;
+        if (el._lastHtml === html) return;
+        el._lastHtml = html;
+        el.innerHTML = html;
+    }
+    function setTextIfChanged(el, text) {
+        if (!el) return;
+        if (el._lastText === text) return;
+        el._lastText = text;
+        el.textContent = text;
+    }
+    function setClassIfChanged(el, classStr) {
+        if (!el) return;
+        if (el._lastClass === classStr) return;
+        el._lastClass = classStr;
+        el.className = classStr;
+    }
+    // Aplica um conjunto de classes "de estado" a um elemento, removendo todas
+    // as anteriores e adicionando apenas se o estado mudou.
+    function applyStateClasses(el, key, ...classes) {
+        if (!el) return;
+        const next = classes.join(' ');
+        if (el['_state_' + key] === next) return;
+        const prev = el['_state_' + key];
+        if (prev) prev.split(' ').filter(Boolean).forEach(c => el.classList.remove(c));
+        classes.filter(Boolean).forEach(c => el.classList.add(c));
+        el['_state_' + key] = next;
+    }
+
     function getValueClass(type, value) {
         const numValue = parseFloat(String(value).replace(',', '.'));
         if (isNaN(numValue)) return '';
@@ -860,12 +893,11 @@ document.addEventListener('DOMContentLoaded', function() {
 const data = await response.json();
 if (data.error) throw new Error(data.error);
 
-// RESTAURA VISUAL SE ESTAVA OFFLINE
-cardElement.querySelector('.list-group').style.display = '';
-cardElement.querySelector('.alarm-content').style.display = 'none';
-            // Remove todas as classes de estado anteriores
-            cardElement.classList.remove('status-alarm', 'status-offline', 'border-danger', 'border-success', 'border-secondary', 'animate-pulse-red-bs');
-            statusEl.classList.remove('bg-danger', 'bg-success', 'bg-secondary');
+// RESTAURA VISUAL SE ESTAVA OFFLINE (só se já estiver escondido)
+const listGroupEl = cardElement.querySelector('.list-group');
+const alarmContentEl = cardElement.querySelector('.alarm-content');
+if (listGroupEl && listGroupEl.style.display === 'none') listGroupEl.style.display = '';
+if (alarmContentEl && alarmContentEl.style.display !== 'none') alarmContentEl.style.display = 'none';
 
             // Sucesso na comunicação → controlador respondeu
             const cloroValue = parseFloat(data.freeChlorine);
@@ -875,7 +907,7 @@ cardElement.querySelector('.alarm-content').style.display = 'none';
             const c2Setpoint = getNumericCandidate(data, ['C2SetPoint', 'c2_setpoint', 'ph_setpoint']);
             const targetSetpoints = await getPoolTargetSetpoints(poolId, c1Setpoint, c2Setpoint);
 
-            // Atualiza sempre os valores (não esconde)
+            // Atualiza valores apenas se mudaram (memoizado), evita flicker
             const cloroText = Number.isFinite(cloroValue)
                 ? `${cloroValue.toFixed(2)} <span class="unit">mg/L</span>`
                 : '--';
@@ -886,15 +918,22 @@ cardElement.querySelector('.alarm-content').style.display = 'none';
                 ? `${tempValue.toFixed(1)} <span class="unit">°C</span>`
                 : '--';
 
-            document.getElementById(`cloro-${poolId}`).innerHTML = cloroText;
-            document.getElementById(`cloro-${poolId}`).className = `font-monospace fw-bold fs-5 ${getValueClass('cloro', cloroValue)}`;
+            const cloroEl = document.getElementById(`cloro-${poolId}`);
+            const phEl    = document.getElementById(`ph-${poolId}`);
+            const tempEl  = document.getElementById(`temp-${poolId}`);
 
-            document.getElementById(`ph-${poolId}`).innerHTML = phText;
-            document.getElementById(`ph-${poolId}`).className = `font-monospace fw-bold fs-5 ${getValueClass('ph', phValue)}`;
+            setHtmlIfChanged(cloroEl, cloroText);
+            setClassIfChanged(cloroEl, `font-monospace fw-bold fs-5 ${getValueClass('cloro', cloroValue)}`);
 
-            document.getElementById(`temp-${poolId}`).innerHTML = tempText;
-            if (spCloroEl) spCloroEl.textContent = `SP alvo Cl ${Number.isFinite(targetSetpoints.cloro) ? targetSetpoints.cloro.toFixed(2) : '--'}`;
-            if (spPhEl) spPhEl.textContent = `SP alvo pH ${Number.isFinite(targetSetpoints.ph) ? targetSetpoints.ph.toFixed(2) : '--'}`;
+            setHtmlIfChanged(phEl, phText);
+            setClassIfChanged(phEl, `font-monospace fw-bold fs-5 ${getValueClass('ph', phValue)}`);
+
+            setHtmlIfChanged(tempEl, tempText);
+
+            const spCloroText = `SP alvo Cl ${Number.isFinite(targetSetpoints.cloro) ? targetSetpoints.cloro.toFixed(2) : '--'}`;
+            const spPhText = `SP alvo pH ${Number.isFinite(targetSetpoints.ph) ? targetSetpoints.ph.toFixed(2) : '--'}`;
+            setTextIfChanged(spCloroEl, spCloroText);
+            setTextIfChanged(spPhEl, spPhText);
 
             // Decide o estado visual
             const temAlarmeQuimico =
@@ -903,51 +942,41 @@ cardElement.querySelector('.alarm-content').style.display = 'none';
 
 const alarmeControlador = (data.alarme == 0); // alarme interno
 
-// 1️⃣ ALARME DO CONTROLADOR
+let nextState, statusText, cardClasses, badgeClass;
 if (alarmeControlador) {
-
-    cardElement.classList.add('border-danger', 'animate-pulse-red-bs');
-    statusEl.classList.add('bg-danger');
-    statusEl.textContent = 'ALARME ATIVO';
-
-// 2️⃣ PARÂMETROS FORA DOS LIMITES
+    nextState = 'alarm';
+    statusText = 'ALARME ATIVO';
+    cardClasses = ['border-danger', 'animate-pulse-red-bs'];
+    badgeClass = 'bg-danger';
 } else if (temAlarmeQuimico) {
-
-    cardElement.classList.add('border-warning');
-    statusEl.classList.add('bg-warning');
-    statusEl.textContent = 'FORA DOS LIMITES';
-
-// 3️⃣ TUDO OK
+    nextState = 'warning';
+    statusText = 'FORA DOS LIMITES';
+    cardClasses = ['border-warning'];
+    badgeClass = 'bg-warning';
 } else {
-
-    cardElement.classList.add('border-success');
-    statusEl.classList.remove('bg-warning');
-    statusEl.classList.add('bg-success');
-    cardElement.classList.remove(
-        'status-alarm',
-        'status-offline',
-        'border-warning',
-        'border-danger',       
-        'border-secondary',
-        'animate-pulse-red-bs'
-    );    
-    statusEl.textContent = 'OK';
-
+    nextState = 'ok';
+    statusText = 'OK';
+    cardClasses = ['border-success'];
+    badgeClass = 'bg-success';
 }
+
+applyStateClasses(cardElement, 'pool', ...cardClasses);
+applyStateClasses(statusEl, 'pool-badge', 'badge', badgeClass);
+setTextIfChanged(statusEl, statusText);
 
         } catch (error) {
             // Aqui sim é falha real de comunicação
-            cardElement.classList.remove('border-success', 'animate-pulse-red-bs');
-            cardElement.classList.add('status-offline', 'border-danger');
-            statusEl.classList.remove('bg-success');
-            statusEl.classList.add('bg-danger');
-            statusEl.textContent = 'OFFLINE';
+            applyStateClasses(cardElement, 'pool', 'status-offline', 'border-danger');
+            applyStateClasses(statusEl, 'pool-badge', 'badge', 'bg-danger');
+            setTextIfChanged(statusEl, 'OFFLINE');
 
-            // Mostra bloco de erro de comunicação
-            cardElement.querySelector('.list-group').style.display = 'none';
-            cardElement.querySelector('.alarm-content').style.display = 'block';
-            if (spCloroEl) spCloroEl.textContent = 'SP alvo Cl --';
-            if (spPhEl) spPhEl.textContent = 'SP alvo pH --';
+            // Mostra bloco de erro de comunicação (idempotente)
+            const lg = cardElement.querySelector('.list-group');
+            const ac = cardElement.querySelector('.alarm-content');
+            if (lg && lg.style.display !== 'none') lg.style.display = 'none';
+            if (ac && ac.style.display !== 'block') ac.style.display = 'block';
+            setTextIfChanged(spCloroEl, 'SP alvo Cl --');
+            setTextIfChanged(spPhEl, 'SP alvo pH --');
         }
     }
 function createLoraCard(device) {
@@ -1022,36 +1051,33 @@ function createLoraCard(device) {
             const data = await response.json();
             if (data.error) throw new Error(data.error);
 
-            cardElement.classList.remove('status-alarm', 'border-danger', 'border-success', 'border-secondary');
-            statusEl.classList.remove('bg-danger', 'bg-success', 'bg-secondary');
-
-            cardElement.classList.add('border-success');
-            statusEl.classList.add('bg-success');
-            statusEl.textContent = 'Online';
+            applyStateClasses(cardElement, 'medida', 'border-success');
+            applyStateClasses(statusEl, 'medida-badge', 'badge', 'bg-success');
+            setTextIfChanged(statusEl, 'Online');
 
             const voltage = parseFloat(data.voltageLNAvg);
             const current = parseFloat(data.currentAvg);
             const power   = parseFloat(data.activePowerTotal);
 
-            document.getElementById(`voltage-${meterId}`).innerHTML = Number.isFinite(voltage)
+            setHtmlIfChanged(document.getElementById(`voltage-${meterId}`), Number.isFinite(voltage)
                 ? `${voltage.toFixed(1)} <span class="unit">V</span>`
-                : '--';
-            document.getElementById(`current-${meterId}`).innerHTML = Number.isFinite(current)
+                : '--');
+            setHtmlIfChanged(document.getElementById(`current-${meterId}`), Number.isFinite(current)
                 ? `${current.toFixed(2)} <span class="unit">A</span>`
-                : '--';
-            document.getElementById(`power-${meterId}`).innerHTML = Number.isFinite(power)
+                : '--');
+            setHtmlIfChanged(document.getElementById(`power-${meterId}`), Number.isFinite(power)
                 ? `${power.toFixed(2)} <span class="unit">kW</span>`
-                : '--';
+                : '--');
 
         } catch (error) {
-            cardElement.classList.add('status-alarm', 'border-danger');
-            statusEl.classList.add('bg-danger');
-            statusEl.textContent = 'OFFLINE';
+            applyStateClasses(cardElement, 'medida', 'status-alarm', 'border-danger');
+            applyStateClasses(statusEl, 'medida-badge', 'badge', 'bg-danger');
+            setTextIfChanged(statusEl, 'OFFLINE');
 
             const listGroup = cardElement.querySelector('.list-group');
-            if (listGroup) listGroup.style.display = 'none';
+            if (listGroup && listGroup.style.display !== 'none') listGroup.style.display = 'none';
             const alarmContent = cardElement.querySelector('.alarm-content');
-            if (alarmContent) alarmContent.style.display = 'block';
+            if (alarmContent && alarmContent.style.display !== 'block') alarmContent.style.display = 'block';
         }
     }
 
@@ -1126,43 +1152,43 @@ function createLoraCard(device) {
             const p2fault = !!fb.pump2_fault;
 
             if (data.activeFault || p1fault || p2fault) {
-                cardElement.classList.add('border-danger', 'animate-pulse-red-bs');
-                if (statusEl) { statusEl.classList.add('bg-danger'); statusEl.textContent = 'FALHA'; }
+                applyStateClasses(cardElement, 'filtro', 'border-danger', 'animate-pulse-red-bs');
+                applyStateClasses(statusEl, 'filtro-badge', 'badge', 'bg-danger');
+                setTextIfChanged(statusEl, 'FALHA');
             } else {
-                cardElement.classList.add('border-success');
-                if (statusEl) { statusEl.classList.add('bg-success'); statusEl.textContent = 'ONLINE'; }
+                applyStateClasses(cardElement, 'filtro', 'border-success');
+                applyStateClasses(statusEl, 'filtro-badge', 'badge', 'bg-success');
+                setTextIfChanged(statusEl, 'ONLINE');
             }
 
-            if (pinEl)   pinEl.textContent  = pin    != null ? pin.toFixed(2)    : '--';
-            if (poutEl)  poutEl.textContent = pout   != null ? pout.toFixed(2)   : '--';
-            if (deltaEl) deltaEl.textContent = deltaP != null ? deltaP.toFixed(2) : '--';
-            if (flowEl)  flowEl.innerHTML   = flow   != null
+            setTextIfChanged(pinEl,   pin    != null ? pin.toFixed(2)    : '--');
+            setTextIfChanged(poutEl,  pout   != null ? pout.toFixed(2)   : '--');
+            setTextIfChanged(deltaEl, deltaP != null ? deltaP.toFixed(2) : '--');
+            setHtmlIfChanged(flowEl, flow != null
                 ? `${flow.toFixed(1)} <span style="font-size:0.75rem;color:var(--scada-text-secondary);font-family:sans-serif">m³/h</span>`
-                : '--';
+                : '--');
 
             if (stateEl) {
                 const filterState = data.filter_state || '--';
-                stateEl.textContent = filterState;
-                stateEl.className   = 'metric-value ' + (STATE_CSS[filterState] || '');
+                setTextIfChanged(stateEl, filterState);
+                setClassIfChanged(stateEl, 'metric-value ' + (STATE_CSS[filterState] || ''));
             }
 
             const setPump = (dot, badge, running, fault) => {
                 if (dot) {
-                    dot.style.color = fault ? '#dc3545' : (running ? '#198754' : '#495057');
-                    dot.title = fault ? 'Falha' : (running ? 'Em serviço' : 'Parada');
+                    const color = fault ? '#dc3545' : (running ? '#198754' : '#495057');
+                    if (dot._lastColor !== color) { dot._lastColor = color; dot.style.color = color; }
+                    const title = fault ? 'Falha' : (running ? 'Em serviço' : 'Parada');
+                    if (dot._lastTitle !== title) { dot._lastTitle = title; dot.title = title; }
                 }
                 if (badge) {
-                    if (fault) {
-                        badge.className = 'badge bg-danger';
-                        badge.textContent = 'FALHA';
-                    } else if (running) {
-                        badge.className = 'badge bg-success';
-                        badge.textContent = 'Em Serviço';
-                    } else {
-                        badge.className = 'badge bg-secondary';
-                        badge.textContent = 'Parada';
-                    }
-                    badge.style.fontSize = '0.7rem';
+                    let cls, txt;
+                    if (fault)        { cls = 'badge bg-danger';    txt = 'FALHA'; }
+                    else if (running) { cls = 'badge bg-success';   txt = 'Em Serviço'; }
+                    else              { cls = 'badge bg-secondary'; txt = 'Parada'; }
+                    setClassIfChanged(badge, cls);
+                    setTextIfChanged(badge, txt);
+                    if (badge._lastFontSize !== '0.7rem') { badge._lastFontSize = '0.7rem'; badge.style.fontSize = '0.7rem'; }
                 }
             };
             setPump(pump1Dot, pump1Badge, p1on, p1fault);
@@ -1170,44 +1196,54 @@ function createLoraCard(device) {
 
             // Info de BUMP: mostrar quando o bit de bump está activo
             const isBump = !!(sb.filter_bump);
-            if (bumpInfoEl) bumpInfoEl.style.display = isBump ? '' : 'none';
+            if (bumpInfoEl) {
+                const disp = isBump ? '' : 'none';
+                if (bumpInfoEl.style.display !== disp) bumpInfoEl.style.display = disp;
+            }
             if (bumpCycleEl) {
                 const cycles = data.charging_cycles != null ? parseFloat(data.charging_cycles) : null;
-                bumpCycleEl.textContent = cycles != null ? `— Ciclo ${cycles}` : '';
+                setTextIfChanged(bumpCycleEl, cycles != null ? `— Ciclo ${cycles}` : '');
             }
 
             const perliteDue = isPerliteReplacementDue(data);
             if (perliteWarningEl) {
-                perliteWarningEl.style.display = perliteDue ? '' : 'none';
+                const disp = perliteDue ? '' : 'none';
+                if (perliteWarningEl.style.display !== disp) perliteWarningEl.style.display = disp;
             }
             if (perliteBadgeEl) {
                 const remainingDays = data.remaining_time != null ? parseFloat(data.remaining_time) : null;
-                perliteBadgeEl.style.display = 'inline-block';
+                if (perliteBadgeEl.style.display !== 'inline-block') perliteBadgeEl.style.display = 'inline-block';
+                let cls, txt, ttl;
                 if (perliteDue) {
                     const exceededDays = getPerliteExceededDays(data);
                     const exceededText = exceededDays != null ? exceededDays.toFixed(1) : '0.0';
-                    perliteBadgeEl.className = 'badge bg-danger ms-2';
-                    perliteBadgeEl.textContent = 'Trocar perlite';
-                    perliteBadgeEl.title = `Limite ultrapassado em ${exceededText} dias`;
-                    perliteBadgeEl.setAttribute('aria-label', perliteBadgeEl.title);
+                    cls = 'badge bg-danger ms-2';
+                    txt = 'Trocar perlite';
+                    ttl = `Limite ultrapassado em ${exceededText} dias`;
                 } else if (Number.isFinite(remainingDays)) {
-                    perliteBadgeEl.className = 'badge bg-success ms-2';
-                    perliteBadgeEl.textContent = 'Perlite OK';
-                    perliteBadgeEl.title = `Faltam ${remainingDays.toFixed(1)} dias para a troca`;
-                    perliteBadgeEl.setAttribute('aria-label', perliteBadgeEl.title);
+                    cls = 'badge bg-success ms-2';
+                    txt = 'Perlite OK';
+                    ttl = `Faltam ${remainingDays.toFixed(1)} dias para a troca`;
                 } else {
-                    perliteBadgeEl.className = 'badge bg-secondary ms-2';
-                    perliteBadgeEl.textContent = 'Perlite N/D';
-                    perliteBadgeEl.title = 'Tempo restante para troca indisponivel';
-                    perliteBadgeEl.setAttribute('aria-label', perliteBadgeEl.title);
+                    cls = 'badge bg-secondary ms-2';
+                    txt = 'Perlite N/D';
+                    ttl = 'Tempo restante para troca indisponivel';
+                }
+                setClassIfChanged(perliteBadgeEl, cls);
+                setTextIfChanged(perliteBadgeEl, txt);
+                if (perliteBadgeEl._lastTitle !== ttl) {
+                    perliteBadgeEl._lastTitle = ttl;
+                    perliteBadgeEl.title = ttl;
+                    perliteBadgeEl.setAttribute('aria-label', ttl);
                 }
             }
 
-            if (metricsEl)    metricsEl.style.display    = '';
-            if (statePanelEl) statePanelEl.style.display = '';
-            if (pumpPanelEl)  pumpPanelEl.style.display  = '';
-            if (footerEl)     footerEl.style.display     = '';
-            if (alarmEl)      alarmEl.style.display      = 'none';
+            const showPanel = (el, disp) => { if (el && el.style.display !== disp) el.style.display = disp; };
+            showPanel(metricsEl,    '');
+            showPanel(statePanelEl, '');
+            showPanel(pumpPanelEl,  '');
+            showPanel(footerEl,     '');
+            showPanel(alarmEl,      'none');
 
             filtroFailCount[filterId] = 0;
 
