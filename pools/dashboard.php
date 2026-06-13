@@ -1126,9 +1126,6 @@ function createLoraCard(device) {
             // Cache for modal
             cardElement._filtroData = data;
 
-            cardElement.classList.remove('status-offline', 'border-danger', 'border-success', 'border-secondary', 'animate-pulse-red-bs');
-            if (statusEl) statusEl.classList.remove('bg-danger', 'bg-success', 'bg-secondary', 'bg-warning');
-
             const pin    = data.pin    != null ? parseFloat(data.pin)    : null;
             const pout   = data.pout   != null ? parseFloat(data.pout)   : null;
             const deltaP = data.delta_p != null ? parseFloat(data.delta_p)
