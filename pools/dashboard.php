@@ -809,7 +809,16 @@ document.addEventListener('DOMContentLoaded', function() {
         const next = classes.join(' ');
         if (el['_state_' + key] === next) return;
         const prev = el['_state_' + key];
-        if (prev) prev.split(' ').filter(Boolean).forEach(c => el.classList.remove(c));
+        if (prev) {
+            prev.split(' ').filter(Boolean).forEach(c => el.classList.remove(c));
+        } else {
+            // Primeira aplicação: limpa classes pré-existentes no HTML (ex.: bg-secondary
+            // inicial dos badges) que entrariam em conflito com o novo estado.
+            const prefixes = ['bg-', 'border-', 'animate-pulse-', 'status-'];
+            Array.from(el.classList).forEach(c => {
+                if (prefixes.some(p => c.startsWith(p))) el.classList.remove(c);
+            });
+        }
         classes.filter(Boolean).forEach(c => el.classList.add(c));
         el['_state_' + key] = next;
     }
