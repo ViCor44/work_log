@@ -668,12 +668,32 @@ $stmt->close();
                             </table>
                         `;
                         if (mt) {
-                            modelBlock += `
-                                <p class="mt-2 small text-muted">
-                                    <strong>Tuning Lambda/IMC (equilibrado, λ=${mt.lambda_sec}s):</strong>
-                                    Kp=${Number(mt.p).toFixed(4)} · Ti=${Number(mt.i).toFixed(0)}s · Td=${Number(mt.d).toFixed(0)}s
-                                </p>
-                            `;
+                            // Quando o modelo tem baixa confiança ou a relação L/τ é incompatível
+                            // com Lambda/IMC (L > τ), os valores brutos saem matematicamente
+                            // explosivos. Mostramos com aviso explícito para evitar utilização direta.
+                            const lTauRatio = (pm.tau_sec > 0) ? (pm.L_sec / pm.tau_sec) : Infinity;
+                            const isReliableForTuning = (pm.confidence !== 'baixa') && (lTauRatio <= 1.5) && (pm.dispersion <= 0.70);
+                            if (isReliableForTuning) {
+                                modelBlock += `
+                                    <p class="mt-2 small text-muted">
+                                        <strong>Tuning Lambda/IMC (equilibrado, λ=${mt.lambda_sec}s):</strong>
+                                        Kp=${Number(mt.p).toFixed(4)} · Ti=${Number(mt.i).toFixed(0)}s · Td=${Number(mt.d).toFixed(0)}s
+                                        <br><em>Alvo teórico antes dos clamps por ciclo — a recomendação final está em "Recomendações de Ajuste PID".</em>
+                                    </p>
+                                `;
+                            } else {
+                                const reasons = [];
+                                if (pm.confidence === 'baixa') reasons.push('confiança baixa');
+                                if (lTauRatio > 1.5) reasons.push(`L/τ=${lTauRatio.toFixed(1)} (Lambda/IMC requer L/τ < 1)`);
+                                if (pm.dispersion > 0.70) reasons.push(`dispersão ${(pm.dispersion*100).toFixed(0)}%`);
+                                modelBlock += `
+                                    <div class="alert alert-warning small mt-2 mb-0">
+                                        <strong><i class="fas fa-exclamation-triangle"></i> Valores brutos de Lambda/IMC não devem ser usados diretamente</strong>
+                                        (${reasons.join(', ')}).
+                                        Os números teóricos seriam Kp=${Number(mt.p).toFixed(2)}, Ti=${Number(mt.i).toFixed(0)}s, Td=${Number(mt.d).toFixed(0)}s mas o motor aplica clamps por ciclo na secção "Recomendações de Ajuste PID" abaixo.
+                                    </div>
+                                `;
+                            }
                         }
                     } else {
                         modelBlock = `<div class="alert alert-secondary mb-0">
