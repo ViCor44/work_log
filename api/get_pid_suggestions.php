@@ -912,6 +912,7 @@ function identifyFopdtChlorine($series) {
 
     return [
         'available' => true,
+        'source'   => 'step_events',
         'events' => $events,
         'K'        => round((float)$Kmed,   4),   // mg/L por % de atuador
         'tau_sec'  => (int)round((float)$tauMed),
@@ -919,6 +920,171 @@ function identifyFopdtChlorine($series) {
         'dispersion' => round($disp, 3),
         'confidence' => $confidence,
         'reasons' => $reasons,
+    ];
+}
+
+/**
+ * Fallback FOPDT estimator from closed-loop chart data (no step events required).
+ *
+ * Estimates K/τ/L by:
+ *   - Sweeping candidate dead-times L and picking the lag that maximizes
+ *     Pearson correlation between u(t) and y(t+L) (with positive sign).
+ *   - K = covariance(u, y_lag) / variance(u)  (linear regression slope).
+ *   - τ derived from observed recovery / stabilization metrics, falling back
+ *     to a conservative multiple of L when those are unavailable.
+ *
+ * Returns the same shape as identifyFopdtChlorine() but with source='heuristic'.
+ * The output is intended to be used with tighter clamps in pidRecommendations.
+ */
+function identifyFopdtChlorineHeuristic($series, $meanResponseDelaySec = null, $meanRecoverySec = null, $meanStabilizationSec = null) {
+    $empty = [
+        'available' => false,
+        'source'    => 'heuristic',
+        'events'    => 0,
+        'K'         => null,
+        'tau_sec'   => null,
+        'L_sec'     => null,
+        'dispersion'=> 1.0,
+        'confidence'=> 'baixa',
+        'reasons'   => ['Dados insuficientes para estimativa heurística baseada no gráfico.'],
+    ];
+
+    $n = count($series);
+    if ($n < 30) return $empty;
+
+    // Median sampling interval
+    $dts = [];
+    for ($i = 1; $i < $n; $i++) {
+        $dt = (int)$series[$i]['ts'] - (int)$series[$i - 1]['ts'];
+        if ($dt > 0 && $dt <= 1800) $dts[] = $dt;
+    }
+    if (count($dts) < 10) return $empty;
+    $medianDt = medianOf($dts);
+    if ($medianDt === null || $medianDt <= 0) return $empty;
+    $medianDt = (float)$medianDt;
+
+    // Build aligned u/y/ts arrays
+    $u = []; $y = []; $ts = [];
+    foreach ($series as $p) {
+        if (!isset($p['controller']) || $p['controller'] === null) continue;
+        if (!isset($p['value']) || $p['value'] === null) continue;
+        $u[] = (float)$p['controller'];
+        $y[] = (float)$p['value'];
+        $ts[] = (int)$p['ts'];
+    }
+    $m = count($u);
+    if ($m < 30) return $empty;
+
+    // Need actual variability to extract a relationship
+    $uMean = array_sum($u) / $m;
+    $yMean = array_sum($y) / $m;
+    $uVar = 0.0; $yVar = 0.0;
+    foreach ($u as $v) $uVar += pow($v - $uMean, 2);
+    foreach ($y as $v) $yVar += pow($v - $yMean, 2);
+    $uStd = sqrt($uVar / max(1, $m - 1));
+    $yStd = sqrt($yVar / max(1, $m - 1));
+    if ($uStd < 1.0 || $yStd < 0.02) {
+        $empty['reasons'] = ['Sem variabilidade suficiente do atuador (σu=' . round($uStd, 2) . '%) ou do cloro (σy=' . round($yStd, 3) . ' mg/L) no período.'];
+        return $empty;
+    }
+
+    // Candidate lag range (in seconds). If we have a measured response delay, focus around it.
+    $minLagSec = 60;
+    $maxLagSec = 1800;
+    if ($meanResponseDelaySec !== null && is_numeric($meanResponseDelaySec) && $meanResponseDelaySec > 0) {
+        $minLagSec = max(30,   (int)round($meanResponseDelaySec * 0.4));
+        $maxLagSec = min(3600, (int)round($meanResponseDelaySec * 2.5));
+    }
+    if ($maxLagSec <= $minLagSec) $maxLagSec = $minLagSec + 60;
+    $lagStep = max(30, (int)$medianDt);
+
+    $bestLag = null; $bestCorr = -1.0; $bestK = null; $bestPts = 0;
+
+    for ($lagSec = $minLagSec; $lagSec <= $maxLagSec; $lagSec += $lagStep) {
+        $lagSteps = max(1, (int)round($lagSec / $medianDt));
+        if ($lagSteps >= $m - 10) break;
+
+        $sumU = 0.0; $sumY = 0.0; $sumUY = 0.0; $sumU2 = 0.0; $sumY2 = 0.0; $pts = 0;
+        for ($i = 0; $i < $m - $lagSteps; $i++) {
+            // Ensure actual time delta matches requested lag (skip large gaps)
+            $dtActual = $ts[$i + $lagSteps] - $ts[$i];
+            if ($dtActual < $lagSec * 0.6 || $dtActual > $lagSec * 1.6) continue;
+            $uu = $u[$i];
+            $yy = $y[$i + $lagSteps];
+            $sumU  += $uu;
+            $sumY  += $yy;
+            $sumUY += $uu * $yy;
+            $sumU2 += $uu * $uu;
+            $sumY2 += $yy * $yy;
+            $pts++;
+        }
+        if ($pts < 20) continue;
+
+        $mU = $sumU / $pts; $mY = $sumY / $pts;
+        $vU = $sumU2 / $pts - $mU * $mU;
+        $vY = $sumY2 / $pts - $mY * $mY;
+        $cov = $sumUY / $pts - $mU * $mY;
+        if ($vU <= 1e-6 || $vY <= 1e-6) continue;
+
+        $corr = $cov / sqrt($vU * $vY);
+        $K    = $cov / $vU; // regression slope: mg/L per % actuator
+
+        // We expect physically positive gain for chlorine
+        if ($K > 0 && $corr > $bestCorr) {
+            $bestCorr = $corr;
+            $bestLag  = $lagSec;
+            $bestK    = $K;
+            $bestPts  = $pts;
+        }
+    }
+
+    if ($bestLag === null || $bestK === null || $bestCorr < 0.15) {
+        $empty['reasons'] = ['Correlação atuador→cloro insuficiente para estimativa heurística (r_max=' . round(max(0.0, $bestCorr), 2) . ').'];
+        return $empty;
+    }
+
+    // τ: prefer observed recovery; otherwise stabilization minus dead-time; otherwise 3*L.
+    $tau = null;
+    $tauSource = '';
+    if ($meanRecoverySec !== null && is_numeric($meanRecoverySec) && $meanRecoverySec > 0) {
+        $tau = (float)$meanRecoverySec;
+        $tauSource = 'tempo médio de recuperação';
+    } elseif ($meanStabilizationSec !== null && is_numeric($meanStabilizationSec) && $meanStabilizationSec > $bestLag) {
+        $tau = (float)$meanStabilizationSec - (float)$bestLag;
+        $tauSource = 'estabilização menos dead-time';
+    } else {
+        $tau = (float)$bestLag * 3.0;
+        $tauSource = 'heurística τ≈3·L';
+    }
+    $tau = max(60.0, min(7200.0, $tau));
+
+    // Confidence based on correlation strength and sample count
+    $r2 = $bestCorr * $bestCorr;
+    if ($bestCorr >= 0.40 && $bestPts >= 60) {
+        $confidence = 'alta';
+    } elseif ($bestCorr >= 0.20 && $bestPts >= 30) {
+        $confidence = 'media';
+    } else {
+        $confidence = 'baixa';
+    }
+    $dispersion = max(0.0, min(1.0, 1.0 - $r2));
+
+    $reasons = [
+        'Modelo estimado por regressão lag-otimizada (r=' . round($bestCorr, 3) . ', ' . $bestPts . ' pares).',
+        'τ adotado a partir de: ' . $tauSource . '.',
+        'Sem degraus mantidos disponíveis — usadas as variações naturais do atuador no período.',
+    ];
+
+    return [
+        'available'  => true,
+        'source'     => 'heuristic',
+        'events'     => $bestPts,                 // points used in regression
+        'K'          => round((float)$bestK, 4),
+        'tau_sec'    => (int)round((float)$tau),
+        'L_sec'      => (int)round((float)$bestLag),
+        'dispersion' => round($dispersion, 3),
+        'confidence' => $confidence,
+        'reasons'    => $reasons,
     ];
 }
 
@@ -1047,10 +1213,18 @@ function pidRecommendations($mode, $stats, $currentPid, $context = []) {
     $modelConfidence = $fopdt['confidence'] ?? 'baixa';
     $modelEvents = isset($fopdt['events']) ? (int)$fopdt['events'] : 0;
     $modelDispersion = isset($fopdt['dispersion']) ? (float)$fopdt['dispersion'] : 1.0;
+    $modelSource = $fopdt['source'] ?? 'step_events';
     $modelReliable = $modelAvailable
+        && $modelSource === 'step_events'
         && in_array($modelConfidence, ['alta', 'media'], true)
         && $modelEvents >= 2
         && $modelDispersion <= 0.60;
+    // Modelo heurístico (regressão lag-otimizada do gráfico): admite-se
+    // confiança média/alta e K>0 já validado dentro de identifyFopdtChlorineHeuristic.
+    $modelHeuristic = $modelAvailable
+        && $modelSource === 'heuristic'
+        && in_array($modelConfidence, ['alta', 'media'], true);
+    $modelUsable = $modelReliable || $modelHeuristic;
 
     $blockedReturn = function($msg, $code) use ($p, $i, $d, &$suggestions, &$rationale, &$diagnostics) {
         $suggestions[] = $msg;
@@ -1066,7 +1240,14 @@ function pidRecommendations($mode, $stats, $currentPid, $context = []) {
     };
 
     // Gate 1: qualidade mínima de dados e confiança.
-    if ($samples < 45 || $confLevel === 'baixa' || $confScore < 60.0) {
+    // Com modelo heurístico aceita-se confiança 'media' (sem exigir score>=60),
+    // para permitir sugestão credível quando não há degraus mantidos do atuador.
+    $minSamples = $modelHeuristic ? 30 : 45;
+    $minConfScore = $modelHeuristic ? 40.0 : 60.0;
+    $allowedConfLevels = $modelHeuristic ? ['alta', 'media', 'baixa'] : ['alta', 'media'];
+    if ($samples < $minSamples
+        || !in_array($confLevel, $allowedConfLevels, true)
+        || $confScore < $minConfScore) {
         return $blockedReturn(
             'Sugestão bloqueada: evidência insuficiente (' . $samples . ' amostras, confiança ' . $confLevel . ' ' . round($confScore, 1) . '%).',
             'blocked_low_confidence'
@@ -1074,17 +1255,21 @@ function pidRecommendations($mode, $stats, $currentPid, $context = []) {
     }
 
     // Gate 2: direção física do processo.
-    if ($mode === 'chlorine' && (!$directionReliable || !$directionPositive || $directionSamples < 12)) {
+    // O modelo heurístico só é "available" quando o K estimado já é positivo,
+    // pelo que serve como confirmação alternativa à evidência direcional clássica.
+    $directionConfirmed = ($directionReliable && $directionPositive && $directionSamples >= 12)
+        || ($modelHeuristic && isset($fopdt['K']) && (float)$fopdt['K'] > 0);
+    if ($mode === 'chlorine' && !$directionConfirmed) {
         return $blockedReturn(
             'Sugestão bloqueada: direção física atuador→cloro não comprovada (amostras úteis ' . $directionSamples . ').',
             'blocked_direction_unreliable'
         );
     }
 
-    // Gate 3: sem modelo confiável, sem ajuste numérico.
-    if (!$modelReliable) {
+    // Gate 3: sem modelo utilizável (nem estrito nem heurístico), sem ajuste numérico.
+    if (!$modelUsable) {
         return $blockedReturn(
-            'Sugestão bloqueada: modelo do processo sem confiabilidade suficiente (confiança ' . $modelConfidence . ', eventos ' . $modelEvents . ', dispersão ' . round($modelDispersion * 100, 1) . '%).',
+            'Sugestão bloqueada: modelo do processo sem confiabilidade suficiente (confiança ' . $modelConfidence . ', fonte ' . $modelSource . ', eventos ' . $modelEvents . ', dispersão ' . round($modelDispersion * 100, 1) . '%).',
             'blocked_model_unreliable'
         );
     }
@@ -1165,10 +1350,18 @@ function pidRecommendations($mode, $stats, $currentPid, $context = []) {
         $suggestions[] = 'Bloqueio de segurança: redução de Ti anulada porque o cloro está acima do setpoint neste período.';
     }
 
-    // ---------- Camada 5: clamp por ciclo (equilibrado: P 10%, I 15%, D 15%) -----
-    $suggestedP = clampPidSuggestion($p, $targetP, 0.01, 100.0,  0.10);
-    $suggestedI = clampPidSuggestion($i, $targetI, 0.0,  7200.0, 0.15);
-    $suggestedD = clampPidSuggestion($d, $targetD, 0.0,  3600.0, 0.15);
+    // ---------- Camada 5: clamp por ciclo --------------------------------------
+    // Modelo estrito (degraus mantidos): P 10%, I 15%, D 15% por ciclo.
+    // Modelo heurístico (regressão lag-otimizada): P 5%, I 8%, D 8% — mais conservador,
+    // porque o modelo foi inferido de variações naturais e não de excitação controlada.
+    if ($modelHeuristic && !$modelReliable) {
+        $stepP = 0.05; $stepI = 0.08; $stepD = 0.08;
+    } else {
+        $stepP = 0.10; $stepI = 0.15; $stepD = 0.15;
+    }
+    $suggestedP = clampPidSuggestion($p, $targetP, 0.01, 100.0,  $stepP);
+    $suggestedI = clampPidSuggestion($i, $targetI, 0.0,  7200.0, $stepI);
+    $suggestedD = clampPidSuggestion($d, $targetD, 0.0,  3600.0, $stepD);
 
     // ---------- Notas adicionais ------------------------------------------------
     if ($zeroObserved > 0) {
@@ -1193,14 +1386,19 @@ function pidRecommendations($mode, $stats, $currentPid, $context = []) {
     }
 
     $rationale[] = sprintf(
-        'Modelo FOPDT validado (K=%.4f, tau=%ds, L=%ds, dispersão=%.1f%%, confiança=%s).',
+        'Modelo FOPDT %s (K=%.4f, tau=%ds, L=%ds, dispersão=%.1f%%, confiança=%s).',
+        $modelSource === 'heuristic' ? 'heurístico (regressão lag-otimizada do gráfico)' : 'validado por degraus',
         (float)($fopdt['K'] ?? 0),
         (int)($fopdt['tau_sec'] ?? 0),
         (int)($fopdt['L_sec'] ?? 0),
         ((float)($fopdt['dispersion'] ?? 0.0)) * 100.0,
         $modelConfidence
     );
-    $rationale[] = 'Direção física confirmada (atuador→cloro) e gates de segurança aprovados.';
+    if ($modelSource === 'heuristic') {
+        $rationale[] = 'Direção física confirmada pelo K>0 da regressão; clamps por ciclo reduzidos (P 5%, I 8%, D 8%).';
+    } else {
+        $rationale[] = 'Direção física confirmada (atuador→cloro) e gates de segurança aprovados.';
+    }
 
     if ($p !== null) {
         $suggestions[] = 'Kp atual: ' . $p . ' → Sugerido: ' . round($suggestedP, 6);
@@ -1221,7 +1419,7 @@ function pidRecommendations($mode, $stats, $currentPid, $context = []) {
             'i' => $suggestedI !== null ? (float)$suggestedI : null,
             'd' => $suggestedD !== null ? (float)$suggestedD : null,
         ],
-        'strategy'        => 'ajuste_com_confianca',
+        'strategy'        => ($modelHeuristic && !$modelReliable) ? 'modelo_heuristico_grafico' : 'ajuste_com_confianca',
         'rationale'       => $rationale,
         'diagnostics'     => $diagnostics,
     ];
@@ -1406,6 +1604,26 @@ if ($stmt_history) {
 
 // --- Identificação FOPDT do processo (K, τ, L) e tuning Lambda baseado em modelo ---
 $fopdt        = identifyFopdtChlorine($cleanSeries);
+
+// Fallback heurístico: quando não há degraus mantidos suficientes para o modelo
+// estrito, estima K/τ/L diretamente da correlação atuador→cloro ao longo do
+// período mostrado no gráfico. Mantém os mesmos campos, mas marca source='heuristic'.
+if (empty($fopdt['available']) || ($fopdt['confidence'] ?? 'baixa') === 'baixa') {
+    $heuristicFopdt = identifyFopdtChlorineHeuristic(
+        $cleanSeries,
+        $cl_mean_delay,
+        isset($clRecovery['mean_recovery_sec']) ? $clRecovery['mean_recovery_sec'] : null,
+        isset($clRecovery['mean_stabilization_sec']) ? $clRecovery['mean_stabilization_sec'] : null
+    );
+    if (!empty($heuristicFopdt['available'])) {
+        // Mantém o resultado estrito como referência se existir, mas usa o heurístico.
+        if (!empty($fopdt['available'])) {
+            $heuristicFopdt['reasons'][] = 'Modelo estrito existia mas com baixa confiança; usado fallback heurístico.';
+        }
+        $fopdt = $heuristicFopdt;
+    }
+}
+
 $modelTuning  = lambdaTuningFromFopdt($fopdt, 'equilibrado');
 $saturation   = detectActuatorSaturation($cleanSeries);
 $directionEvidence = calcActuationDirectionEvidence($cleanSeries, $cl_mean_delay);

@@ -649,14 +649,21 @@ $stmt->close();
                     let modelBlock = '';
                     if (pm && pm.available) {
                         const confBadge = pm.confidence === 'alta' ? 'success' : (pm.confidence === 'media' ? 'warning' : 'secondary');
+                        const srcLabel = (pm.source === 'heuristic')
+                            ? '<span class="badge bg-info">Heurístico (gráfico)</span>'
+                            : '<span class="badge bg-success">Degraus mantidos</span>';
+                        const eventsLabel = (pm.source === 'heuristic')
+                            ? 'Pares (u, y atrasado) usados na regressão lag-otimizada'
+                            : 'Quantos arranques/paragens da bomba foram analisados';
                         modelBlock = `
                             <table class="stats-table">
                                 <tr><th>Parâmetro</th><th>Valor</th><th>Significado</th></tr>
-                                <tr><td>Eventos de degrau</td><td>${pm.events}</td><td>Quantos arranques/paragens da bomba foram analisados</td></tr>
+                                <tr><td>Origem do modelo</td><td>${srcLabel}</td><td>${pm.source === 'heuristic' ? 'Sem degraus mantidos: K, τ e L estimados por regressão atuador→cloro com lag ótimo.' : 'Modelo identificado a partir de degraus reais do atuador.'}</td></tr>
+                                <tr><td>${pm.source === 'heuristic' ? 'Pontos' : 'Eventos de degrau'}</td><td>${pm.events}</td><td>${eventsLabel}</td></tr>
                                 <tr><td>Ganho estático K</td><td>${Number(pm.K).toFixed(4)} mg/L por %</td><td>Quanto cloro sobe por cada % de bomba</td></tr>
                                 <tr><td>Constante de tempo τ</td><td>${pm.tau_sec}s (${(pm.tau_sec/60).toFixed(1)} min)</td><td>Tempo até 63% da resposta</td></tr>
                                 <tr><td>Dead-time L</td><td>${pm.L_sec}s (${(pm.L_sec/60).toFixed(1)} min)</td><td>Atraso entre acionar a bomba e ver o efeito</td></tr>
-                                <tr><td>Dispersão entre eventos</td><td>${(pm.dispersion*100).toFixed(0)}%</td><td>Quão consistente é o modelo</td></tr>
+                                <tr><td>Dispersão${pm.source === 'heuristic' ? ' (1-r²)' : ' entre eventos'}</td><td>${(pm.dispersion*100).toFixed(0)}%</td><td>${pm.source === 'heuristic' ? 'Quanto da variação do cloro não é explicada pela regressão' : 'Quão consistente é o modelo'}</td></tr>
                                 <tr><td>Confiança</td><td><span class="badge badge-${confBadge}">${pm.confidence.toUpperCase()}</span></td><td>Fiabilidade do modelo identificado</td></tr>
                             </table>
                         `;
@@ -672,7 +679,7 @@ $stmt->close();
                         modelBlock = `<div class="alert alert-secondary mb-0">
                             Modelo do processo (FOPDT) não disponível.
                             ${pm && pm.reasons && pm.reasons.length ? '<br><small>' + pm.reasons.join(' ') + '</small>' : ''}
-                            Sem degraus mantidos do atuador da bomba, as sugestões caem para heurísticas conservadoras.
+                            Sem degraus mantidos do atuador da bomba nem correlação atuador→cloro suficiente, as sugestões caem para heurísticas conservadoras.
                         </div>`;
                     }
 
@@ -709,6 +716,7 @@ $stmt->close();
                         ajuste_com_confianca: 'Ajuste com confiança (evidência validada)',
                         bloqueado_por_evidencia_insuficiente: 'Bloqueado por evidência insuficiente',
                         modelo_lambda: 'Tuning baseado em modelo (Lambda/IMC)',
+                        modelo_heuristico_grafico: 'Tuning heurístico do gráfico (clamps reduzidos)',
                         reverter: 'Reverter última alteração',
                         heuristica: 'Heurística conservadora (sem modelo)'
                     }[strat] || strat;
