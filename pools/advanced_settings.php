@@ -717,6 +717,7 @@ $stmt->close();
                         bloqueado_por_evidencia_insuficiente: 'Bloqueado por evidência insuficiente',
                         modelo_lambda: 'Tuning baseado em modelo (Lambda/IMC)',
                         modelo_heuristico_grafico: 'Tuning heurístico do gráfico (clamps reduzidos)',
+                        micro_heuristica: 'Micro-ajuste por métricas observadas (clamps 3-5%)',
                         reverter: 'Reverter última alteração',
                         heuristica: 'Heurística conservadora (sem modelo)'
                     }[strat] || strat;

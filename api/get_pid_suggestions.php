@@ -949,6 +949,46 @@ function identifyFopdtChlorineHeuristic($series, $meanResponseDelaySec = null, $
         'reasons'   => ['Dados insuficientes para estimativa heurística baseada no gráfico.'],
     ];
 
+    if (!is_array($series) || count($series) < 30) return $empty;
+
+    // ---- Sub-conjunto "controlador ativo": apenas pontos próximos (±15 min) de
+    // momentos em que a bomba esteve a operar ou variou. Evita que longas pausas
+    // (com perturbações externas a dominarem) anulem a correlação.
+    $activeSubset = extractControllerActiveSeries($series, 900);
+    $usedActiveSubset = false;
+    $reasonsPrefix = [];
+    if (count($activeSubset) >= 30 && count($activeSubset) < count($series)) {
+        $reasonsPrefix[] = 'Aplicado filtro de janela ativa do atuador (' . count($activeSubset) . '/' . count($series) . ' amostras).';
+        $usedActiveSubset = true;
+    } else {
+        $activeSubset = $series;
+    }
+
+    // Tenta no subconjunto ativo; se falhar, repete no conjunto completo.
+    $result = _heuristicFopdtRegression($activeSubset, $meanResponseDelaySec, $meanRecoverySec, $meanStabilizationSec, $reasonsPrefix);
+    if (!$result['available'] && $usedActiveSubset) {
+        $result = _heuristicFopdtRegression($series, $meanResponseDelaySec, $meanRecoverySec, $meanStabilizationSec, ['Filtro ativo insuficiente — repetida análise no conjunto completo.']);
+    }
+    return $result;
+}
+
+/**
+ * Núcleo da regressão lag-otimizada. Separado para permitir reuso entre o
+ * sub-conjunto "controlador ativo" e o conjunto completo.
+ */
+function _heuristicFopdtRegression($series, $meanResponseDelaySec, $meanRecoverySec, $meanStabilizationSec, $extraReasons = []) {
+    $empty = [
+        'available' => false,
+        'source'    => 'heuristic',
+        'events'    => 0,
+        'K'         => null,
+        'tau_sec'   => null,
+        'L_sec'     => null,
+        'dispersion'=> 1.0,
+        'confidence'=> 'baixa',
+        'reasons'   => array_merge($extraReasons, ['Dados insuficientes para estimativa heurística baseada no gráfico.']),
+    ];
+
     $n = count($series);
     if ($n < 30) return $empty;
 
@@ -983,8 +1023,9 @@ function identifyFopdtChlorineHeuristic($series, $meanResponseDelaySec = null, $
     foreach ($y as $v) $yVar += pow($v - $yMean, 2);
     $uStd = sqrt($uVar / max(1, $m - 1));
     $yStd = sqrt($yVar / max(1, $m - 1));
-    if ($uStd < 1.0 || $yStd < 0.02) {
-        $empty['reasons'] = ['Sem variabilidade suficiente do atuador (σu=' . round($uStd, 2) . '%) ou do cloro (σy=' . round($yStd, 3) . ' mg/L) no período.'];
+    // Tolera bombas curtas (σu>=0.5%) e cloro com pouca variação (σy>=0.01 mg/L).
+    if ($uStd < 0.5 || $yStd < 0.01) {
+        $empty['reasons'] = array_merge($extraReasons, ['Sem variabilidade suficiente do atuador (σu=' . round($uStd, 2) . '%) ou do cloro (σy=' . round($yStd, 3) . ' mg/L) no período.']);
         return $empty;
     }
 
@@ -1018,7 +1059,7 @@ function identifyFopdtChlorineHeuristic($series, $meanResponseDelaySec = null, $
             $sumY2 += $yy * $yy;
             $pts++;
         }
-        if ($pts < 20) continue;
+        if ($pts < 15) continue;
 
         $mU = $sumU / $pts; $mY = $sumY / $pts;
         $vU = $sumU2 / $pts - $mU * $mU;
@@ -1038,8 +1079,10 @@ function identifyFopdtChlorineHeuristic($series, $meanResponseDelaySec = null, $
         }
     }
 
-    if ($bestLag === null || $bestK === null || $bestCorr < 0.15) {
-        $empty['reasons'] = ['Correlação atuador→cloro insuficiente para estimativa heurística (r_max=' . round(max(0.0, $bestCorr), 2) . ').'];
+    // Limiar de correlação reduzido (0.10) e marcado como confiança baixa
+    // — sugestões posteriores aplicam clamps ainda mais apertados nesse caso.
+    if ($bestLag === null || $bestK === null || $bestCorr < 0.10) {
+        $empty['reasons'] = array_merge($extraReasons, ['Correlação atuador→cloro insuficiente para estimativa heurística (r_max=' . round(max(0.0, $bestCorr), 2) . ').']);
         return $empty;
     }
 
@@ -1069,11 +1112,11 @@ function identifyFopdtChlorineHeuristic($series, $meanResponseDelaySec = null, $
     }
     $dispersion = max(0.0, min(1.0, 1.0 - $r2));
 
-    $reasons = [
+    $reasons = array_merge($extraReasons, [
         'Modelo estimado por regressão lag-otimizada (r=' . round($bestCorr, 3) . ', ' . $bestPts . ' pares).',
         'τ adotado a partir de: ' . $tauSource . '.',
         'Sem degraus mantidos disponíveis — usadas as variações naturais do atuador no período.',
-    ];
+    ]);
 
     return [
         'available'  => true,
@@ -1085,6 +1128,134 @@ function identifyFopdtChlorineHeuristic($series, $meanResponseDelaySec = null, $
         'dispersion' => round($dispersion, 3),
         'confidence' => $confidence,
         'reasons'    => $reasons,
+    ];
+}
+
+/**
+ * Filtra a série para conter apenas pontos próximos (±$windowSec) de momentos
+ * em que o atuador estava ativo: bomba > 1% ou variação ≥ 1% face ao ponto anterior.
+ *
+ * Útil quando o gráfico tem grandes períodos de bomba a 0% (perturbação externa
+ * ou consumo baixo) que diluem a correlação com a resposta do cloro.
+ */
+function extractControllerActiveSeries($series, $windowSec = 900) {
+    $n = count($series);
+    if ($n === 0) return [];
+
+    // Marca timestamps em que houve actividade do atuador
+    $activeTs = [];
+    for ($i = 0; $i < $n; $i++) {
+        $u = isset($series[$i]['controller']) ? $series[$i]['controller'] : null;
+        if ($u === null) continue;
+        $uF = (float)$u;
+        $isActive = ($uF > 1.0);
+        if (!$isActive && $i > 0) {
+            $uPrev = isset($series[$i - 1]['controller']) ? $series[$i - 1]['controller'] : null;
+            if ($uPrev !== null && abs($uF - (float)$uPrev) >= 1.0) {
+                $isActive = true;
+            }
+        }
+        if ($isActive) $activeTs[] = (int)$series[$i]['ts'];
+    }
+    if (empty($activeTs)) return [];
+
+    sort($activeTs);
+    $count = count($activeTs);
+    $filtered = [];
+    $idx = 0;
+    foreach ($series as $point) {
+        $t = (int)$point['ts'];
+        // Avança o ponteiro até o primeiro timestamp ativo >= t - window.
+        while ($idx < $count && $activeTs[$idx] < ($t - $windowSec)) $idx++;
+        if ($idx >= $count) break; // sem mais janelas ativas à frente
+        if ($activeTs[$idx] <= ($t + $windowSec)) {
+            $filtered[] = $point;
+        }
+    }
+    return $filtered;
+}
+
+/**
+ * Tier 3: sugestão "micro-heurística" baseada apenas em métricas observadas
+ * (viés, oscilação, recuperação) quando nem o FOPDT estrito nem o heurístico
+ * estão disponíveis mas há atividade mínima do controlador.
+ *
+ * Clamps muito apertados (P 3%, I 5%) e mudanças só em uma direção por ciclo.
+ * Retorna null se não houver evidência sequer mínima para sugerir.
+ */
+function microHeuristicSuggestion($stats, $currentPid, $context = []) {
+    $p = isset($currentPid['p']) ? floatOrNull($currentPid['p']) : null;
+    $i = isset($currentPid['i']) ? floatOrNull($currentPid['i']) : null;
+    $d = isset($currentPid['d']) ? floatOrNull($currentPid['d']) : null;
+    if ($p === null && $i === null) return null;
+
+    $samples = isset($stats['samples']) ? (int)$stats['samples'] : 0;
+    $errMean = isset($stats['mean'])     ? (float)$stats['mean']     : 0.0;
+    $errMeanAbs = isset($stats['mean_abs']) ? (float)$stats['mean_abs'] : 0.0;
+    $stdev   = isset($stats['stdev'])    ? (float)$stats['stdev']    : 0.0;
+    $signChangeRate = isset($stats['sign_change_rate']) ? (float)$stats['sign_change_rate'] : 0.0;
+
+    if ($samples < 30) return null;
+
+    $saturation = isset($context['saturation']) ? $context['saturation'] : [];
+    $satHigh = !empty($saturation['saturated_high']);
+    if ($satHigh) return null; // problema físico — não é tuning
+
+    $rec = isset($context['recovery']) ? $context['recovery'] : [];
+    $meanRecovery = isset($rec['mean_recovery_sec']) ? $rec['mean_recovery_sec'] : null;
+
+    $reasons = [];
+    $direction = 'manter';
+
+    // Decisão por prioridade:
+    // 1) Oscilação alta (sign change rate > 15%) → reduzir Kp
+    // 2) Erro persistente / viés relevante → reduzir Ti (mais ação integral)
+    // 3) Recuperação lenta sem oscilação → aumentar Kp ligeiramente
+    if ($signChangeRate > 0.15 && $stdev > 0.20) {
+        $direction = 'reduce_p';
+        $reasons[] = 'Oscilação elevada detetada (mudanças de sinal ' . round($signChangeRate * 100, 1) . '%, σ=' . round($stdev, 3) . ').';
+    } elseif (abs($errMean) > 0.15 && $errMeanAbs > 0.20) {
+        $direction = 'reduce_i';
+        $reasons[] = 'Viés persistente (erro médio=' . round($errMean, 3) . ', MAE=' . round($errMeanAbs, 3) . ').';
+    } elseif ($meanRecovery !== null && (float)$meanRecovery > 1800 && $signChangeRate < 0.08) {
+        $direction = 'increase_p';
+        $reasons[] = 'Recuperação lenta (' . round((float)$meanRecovery / 60, 1) . ' min) sem oscilação.';
+    } else {
+        return [
+            'suggestions' => ['Métricas dentro de margens razoáveis — manter sintonia e continuar a observar.'],
+            'suggestedValues' => ['p' => $p, 'i' => $i, 'd' => $d],
+            'strategy' => 'manter',
+            'rationale' => ['Tier 3 micro-heurístico: sem desvio crítico para justificar alteração.'],
+            'diagnostics' => ['tier3_no_action_needed'],
+        ];
+    }
+
+    // Aplicar micro-ajuste com clamps muito apertados (3% P, 5% I).
+    $newP = $p; $newI = $i;
+    if ($direction === 'reduce_p' && $p !== null) {
+        $newP = max(0.01, $p * 0.97);
+    } elseif ($direction === 'increase_p' && $p !== null) {
+        $newP = min(100.0, $p * 1.03);
+    } elseif ($direction === 'reduce_i' && $i !== null && $i > 0) {
+        $newI = max(1.0, $i * 0.95);
+    }
+
+    $suggestions = ['Micro-ajuste baseado em métricas observadas (sem modelo FOPDT identificável):'];
+    foreach ($reasons as $r) $suggestions[] = $r;
+    if ($p !== null && $newP !== $p) {
+        $suggestions[] = 'Kp atual: ' . $p . ' → Sugerido: ' . round($newP, 6) . ' (variação ' . round(($newP - $p) / max(1e-6, $p) * 100, 1) . '%).';
+    }
+    if ($i !== null && $newI !== $i) {
+        $suggestions[] = 'Ti atual: ' . $i . ' → Sugerido: ' . round($newI, 2) . 's (variação ' . round(($newI - $i) / max(1e-6, $i) * 100, 1) . '%).';
+    }
+    $suggestions[] = 'Após gravar, observar 24-48h antes de novo ajuste.';
+
+    return [
+        'suggestions' => $suggestions,
+        'suggestedValues' => ['p' => $newP, 'i' => $newI, 'd' => $d],
+        'strategy' => 'micro_heuristica',
+        'rationale' => array_merge(['Tier 3 micro-heurística: clamps por ciclo reduzidos a 3-5% por falta de modelo do processo.'], $reasons),
+        'diagnostics' => ['tier3_' . $direction],
     ];
 }
 
@@ -1239,6 +1410,20 @@ function pidRecommendations($mode, $stats, $currentPid, $context = []) {
         ];
     };
 
+    // Tier 3 fallback wrapper: tenta produzir sugestão micro-heurística e, se
+    // mesmo isso não for possível, devolve o bloqueio com a razão original.
+    $tier3OrBlock = function($msg, $code) use ($mode, $stats, $currentPid, $context, $blockedReturn) {
+        if ($mode === 'chlorine') {
+            $tier3 = microHeuristicSuggestion($stats, $currentPid, $context);
+            if ($tier3 !== null) {
+                array_unshift($tier3['suggestions'], 'Modelo do processo indisponível (' . $msg . '). Aplicado micro-ajuste conservador baseado nas métricas observadas.');
+                $tier3['diagnostics'][] = 'tier3_replaced_block_' . $code;
+                return $tier3;
+            }
+        }
+        return $blockedReturn($msg, $code);
+    };
+
     // Gate 1: qualidade mínima de dados e confiança.
     // Com modelo heurístico aceita-se confiança 'media' (sem exigir score>=60),
     // para permitir sugestão credível quando não há degraus mantidos do atuador.
@@ -1260,17 +1445,21 @@ function pidRecommendations($mode, $stats, $currentPid, $context = []) {
     $directionConfirmed = ($directionReliable && $directionPositive && $directionSamples >= 12)
         || ($modelHeuristic && isset($fopdt['K']) && (float)$fopdt['K'] > 0);
     if ($mode === 'chlorine' && !$directionConfirmed) {
-        return $blockedReturn(
-            'Sugestão bloqueada: direção física atuador→cloro não comprovada (amostras úteis ' . $directionSamples . ').',
-            'blocked_direction_unreliable'
+        // Em vez de bloquear cegamente, tenta Tier 3 (micro-heurística).
+        // O viés/oscilação/recuperação observados já dão evidência suficiente
+        // para micro-ajustes seguros mesmo sem direção confirmada.
+        return $tier3OrBlock(
+            'direção física atuador→cloro não comprovada (amostras úteis ' . $directionSamples . ')',
+            'direction_unreliable'
         );
     }
 
     // Gate 3: sem modelo utilizável (nem estrito nem heurístico), sem ajuste numérico.
     if (!$modelUsable) {
-        return $blockedReturn(
-            'Sugestão bloqueada: modelo do processo sem confiabilidade suficiente (confiança ' . $modelConfidence . ', fonte ' . $modelSource . ', eventos ' . $modelEvents . ', dispersão ' . round($modelDispersion * 100, 1) . '%).',
-            'blocked_model_unreliable'
+        // Mesmo sem FOPDT, o Tier 3 pode oferecer micro-ajuste credível.
+        return $tier3OrBlock(
+            'modelo do processo sem confiabilidade suficiente (confiança ' . $modelConfidence . ', fonte ' . $modelSource . ', eventos ' . $modelEvents . ', dispersão ' . round($modelDispersion * 100, 1) . '%)',
+            'model_unreliable'
         );
     }
 
