@@ -19,6 +19,7 @@ define('SMS_ENABLED',       true);            // desligar para desativar todos o
 define('MODEM_SCHEME',      'https');         // http ou https
 define('MODEM_HOST',        '192.168.63.253:8443');   // IP[:porta] do TRB145
 define('MODEM_USER',        'admin');         // utilizador da API
+define('MODEM_ID',          '3-1');           // ID do modem interno (ver /api/messages/config em RutOS)
 define('MODEM_TIMEOUT',     8);               // segundos
 define('MODEM_VERIFY_SSL',  false);           // false se usar https com certificado self-signed
 

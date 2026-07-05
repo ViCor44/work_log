@@ -244,7 +244,11 @@ class TeltonikaSmsClient
     private function doSend(string $number, string $message, string $token): array
     {
         $url = $this->baseUrl . '/api/messages/actions/send';
-        $payload = json_encode(['data' => ['number' => $number, 'message' => $message]]);
+        $data = ['number' => $number, 'message' => $message];
+        if (defined('MODEM_ID') && MODEM_ID !== '') {
+            $data['modem'] = MODEM_ID;
+        }
+        $payload = json_encode(['data' => $data]);
 
         return $this->httpRequest('POST', $url, $payload, $token);
     }
