@@ -231,35 +231,66 @@ function process_controller_alarms(mysqli $conn, array $pool, array $data): void
     sms_alarm_log("tanque={$tankName} id={$tankId} alarmes_detetados=" . json_encode($current));
 
     $debounceMin = defined('SMS_DEBOUNCE_MINUTES') ? (int)SMS_DEBOUNCE_MINUTES : 15;
+    $minActiveMin = defined('SMS_ALARM_MIN_MINUTES') ? (int)SMS_ALARM_MIN_MINUTES : 17;
     $recipients  = null;   // lazy load — só carrega se realmente houver alarme novo
     $client      = null;
 
     foreach ($current as $type => $active) {
         $prev      = get_alarm_state($conn, $tankId, $type);
         $wasActive = $prev ? (int)$prev['is_active'] === 1 : false;
+        $firstActiveAt = $prev['first_active_at'] ?? null;
+        $lastSmsAt     = $prev['last_sms_at']     ?? null;
+
+        // Já enviámos um SMS de ALARME para a janela ativa atual?
+        // (last_sms_at posterior ao início da janela ativa)
+        $smsSentForWindow = $wasActive
+            && $firstActiveAt !== null
+            && $lastSmsAt !== null
+            && strtotime((string)$lastSmsAt) >= strtotime((string)$firstActiveAt);
 
         $shouldSend = false;
         $event      = null; // 'ALARME' | 'OK'
-        // Transição OK -> ALARME
+        $reason     = 'NO_CHANGE';
+
         if ($active && !$wasActive) {
-            $shouldSend = true;
-            $event      = 'ALARME';
-        }
-        // Transição ALARME -> OK (recuperação) — só se havia registo prévio ativo
-        elseif (!$active && $wasActive) {
-            $shouldSend = true;
-            $event      = 'OK';
+            // Início de janela: NÃO enviar já — esperar SMS_ALARM_MIN_MINUTES
+            // O upsert vai gravar first_active_at = NOW().
+            $reason = 'ARMED_WAIT_' . $minActiveMin . 'MIN';
+        } elseif ($active && $wasActive) {
+            // Continua ativo — verificar se já passou o threshold e ainda não enviámos
+            if (!$smsSentForWindow && $firstActiveAt !== null) {
+                $ageSec = time() - strtotime((string)$firstActiveAt);
+                $ageMin = $ageSec / 60;
+                if ($ageMin >= $minActiveMin) {
+                    $shouldSend = true;
+                    $event      = 'ALARME';
+                    $reason     = 'THRESHOLD_REACHED_' . round($ageMin, 1) . 'MIN';
+                } else {
+                    $reason = 'WAITING_' . round($ageMin, 1) . '/' . $minActiveMin . 'MIN';
+                }
+            } else {
+                $reason = 'ALREADY_SENT_FOR_WINDOW';
+            }
+        } elseif (!$active && $wasActive) {
+            // Recuperação — só enviar [OK] se tinhamos disparado [ALARME] nesta janela
+            if ($smsSentForWindow) {
+                $shouldSend = true;
+                $event      = 'OK';
+                $reason     = 'RECOVERY_AFTER_ALARM';
+            } else {
+                $reason = 'SILENT_RECOVERY_UNDER_THRESHOLD';
+            }
         }
 
-        // Log da decisão para cada tipo — ajuda a perceber porque não houve SMS.
-        $decision = $shouldSend ? ('SEND(' . $event . ')')
-                   : ($active === $wasActive ? 'NO_CHANGE' : '?');
+        $decision = $shouldSend ? ('SEND(' . $event . ') ' . $reason) : $reason;
         sms_alarm_log("  tipo={$type} active=" . ($active ? '1' : '0')
-            . ' was_active=' . ($wasActive ? '1' : '0') . " -> {$decision}");
+            . ' was_active=' . ($wasActive ? '1' : '0')
+            . ' first=' . ($firstActiveAt ?? '-')
+            . " -> {$decision}");
 
         $sentOk = false;
         if ($shouldSend) {
-            sms_alarm_log("TRANSICAO tanque={$tankName} tipo={$type} prev_active=" . ($wasActive ? '1' : '0') . ' -> ' . $event);
+            sms_alarm_log("TRANSICAO tanque={$tankName} tipo={$type} -> {$event} ({$reason})");
             if ($recipients === null) {
                 $recipients = get_sms_recipients($conn);
                 $client     = new TeltonikaSmsClient();

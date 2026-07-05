@@ -27,6 +27,12 @@ define('MODEM_VERIFY_SSL',  false);           // false se usar https com certifi
 // se o alarme oscilar rapidamente. Coloca 0 para desativar.
 define('SMS_DEBOUNCE_MINUTES', 15);
 
+// Tempo mínimo (minutos) que um alarme de CONTROLADOR tem de estar
+// continuamente ativo antes de dispararmos SMS. Alarmes que se
+// resolvam sozinhos antes deste tempo não geram SMS (nem [ALARME] nem [OK]).
+// Não se aplica a alarmes LoRa (esses já têm 10 min de tolerância).
+define('SMS_ALARM_MIN_MINUTES', 17);
+
 // Limites químicos (SMS quando um valor sai destes intervalos e
 // também quando regressa aos valores normais).
 define('LIMIT_CLORO_MIN', 1.0);
