@@ -1,6 +1,17 @@
 <?php
 require_once 'config.php';
 require_once 'core.php';
+
+// Garante que as colunas de preferências SMS existem (idempotente).
+if (isset($conn) && $conn instanceof mysqli) {
+    @$conn->query("ALTER TABLE users ADD COLUMN IF NOT EXISTS receive_sms_alarms TINYINT(1) NOT NULL DEFAULT 0");
+    @$conn->query("ALTER TABLE users ADD COLUMN IF NOT EXISTS receive_sms_controller TINYINT(1) NOT NULL DEFAULT 1");
+    @$conn->query("ALTER TABLE users ADD COLUMN IF NOT EXISTS receive_sms_chemical TINYINT(1) NOT NULL DEFAULT 1");
+    @$conn->query("ALTER TABLE users ADD COLUMN IF NOT EXISTS receive_sms_lora_offline TINYINT(1) NOT NULL DEFAULT 1");
+    @$conn->query("ALTER TABLE users ADD COLUMN IF NOT EXISTS receive_sms_equipment_off TINYINT(1) NOT NULL DEFAULT 1");
+    @$conn->query("ALTER TABLE users ADD COLUMN IF NOT EXISTS sms_alarm_min_minutes INT NOT NULL DEFAULT 17");
+}
+
 // Verifica se o formulário foi enviado
 if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['update_profile'])) {
     $user_id = $_SESSION['user_id']; // ID do usuário logado
@@ -10,6 +21,16 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['update_profile'])) {
     $phone = $_POST['phone'];
     $security_question = $_POST['security_question'];
     $security_answer = $_POST['security_answer'];
+
+    // Preferências SMS (o próprio utilizador só edita as suas)
+    $receive_sms_alarms        = isset($_POST['receive_sms_alarms']) ? 1 : 0;
+    $receive_sms_controller    = isset($_POST['receive_sms_controller']) ? 1 : 0;
+    $receive_sms_chemical      = isset($_POST['receive_sms_chemical']) ? 1 : 0;
+    $receive_sms_lora_offline  = isset($_POST['receive_sms_lora_offline']) ? 1 : 0;
+    $receive_sms_equipment_off = isset($_POST['receive_sms_equipment_off']) ? 1 : 0;
+    $sms_alarm_min_minutes     = isset($_POST['sms_alarm_min_minutes']) ? (int)$_POST['sms_alarm_min_minutes'] : 17;
+    if ($sms_alarm_min_minutes < 0)    { $sms_alarm_min_minutes = 0; }
+    if ($sms_alarm_min_minutes > 1440) { $sms_alarm_min_minutes = 1440; }
 	
 	// Salvar a assinatura se enviada
 	if (!empty($_POST['signature_data'])) {
@@ -27,11 +48,31 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['update_profile'])) {
 	}
 
     // Atualiza os dados do usuário no banco de dados
-    $stmt = $conn->prepare("UPDATE users SET first_name = ?, last_name = ?, email = ?, phone = ?, security_question = ?, security_answer = ? WHERE id = ?");
+    $stmt = $conn->prepare("UPDATE users
+        SET first_name = ?, last_name = ?, email = ?, phone = ?,
+            security_question = ?, security_answer = ?,
+            receive_sms_alarms = ?, receive_sms_controller = ?, receive_sms_chemical = ?,
+            receive_sms_lora_offline = ?, receive_sms_equipment_off = ?, sms_alarm_min_minutes = ?
+        WHERE id = ?");
     if (!$stmt) {
         die("Erro na consulta: " . $conn->error);
     }
-    $stmt->bind_param("ssssssi", $first_name, $last_name, $email, $phone, $security_question, $security_answer, $user_id);
+    $stmt->bind_param(
+        "ssssssiiiiiii",
+        $first_name,
+        $last_name,
+        $email,
+        $phone,
+        $security_question,
+        $security_answer,
+        $receive_sms_alarms,
+        $receive_sms_controller,
+        $receive_sms_chemical,
+        $receive_sms_lora_offline,
+        $receive_sms_equipment_off,
+        $sms_alarm_min_minutes,
+        $user_id
+    );
     
     if ($stmt->execute()) {
         $_SESSION['success_message'] = "Perfil atualizado com sucesso!";
@@ -47,13 +88,36 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['update_profile'])) {
 }
 
 // Recupera o nome do utilizador logado e outros dados
-$stmt = $conn->prepare("SELECT first_name, last_name, email, phone, username, user_type, security_question, security_answer FROM users WHERE id = ?");
+$stmt = $conn->prepare("SELECT first_name, last_name, email, phone, username, user_type,
+                               security_question, security_answer,
+                               receive_sms_alarms,
+                               COALESCE(receive_sms_controller, receive_sms_alarms) AS receive_sms_controller,
+                               COALESCE(receive_sms_chemical, receive_sms_alarms) AS receive_sms_chemical,
+                               COALESCE(receive_sms_lora_offline, receive_sms_alarms) AS receive_sms_lora_offline,
+                               COALESCE(receive_sms_equipment_off, receive_sms_alarms) AS receive_sms_equipment_off,
+                               COALESCE(sms_alarm_min_minutes, 17) AS sms_alarm_min_minutes
+                        FROM users WHERE id = ?");
 if (!$stmt) {
     die("Erro na consulta: " . $conn->error);
 }
 $stmt->bind_param("i", $_SESSION['user_id']);
 $stmt->execute();
-$stmt->bind_result($first_name, $last_name, $email, $phone, $username, $user_type, $security_question, $security_answer);
+$stmt->bind_result(
+    $first_name,
+    $last_name,
+    $email,
+    $phone,
+    $username,
+    $user_type,
+    $security_question,
+    $security_answer,
+    $receive_sms_alarms_e,
+    $receive_sms_controller_e,
+    $receive_sms_chemical_e,
+    $receive_sms_lora_offline_e,
+    $receive_sms_equipment_off_e,
+    $sms_alarm_min_minutes_e
+);
 $stmt->fetch();
 $stmt->close();
 ?>
@@ -144,6 +208,38 @@ $stmt->close();
                         <label for="user_type" class="form-label">Tipo de Utilizador</label>
                         <input type="text" class="form-control" id="user_type" value="<?= htmlspecialchars($user_type); ?>" disabled>
                     </div>
+
+                    <div class="card mb-3">
+                        <div class="card-header">Preferências SMS</div>
+                        <div class="card-body">
+                            <div class="form-check mb-2">
+                                <input class="form-check-input" type="checkbox" id="np_receive_sms_alarms" name="receive_sms_alarms" value="1" <?= !empty($receive_sms_alarms_e) ? 'checked' : ''; ?>>
+                                <label class="form-check-label" for="np_receive_sms_alarms">Ativar receção de SMS</label>
+                            </div>
+                            <div class="form-check mb-2">
+                                <input class="form-check-input" type="checkbox" id="np_receive_sms_controller" name="receive_sms_controller" value="1" <?= !empty($receive_sms_controller_e) ? 'checked' : ''; ?>>
+                                <label class="form-check-label" for="np_receive_sms_controller">Alarmes de controlador</label>
+                            </div>
+                            <div class="form-check mb-2">
+                                <input class="form-check-input" type="checkbox" id="np_receive_sms_chemical" name="receive_sms_chemical" value="1" <?= !empty($receive_sms_chemical_e) ? 'checked' : ''; ?>>
+                                <label class="form-check-label" for="np_receive_sms_chemical">Alarmes químicos (cloro / pH)</label>
+                            </div>
+                            <div class="form-check mb-2">
+                                <input class="form-check-input" type="checkbox" id="np_receive_sms_lora_offline" name="receive_sms_lora_offline" value="1" <?= !empty($receive_sms_lora_offline_e) ? 'checked' : ''; ?>>
+                                <label class="form-check-label" for="np_receive_sms_lora_offline">LoRa offline</label>
+                            </div>
+                            <div class="form-check mb-3">
+                                <input class="form-check-input" type="checkbox" id="np_receive_sms_equipment_off" name="receive_sms_equipment_off" value="1" <?= !empty($receive_sms_equipment_off_e) ? 'checked' : ''; ?>>
+                                <label class="form-check-label" for="np_receive_sms_equipment_off">Equipamento OFF (LoRa)</label>
+                            </div>
+                            <div class="mb-2">
+                                <label for="np_sms_alarm_min_minutes" class="form-label">Minutos mínimos em alarme (controlador/químicos)</label>
+                                <input type="number" class="form-control" id="np_sms_alarm_min_minutes" name="sms_alarm_min_minutes" min="0" max="1440" value="<?= htmlspecialchars((string)$sms_alarm_min_minutes_e); ?>">
+                                <small class="text-muted">0 = envio imediato quando o alarme entra.</small>
+                            </div>
+                        </div>
+                    </div>
+
 					<div class="mb-3">
 					    <label class="form-label">Assinatura (desenhe abaixo)</label><br>
 					    <canvas id="signature-pad" width="400" height="150" style="border:1px solid #ccc; display:block;"></canvas>
