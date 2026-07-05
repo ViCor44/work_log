@@ -14,6 +14,15 @@ $conn->query("
     WHERE status = 'On' AND last_seen < '$time_limit'
 ");
 
+// ── Deteção de alarmes LoRa + envio de SMS via modem Teltonika ──
+// Corre depois do UPDATE para apanhar transições On→Off e Off→On.
+try {
+    require_once dirname(__DIR__) . '/api/sms_alarm_notifier.php';
+    process_lora_alarms($conn);
+} catch (Throwable $smsE) {
+    error_log('SMS_LORA_ALARM_ERR ' . $smsE->getMessage());
+}
+
 $conn->close();
 echo "Verificação de estado dos dispositivos LoRaWAN concluída.";
 ?>

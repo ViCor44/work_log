@@ -64,10 +64,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 // --- Estado atual ---
 $states = [];
 $res = $conn->query(
-    "SELECT cas.tank_id, t.name AS tank_name, cas.alarm_type, cas.is_active,
-            cas.first_active_at, cas.last_seen_at, cas.last_sms_at, cas.last_cleared_at
+    "SELECT cas.tank_id, cas.alarm_type, cas.is_active,
+            cas.first_active_at, cas.last_seen_at, cas.last_sms_at, cas.last_cleared_at,
+            CASE
+                WHEN cas.tank_id > 0 THEN COALESCE(t.name, CONCAT('#', cas.tank_id))
+                ELSE COALESCE(l.name, CONCAT('LoRa #', -cas.tank_id))
+            END AS entity_name,
+            CASE WHEN cas.tank_id > 0 THEN 'Tanque' ELSE 'LoRa' END AS entity_type
      FROM controller_alarm_state cas
-     LEFT JOIN tanks t ON t.id = cas.tank_id
+     LEFT JOIN tanks t            ON cas.tank_id > 0 AND t.id = cas.tank_id
+     LEFT JOIN lorawan_devices l  ON cas.tank_id < 0 AND l.id = -cas.tank_id
      ORDER BY cas.is_active DESC, cas.last_seen_at DESC"
 );
 if ($res) { $states = $res->fetch_all(MYSQLI_ASSOC); }
@@ -193,7 +199,8 @@ $recipients = get_sms_recipients($conn);
                     <table class="table table-sm table-striped mb-0">
                         <thead>
                             <tr>
-                                <th>Tanque</th>
+                                <th>Fonte</th>
+                                <th>Nome</th>
                                 <th>Alarme</th>
                                 <th>Ativo?</th>
                                 <th>Início</th>
@@ -206,7 +213,8 @@ $recipients = get_sms_recipients($conn);
                         <tbody>
                             <?php foreach ($states as $s): ?>
                                 <tr>
-                                    <td><?= htmlspecialchars($s['tank_name'] ?? ('#' . $s['tank_id'])) ?></td>
+                                    <td><span class="badge bg-<?= $s['entity_type'] === 'LoRa' ? 'info' : 'primary' ?>"><?= htmlspecialchars($s['entity_type']) ?></span></td>
+                                    <td><?= htmlspecialchars($s['entity_name']) ?></td>
                                     <td><code><?= htmlspecialchars($s['alarm_type']) ?></code></td>
                                     <td>
                                         <?php if ((int)$s['is_active'] === 1): ?>

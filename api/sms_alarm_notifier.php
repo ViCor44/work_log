@@ -99,6 +99,8 @@ function alarm_label(string $type): string
         'cloro_alto'          => 'Cloro alto',
         'ph_baixo'            => 'pH baixo',
         'ph_alto'             => 'pH alto',
+        'lora_offline'        => 'LoRa offline (sem sinal)',
+        'equipment_off'       => 'Equipamento desligado',
     ];
     return $map[$type] ?? $type;
 }
@@ -328,4 +330,93 @@ function build_alarm_message(string $tankName, string $type, string $event = 'AL
     $msg = "{$prefix} {$tankSafe}: {$safe}{$suffix}{$ctx} ({$ts})";
     if (strlen($msg) > 160) { $msg = substr($msg, 0, 157) . '...'; }
     return $msg;
+}
+
+/**
+ * Processa alarmes dos dispositivos LoRaWAN (osmoses, etc.).
+ *
+ * Estado guardado em controller_alarm_state usando tank_id = -device_id
+ * (negativo para distinguir de tanques). Dois tipos de alarme por dispositivo:
+ *   - lora_offline:  status != 'On'    (link LoRa perdido / timeout)
+ *   - equipment_off: equipment_status == 'Off' (equipamento desligado)
+ *
+ * Envia SMS em ambas as transições (entrada em alarme e recuperação).
+ * Chamado no fim de scripts/check_lorawan_status.php.
+ */
+function process_lora_alarms(mysqli $conn): void
+{
+    if (!defined('SMS_ENABLED') || !SMS_ENABLED) {
+        return;
+    }
+
+    $res = $conn->query("SELECT id, name, status, equipment_status FROM lorawan_devices");
+    if (!$res) { return; }
+    $devices = $res->fetch_all(MYSQLI_ASSOC);
+    if (empty($devices)) { return; }
+
+    $recipients = null;
+    $client     = null;
+
+    foreach ($devices as $dev) {
+        $devId    = (int)$dev['id'];
+        $devName  = (string)$dev['name'];
+        $stateKey = -$devId; // convenção: id negativo em controller_alarm_state
+
+        // Só considera equipment_off se o LoRa estiver online e o valor for 'Off'.
+        // Se o LoRa estiver offline, ignoramos equipment_off (não sabemos o real).
+        $loraOffline   = ($dev['status'] !== 'On');
+        $equipmentOff  = !$loraOffline
+                         && isset($dev['equipment_status'])
+                         && $dev['equipment_status'] === 'Off';
+
+        $checks = [
+            'lora_offline'  => $loraOffline,
+            'equipment_off' => $equipmentOff,
+        ];
+
+        sms_alarm_log("lora={$devName} id={$devId} status={$dev['status']} equip={$dev['equipment_status']}");
+
+        foreach ($checks as $type => $active) {
+            $prev      = get_alarm_state($conn, $stateKey, $type);
+            $wasActive = $prev ? (int)$prev['is_active'] === 1 : false;
+
+            $shouldSend = false;
+            $event      = null;
+            if ($active && !$wasActive)      { $shouldSend = true; $event = 'ALARME'; }
+            elseif (!$active && $wasActive)  { $shouldSend = true; $event = 'OK'; }
+
+            $decision = $shouldSend ? ('SEND(' . $event . ')') : 'NO_CHANGE';
+            sms_alarm_log("  lora tipo={$type} active=" . ($active ? '1' : '0')
+                . ' was_active=' . ($wasActive ? '1' : '0') . " -> {$decision}");
+
+            $sentOk = false;
+            if ($shouldSend) {
+                if ($recipients === null) {
+                    $recipients = get_sms_recipients($conn);
+                    $client     = new TeltonikaSmsClient();
+                    sms_alarm_log('destinatarios=' . count($recipients));
+                }
+                $msg = build_alarm_message($devName, $type, $event);
+                if (!empty($recipients)) {
+                    foreach ($recipients as $r) {
+                        $to = trim((string)$r['phone']);
+                        if ($to === '') { continue; }
+                        $r2 = $client->send($to, $msg);
+                        $status  = $r2['ok'] ? 'sent' : 'failed';
+                        $respTxt = $r2['ok'] ? (is_string($r2['response']) ? $r2['response'] : json_encode($r2['response']))
+                                             : ($r2['error'] ?? '');
+                        log_sms($conn, $to, $msg, $status, $respTxt, $stateKey, $type);
+                        sms_alarm_log("SMS lora to={$to} status={$status} resp=" . substr($respTxt, 0, 200));
+                        if ($r2['ok']) { $sentOk = true; }
+                    }
+                } else {
+                    sms_alarm_log('SEM DESTINATARIOS (lora)');
+                    log_sms($conn, '(sem destinatarios)', $msg,
+                            'skipped', 'Nenhum utilizador com receive_sms_alarms=1', $stateKey, $type);
+                }
+            }
+
+            upsert_alarm_state($conn, $stateKey, $type, (bool)$active, $sentOk, (bool)$wasActive);
+        }
+    }
 }
