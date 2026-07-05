@@ -14,6 +14,19 @@ require_once dirname(__DIR__) . '/config.php';
 require_once __DIR__ . '/sms_client.php';
 
 /**
+ * Log dedicado do notifier de alarmes. Escreve em logs/sms_alarms_YYYY-MM-DD.log
+ * e replica no logger global do worker (file_log), se existir.
+ */
+function sms_alarm_log(string $msg): void
+{
+    $dir = dirname(__DIR__) . '/logs';
+    if (!is_dir($dir)) { @mkdir($dir, 0775, true); }
+    $line = '[' . date('Y-m-d H:i:s') . '] ' . $msg . PHP_EOL;
+    @file_put_contents($dir . '/sms_alarms_' . date('Y-m-d') . '.log', $line, FILE_APPEND | LOCK_EX);
+    if (function_exists('file_log')) { file_log('SMS_ALARM ' . $msg); }
+}
+
+/**
  * Extrai o mapa {alarm_type => bool} a partir do array $data do controlador.
  * O array segue a mesma estrutura devolvida por get_controller_data.php
  * (JSON convertido a partir do XML de /ajax_inputs).
@@ -184,6 +197,7 @@ function process_controller_alarms(mysqli $conn, array $pool, array $data): void
     if (empty($current)) {
         return; // nenhum campo de alarme reconhecido no payload
     }
+    sms_alarm_log("tanque={$tankName} id={$tankId} alarmes_detetados=" . json_encode($current));
 
     $debounceMin = defined('SMS_DEBOUNCE_MINUTES') ? (int)SMS_DEBOUNCE_MINUTES : 15;
     $recipients  = null;   // lazy load — só carrega se realmente houver alarme novo
@@ -211,9 +225,11 @@ function process_controller_alarms(mysqli $conn, array $pool, array $data): void
 
         $sentOk = false;
         if ($shouldSend) {
+            sms_alarm_log("TRANSICAO tanque={$tankName} tipo={$type} prev_active=" . ($wasActive ? '1' : '0') . ' -> ACTIVE');
             if ($recipients === null) {
                 $recipients = get_sms_recipients($conn);
                 $client     = new TeltonikaSmsClient();
+                sms_alarm_log('destinatarios=' . count($recipients));
             }
             if (!empty($recipients)) {
                 $msg = build_alarm_message($tankName, $type);
@@ -225,9 +241,11 @@ function process_controller_alarms(mysqli $conn, array $pool, array $data): void
                     $respTxt  = $res['ok'] ? (is_string($res['response']) ? $res['response'] : json_encode($res['response']))
                                            : ($res['error'] ?? '');
                     log_sms($conn, $to, $msg, $status, $respTxt, $tankId, $type);
+                    sms_alarm_log("SMS to={$to} status={$status} resp=" . substr($respTxt, 0, 200));
                     if ($res['ok']) { $sentOk = true; }
                 }
             } else {
+                sms_alarm_log('SEM DESTINATARIOS (nenhum utilizador com receive_sms_alarms=1 e phone)');
                 log_sms($conn, '(sem destinatarios)', build_alarm_message($tankName, $type),
                         'skipped', 'Nenhum utilizador com receive_sms_alarms=1', $tankId, $type);
             }

@@ -36,6 +36,9 @@ if ($res2) {
     <div class="d-flex justify-content-between align-items-center mb-3">
         <h1 class="h3 mb-0">Registo de SMS enviados</h1>
         <div>
+            <a href="alarm_state.php" class="btn btn-outline-warning btn-sm">
+                <i class="fas fa-bell me-1"></i>Estado de alarmes
+            </a>
             <a href="test_sms.php" class="btn btn-outline-primary btn-sm">
                 <i class="fas fa-paper-plane me-1"></i>Enviar SMS de teste
             </a>

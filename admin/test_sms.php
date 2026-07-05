@@ -45,6 +45,7 @@ $tokenStatus = $client->getTokenStatus();
     <div class="d-flex justify-content-between align-items-center mb-3">
         <h1 class="h3 mb-0">Enviar SMS de teste</h1>
         <div>
+            <a href="alarm_state.php" class="btn btn-outline-warning btn-sm">Estado de alarmes</a>
             <a href="sms_log.php" class="btn btn-outline-secondary btn-sm">Ver log</a>
             <a href="../redirect_page.php" class="btn btn-secondary btn-sm">Voltar</a>
         </div>
