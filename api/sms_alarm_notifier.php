@@ -219,6 +219,8 @@ function was_event_sent_to_user_in_window(
         return false;
     }
     $prefix = $event === 'OK' ? '[OK]%' : '[ALARME]%';
+    // Tolerância de 60s: o log_sms pode ter sido gravado uns milissegundos
+    // antes de first_active_at ser persistido em controller_alarm_state.
     $stmt = $conn->prepare(
         "SELECT 1
          FROM sms_log
@@ -226,7 +228,7 @@ function was_event_sent_to_user_in_window(
            AND tank_id = ?
            AND alarm_type = ?
            AND status = 'sent'
-           AND ts >= ?
+           AND ts >= DATE_SUB(?, INTERVAL 60 SECOND)
            AND message LIKE ?
          LIMIT 1"
     );
@@ -413,9 +415,9 @@ function process_controller_alarms(mysqli $conn, array $pool, array $data): void
                         if ($ageMin < $minForUser) {
                             continue;
                         }
-                        // Só verifica duplicado quando já tinha estado persistido
-                        // (evita chamada inútil na primeira iteração da janela).
-                        if ($wasActive && was_event_sent_to_user_in_window($conn, $to, $tankId, $type, 'ALARME', $firstActiveAt)) {
+                        // Dedup: usa effectiveFirstActive para cobrir também a primeira
+                        // iteração (quando firstActiveAt ainda é null na BD).
+                        if (was_event_sent_to_user_in_window($conn, $to, $tankId, $type, 'ALARME', $effectiveFirstActive)) {
                             continue;
                         }
 
