@@ -9,3 +9,5 @@ vendor/
 sessions/
 uploads/
 printscreen/
+config.local.php
+sessions/modem_token.json

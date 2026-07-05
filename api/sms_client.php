@@ -272,6 +272,10 @@ class TeltonikaSmsClient
             CURLOPT_NOSIGNAL       => 1,
             CURLOPT_SSL_VERIFYPEER => $this->verifySsl,
             CURLOPT_SSL_VERIFYHOST => $this->verifySsl ? 2 : 0,
+            // Modems Teltonika normalmente forçam redirect HTTP→HTTPS (307).
+            // Seguir mantendo o método e o body (307/308 preservam POST).
+            CURLOPT_FOLLOWLOCATION => true,
+            CURLOPT_MAXREDIRS      => 3,
         ]);
         if ($body !== null) {
             curl_setopt($ch, CURLOPT_POSTFIELDS, $body);
