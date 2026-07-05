@@ -22,16 +22,6 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['update_profile'])) {
     $security_question = $_POST['security_question'];
     $security_answer = $_POST['security_answer'];
 
-    // Preferências SMS (o próprio utilizador só edita as suas)
-    $receive_sms_alarms        = isset($_POST['receive_sms_alarms']) ? 1 : 0;
-    $receive_sms_controller    = isset($_POST['receive_sms_controller']) ? 1 : 0;
-    $receive_sms_chemical      = isset($_POST['receive_sms_chemical']) ? 1 : 0;
-    $receive_sms_lora_offline  = isset($_POST['receive_sms_lora_offline']) ? 1 : 0;
-    $receive_sms_equipment_off = isset($_POST['receive_sms_equipment_off']) ? 1 : 0;
-    $sms_alarm_min_minutes     = isset($_POST['sms_alarm_min_minutes']) ? (int)$_POST['sms_alarm_min_minutes'] : 17;
-    if ($sms_alarm_min_minutes < 0)    { $sms_alarm_min_minutes = 0; }
-    if ($sms_alarm_min_minutes > 1440) { $sms_alarm_min_minutes = 1440; }
-	
 	// Salvar a assinatura se enviada
 	if (!empty($_POST['signature_data'])) {
 	    $data = $_POST['signature_data'];
@@ -47,24 +37,61 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['update_profile'])) {
 	    $stmt_sig->close();
 	}
 
-    // Atualiza os dados do usuário no banco de dados
+    // Atualiza os dados pessoais (NÃO toca em preferências SMS — essas têm o seu
+    // próprio botão de submissão para evitar desligar receção de SMS por engano).
     $stmt = $conn->prepare("UPDATE users
         SET first_name = ?, last_name = ?, email = ?, phone = ?,
-            security_question = ?, security_answer = ?,
-            receive_sms_alarms = ?, receive_sms_controller = ?, receive_sms_chemical = ?,
-            receive_sms_lora_offline = ?, receive_sms_equipment_off = ?, sms_alarm_min_minutes = ?
+            security_question = ?, security_answer = ?
         WHERE id = ?");
     if (!$stmt) {
         die("Erro na consulta: " . $conn->error);
     }
     $stmt->bind_param(
-        "ssssssiiiiiii",
+        "ssssssi",
         $first_name,
         $last_name,
         $email,
         $phone,
         $security_question,
         $security_answer,
+        $user_id
+    );
+
+    if ($stmt->execute()) {
+        $_SESSION['success_message'] = "Perfil atualizado com sucesso!";
+    } else {
+        $_SESSION['error_message'] = "Erro ao atualizar o perfil: " . $stmt->error;
+    }
+    $stmt->close();
+
+	header('Content-Type: text/html; charset=utf-8');
+    // Redireciona de volta para a página principal após atualização
+    header('Location: ' . $_SERVER['PHP_SELF']);
+    exit;
+}
+
+// Submissão dedicada só das preferências SMS (botão próprio no modal).
+if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['update_sms_prefs'])) {
+    $user_id = $_SESSION['user_id'];
+
+    $receive_sms_alarms        = isset($_POST['receive_sms_alarms']) ? 1 : 0;
+    $receive_sms_controller    = isset($_POST['receive_sms_controller']) ? 1 : 0;
+    $receive_sms_chemical      = isset($_POST['receive_sms_chemical']) ? 1 : 0;
+    $receive_sms_lora_offline  = isset($_POST['receive_sms_lora_offline']) ? 1 : 0;
+    $receive_sms_equipment_off = isset($_POST['receive_sms_equipment_off']) ? 1 : 0;
+    $sms_alarm_min_minutes     = isset($_POST['sms_alarm_min_minutes']) ? (int)$_POST['sms_alarm_min_minutes'] : 17;
+    if ($sms_alarm_min_minutes < 0)    { $sms_alarm_min_minutes = 0; }
+    if ($sms_alarm_min_minutes > 1440) { $sms_alarm_min_minutes = 1440; }
+
+    $stmt = $conn->prepare("UPDATE users
+        SET receive_sms_alarms = ?, receive_sms_controller = ?, receive_sms_chemical = ?,
+            receive_sms_lora_offline = ?, receive_sms_equipment_off = ?, sms_alarm_min_minutes = ?
+        WHERE id = ?");
+    if (!$stmt) {
+        die("Erro na consulta: " . $conn->error);
+    }
+    $stmt->bind_param(
+        "iiiiiii",
         $receive_sms_alarms,
         $receive_sms_controller,
         $receive_sms_chemical,
@@ -73,16 +100,14 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['update_profile'])) {
         $sms_alarm_min_minutes,
         $user_id
     );
-    
     if ($stmt->execute()) {
-        $_SESSION['success_message'] = "Perfil atualizado com sucesso!";
+        $_SESSION['success_message'] = "Preferências de SMS atualizadas.";
     } else {
-        $_SESSION['error_message'] = "Erro ao atualizar o perfil: " . $stmt->error;
+        $_SESSION['error_message'] = "Erro ao atualizar preferências SMS: " . $stmt->error;
     }
     $stmt->close();
-    
-	header('Content-Type: text/html; charset=utf-8');
-    // Redireciona de volta para a página principal após atualização
+
+    header('Content-Type: text/html; charset=utf-8');
     header('Location: ' . $_SERVER['PHP_SELF']);
     exit;
 }
@@ -209,6 +234,34 @@ $stmt->close();
                         <input type="text" class="form-control" id="user_type" value="<?= htmlspecialchars($user_type); ?>" disabled>
                     </div>
 
+					<div class="mb-3">
+					    <label class="form-label">Assinatura (desenhe abaixo)</label><br>
+					    <canvas id="signature-pad" width="400" height="150" style="border:1px solid #ccc; display:block;"></canvas>
+						<?php
+						// Exibir a assinatura atual se existir
+						$signature_path = "";
+						$stmt_sig = $conn->prepare("SELECT signature_path FROM users WHERE id = ?");
+						$stmt_sig->bind_param("i", $user_id);
+						$stmt_sig->execute();
+						$stmt_sig->bind_result($signature_path);
+						$stmt_sig->fetch();
+						$stmt_sig->close();
+						
+						if (!empty($signature_path) && file_exists($signature_path)): ?>
+						    <div class="mt-3">
+						        <label class="form-label">Assinatura Atual:</label><br>
+						        <img src="<?= htmlspecialchars($signature_path); ?>" alt="Assinatura" style="border:1px solid #ccc; max-width:400px; height:auto;">
+						    </div>
+						<?php endif; ?>
+					    <input type="hidden" id="signature-data" name="signature_data">
+					    <button type="button" class="btn btn-sm btn-outline-secondary mt-2" id="clear-signature">Limpar Assinatura</button>
+					</div>
+                    <button type="submit" name="update_profile" class="btn btn-primary">Salvar Alterações</button>
+                </form>
+
+                <!-- Formulário separado só para preferências SMS. O botão
+                     "Salvar Alterações" acima nunca modifica flags de SMS. -->
+                <form method="post" action="" class="mt-3">
                     <div class="card mb-3">
                         <div class="card-header">Preferências SMS</div>
                         <div class="card-body">
@@ -237,32 +290,9 @@ $stmt->close();
                                 <input type="number" class="form-control" id="np_sms_alarm_min_minutes" name="sms_alarm_min_minutes" min="0" max="1440" value="<?= htmlspecialchars((string)$sms_alarm_min_minutes_e); ?>">
                                 <small class="text-muted">0 = envio imediato quando o alarme entra.</small>
                             </div>
+                            <button type="submit" name="update_sms_prefs" class="btn btn-outline-primary btn-sm">Guardar preferências SMS</button>
                         </div>
                     </div>
-
-					<div class="mb-3">
-					    <label class="form-label">Assinatura (desenhe abaixo)</label><br>
-					    <canvas id="signature-pad" width="400" height="150" style="border:1px solid #ccc; display:block;"></canvas>
-						<?php
-						// Exibir a assinatura atual se existir
-						$signature_path = "";
-						$stmt_sig = $conn->prepare("SELECT signature_path FROM users WHERE id = ?");
-						$stmt_sig->bind_param("i", $user_id);
-						$stmt_sig->execute();
-						$stmt_sig->bind_result($signature_path);
-						$stmt_sig->fetch();
-						$stmt_sig->close();
-						
-						if (!empty($signature_path) && file_exists($signature_path)): ?>
-						    <div class="mt-3">
-						        <label class="form-label">Assinatura Atual:</label><br>
-						        <img src="<?= htmlspecialchars($signature_path); ?>" alt="Assinatura" style="border:1px solid #ccc; max-width:400px; height:auto;">
-						    </div>
-						<?php endif; ?>
-					    <input type="hidden" id="signature-data" name="signature_data">
-					    <button type="button" class="btn btn-sm btn-outline-secondary mt-2" id="clear-signature">Limpar Assinatura</button>
-					</div>
-                    <button type="submit" name="update_profile" class="btn btn-primary">Salvar Alterações</button>
                 </form>
             </div>
         </div>
