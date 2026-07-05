@@ -275,6 +275,12 @@ $stmt->fetch();
 $stmt->close();
 
 if ($send_reports_by_email) {
+    $smtp_password = getenv('GMAIL_APP_PASSWORD');
+    if ($smtp_password === false || $smtp_password === '') {
+        header("Location: visualizar_pdf.php?file=" . urlencode(basename($filename)));
+        exit;
+    }
+
     // Coloque o seu código de depuração do email aqui se necessário
     // echo "A tentar enviar email para: " . htmlspecialchars($email) . "<br>";
 
@@ -287,7 +293,7 @@ if ($send_reports_by_email) {
     $mail->SMTPSecure = 'tls';
     $mail->SMTPAuth = true;
     $mail->Username = 'slide.rocketchat@gmail.com';
-    $mail->Password = 'jbbo gsys gvmq bise'; // Sua senha de aplicação
+    $mail->Password = $smtp_password;
     $mail->setFrom('slide.rocketchat@gmail.com', 'WorkLog');
     $mail->addAddress($email);
     $mail->isHTML(true);
