@@ -17,10 +17,10 @@ if (!isset($_GET['id'])) {
 $user_to_edit_id = $_GET['id'];
 
 // Get user data to pre-fill the form
-$stmt = $conn->prepare("SELECT first_name, last_name, email, phone, user_type FROM users WHERE id = ?");
+$stmt = $conn->prepare("SELECT first_name, last_name, email, phone, user_type, receive_sms_alarms FROM users WHERE id = ?");
 $stmt->bind_param("i", $user_to_edit_id);
 $stmt->execute();
-$stmt->bind_result($first_name_e, $last_name_e, $email_e, $phone_e, $user_type_e);
+$stmt->bind_result($first_name_e, $last_name_e, $email_e, $phone_e, $user_type_e, $receive_sms_alarms_e);
 $stmt->fetch();
 $stmt->close();
 
@@ -36,15 +36,16 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
     $email = $_POST['email'];
     $phone = $_POST['phone'];
     $user_type = $_POST['user_type'];
+    $receive_sms_alarms = isset($_POST['receive_sms_alarms']) ? 1 : 0;
 
     // Prevent the current admin from changing their own role
     if ($user_to_edit_id == $_SESSION['user_id']) {
-        $stmt = $conn->prepare("UPDATE users SET first_name = ?, last_name = ?, email = ?, phone = ? WHERE id = ?");
-        $stmt->bind_param("ssssi", $first_name, $last_name, $email, $phone, $user_to_edit_id);
+        $stmt = $conn->prepare("UPDATE users SET first_name = ?, last_name = ?, email = ?, phone = ?, receive_sms_alarms = ? WHERE id = ?");
+        $stmt->bind_param("ssssii", $first_name, $last_name, $email, $phone, $receive_sms_alarms, $user_to_edit_id);
     } else {
         // Update all fields, including the role, for other users
-        $stmt = $conn->prepare("UPDATE users SET first_name = ?, last_name = ?, email = ?, phone = ?, user_type = ? WHERE id = ?");
-        $stmt->bind_param("sssssi", $first_name, $last_name, $email, $phone, $user_type, $user_to_edit_id);
+        $stmt = $conn->prepare("UPDATE users SET first_name = ?, last_name = ?, email = ?, phone = ?, user_type = ?, receive_sms_alarms = ? WHERE id = ?");
+        $stmt->bind_param("sssssii", $first_name, $last_name, $email, $phone, $user_type, $receive_sms_alarms, $user_to_edit_id);
     }
 
     // Save the signature if provided
@@ -119,6 +120,13 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
             Não pode alterar o seu próprio tipo!
         </div>
         <?php endif; ?>
+
+        <div class="form-check mb-3">
+            <input class="form-check-input" type="checkbox" id="receive_sms_alarms" name="receive_sms_alarms" value="1" <?= !empty($receive_sms_alarms_e) ? 'checked' : ''; ?>>
+            <label class="form-check-label" for="receive_sms_alarms">
+                Receber SMS quando um controlador entrar em alarme
+            </label>
+        </div>
 
         <div class="mb-3">
             <label class="form-label">Assinatura (desenhe abaixo)</label><br>

@@ -21,6 +21,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
     $password = $_POST['password'];
     $confirm_password = $_POST['confirm_password'];
     $user_type = $_POST['user_type']; // papel do usuário (admin ou utilizador)
+    $receive_sms_alarms = isset($_POST['receive_sms_alarms']) ? 1 : 0;
 
     // Verificar se as senhas coincidem
     if ($password !== $confirm_password) {
@@ -39,12 +40,12 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
             $hashed_password = password_hash($password, PASSWORD_DEFAULT);
 
             // Inserir o novo utilizador na base de dados
-            $stmt = $conn->prepare("INSERT INTO users (username, first_name, last_name, email, phone, password, user_type, accepted) VALUES (?, ?, ?, ?, ?, ?, ?, 1)");
+            $stmt = $conn->prepare("INSERT INTO users (username, first_name, last_name, email, phone, password, user_type, accepted, receive_sms_alarms) VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?)");
             if (!$stmt) {
                 die("Erro na preparação da consulta: " . $conn->error);
             }
 
-            $stmt->bind_param("sssssss", $username, $first_name, $last_name, $email, $phone, $hashed_password, $user_type);
+            $stmt->bind_param("sssssssi", $username, $first_name, $last_name, $email, $phone, $hashed_password, $user_type, $receive_sms_alarms);
 
             if ($stmt->execute()) {
                 $message = "Utilizador criado com sucesso!";
@@ -114,6 +115,12 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
                 <option value="admin">Administrador</option>
 				<option value="viewer">Viewer</option>
             </select>
+        </div>
+        <div class="form-check mb-3">
+            <input class="form-check-input" type="checkbox" id="receive_sms_alarms" name="receive_sms_alarms" value="1">
+            <label class="form-check-label" for="receive_sms_alarms">
+                Receber SMS quando um controlador entrar em alarme
+            </label>
         </div>
         <button type="submit" class="btn btn-primary">Criar Utilizador</button>
         <a href="manage_users.php" class="btn btn-secondary">Cancelar</a>

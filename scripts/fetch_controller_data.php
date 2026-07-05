@@ -735,6 +735,14 @@ foreach ($pools_with_controllers as $pool) {
                     run_dynamic_setpoint_for_chlorine($conn, $pool, $chlorineValue, $chlorineSetpoint, $chlorinePumpPercent);
                 }
 
+                // ── Deteção de alarmes + envio de SMS via modem Teltonika ──
+                try {
+                    require_once dirname(__DIR__) . '/api/sms_alarm_notifier.php';
+                    process_controller_alarms($conn, $pool, $data);
+                } catch (Throwable $smsE) {
+                    file_log("SMS_ALARM_ERR tanque={$pool['name']} id={$tank_id} erro=" . $smsE->getMessage());
+                }
+
             } catch (Exception $e) {
                 echo "Erro ao processar XML para o tanque '" . $pool['name'] . "': " . $e->getMessage() . "\n";
                 file_log("ERRO_XML tanque={$pool['name']} id={$tank_id} erro=" . $e->getMessage());
