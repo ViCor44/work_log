@@ -9,6 +9,17 @@ if (!isset($_SESSION['user_id']) || $_SESSION['user_type'] !== 'admin') {
 
 include 'db.php'; // Database connection
 
+function ensure_sms_pref_columns(mysqli $conn): void
+{
+    $conn->query("ALTER TABLE users ADD COLUMN IF NOT EXISTS receive_sms_controller TINYINT(1) NOT NULL DEFAULT 1");
+    $conn->query("ALTER TABLE users ADD COLUMN IF NOT EXISTS receive_sms_chemical TINYINT(1) NOT NULL DEFAULT 1");
+    $conn->query("ALTER TABLE users ADD COLUMN IF NOT EXISTS receive_sms_lora_offline TINYINT(1) NOT NULL DEFAULT 1");
+    $conn->query("ALTER TABLE users ADD COLUMN IF NOT EXISTS receive_sms_equipment_off TINYINT(1) NOT NULL DEFAULT 1");
+    $conn->query("ALTER TABLE users ADD COLUMN IF NOT EXISTS sms_alarm_min_minutes INT NOT NULL DEFAULT 17");
+}
+
+ensure_sms_pref_columns($conn);
+
 // Get the user ID to edit from the URL parameter
 if (!isset($_GET['id'])) {
     die("User ID not provided.");
@@ -17,10 +28,29 @@ if (!isset($_GET['id'])) {
 $user_to_edit_id = $_GET['id'];
 
 // Get user data to pre-fill the form
-$stmt = $conn->prepare("SELECT first_name, last_name, email, phone, user_type, receive_sms_alarms FROM users WHERE id = ?");
+$stmt = $conn->prepare("SELECT first_name, last_name, email, phone, user_type,
+                               receive_sms_alarms,
+                               COALESCE(receive_sms_controller, receive_sms_alarms) AS receive_sms_controller,
+                               COALESCE(receive_sms_chemical, receive_sms_alarms) AS receive_sms_chemical,
+                               COALESCE(receive_sms_lora_offline, receive_sms_alarms) AS receive_sms_lora_offline,
+                               COALESCE(receive_sms_equipment_off, receive_sms_alarms) AS receive_sms_equipment_off,
+                               COALESCE(sms_alarm_min_minutes, 17) AS sms_alarm_min_minutes
+                        FROM users WHERE id = ?");
 $stmt->bind_param("i", $user_to_edit_id);
 $stmt->execute();
-$stmt->bind_result($first_name_e, $last_name_e, $email_e, $phone_e, $user_type_e, $receive_sms_alarms_e);
+$stmt->bind_result(
+    $first_name_e,
+    $last_name_e,
+    $email_e,
+    $phone_e,
+    $user_type_e,
+    $receive_sms_alarms_e,
+    $receive_sms_controller_e,
+    $receive_sms_chemical_e,
+    $receive_sms_lora_offline_e,
+    $receive_sms_equipment_off_e,
+    $sms_alarm_min_minutes_e
+);
 $stmt->fetch();
 $stmt->close();
 
@@ -37,15 +67,57 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
     $phone = $_POST['phone'];
     $user_type = $_POST['user_type'];
     $receive_sms_alarms = isset($_POST['receive_sms_alarms']) ? 1 : 0;
+    $receive_sms_controller = isset($_POST['receive_sms_controller']) ? 1 : 0;
+    $receive_sms_chemical = isset($_POST['receive_sms_chemical']) ? 1 : 0;
+    $receive_sms_lora_offline = isset($_POST['receive_sms_lora_offline']) ? 1 : 0;
+    $receive_sms_equipment_off = isset($_POST['receive_sms_equipment_off']) ? 1 : 0;
+    $sms_alarm_min_minutes = isset($_POST['sms_alarm_min_minutes']) ? (int)$_POST['sms_alarm_min_minutes'] : 17;
+    if ($sms_alarm_min_minutes < 0) { $sms_alarm_min_minutes = 0; }
+    if ($sms_alarm_min_minutes > 1440) { $sms_alarm_min_minutes = 1440; }
 
     // Prevent the current admin from changing their own role
     if ($user_to_edit_id == $_SESSION['user_id']) {
-        $stmt = $conn->prepare("UPDATE users SET first_name = ?, last_name = ?, email = ?, phone = ?, receive_sms_alarms = ? WHERE id = ?");
-        $stmt->bind_param("ssssii", $first_name, $last_name, $email, $phone, $receive_sms_alarms, $user_to_edit_id);
+        $stmt = $conn->prepare("UPDATE users
+            SET first_name = ?, last_name = ?, email = ?, phone = ?,
+                receive_sms_alarms = ?, receive_sms_controller = ?, receive_sms_chemical = ?,
+                receive_sms_lora_offline = ?, receive_sms_equipment_off = ?, sms_alarm_min_minutes = ?
+            WHERE id = ?");
+        $stmt->bind_param(
+            "ssssiiiiiii",
+            $first_name,
+            $last_name,
+            $email,
+            $phone,
+            $receive_sms_alarms,
+            $receive_sms_controller,
+            $receive_sms_chemical,
+            $receive_sms_lora_offline,
+            $receive_sms_equipment_off,
+            $sms_alarm_min_minutes,
+            $user_to_edit_id
+        );
     } else {
         // Update all fields, including the role, for other users
-        $stmt = $conn->prepare("UPDATE users SET first_name = ?, last_name = ?, email = ?, phone = ?, user_type = ?, receive_sms_alarms = ? WHERE id = ?");
-        $stmt->bind_param("sssssii", $first_name, $last_name, $email, $phone, $user_type, $receive_sms_alarms, $user_to_edit_id);
+        $stmt = $conn->prepare("UPDATE users
+            SET first_name = ?, last_name = ?, email = ?, phone = ?, user_type = ?,
+                receive_sms_alarms = ?, receive_sms_controller = ?, receive_sms_chemical = ?,
+                receive_sms_lora_offline = ?, receive_sms_equipment_off = ?, sms_alarm_min_minutes = ?
+            WHERE id = ?");
+        $stmt->bind_param(
+            "sssssiiiiiii",
+            $first_name,
+            $last_name,
+            $email,
+            $phone,
+            $user_type,
+            $receive_sms_alarms,
+            $receive_sms_controller,
+            $receive_sms_chemical,
+            $receive_sms_lora_offline,
+            $receive_sms_equipment_off,
+            $sms_alarm_min_minutes,
+            $user_to_edit_id
+        );
     }
 
     // Save the signature if provided
@@ -124,8 +196,36 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
         <div class="form-check mb-3">
             <input class="form-check-input" type="checkbox" id="receive_sms_alarms" name="receive_sms_alarms" value="1" <?= !empty($receive_sms_alarms_e) ? 'checked' : ''; ?>>
             <label class="form-check-label" for="receive_sms_alarms">
-                Receber SMS quando um controlador entrar em alarme
+                Ativar receção de SMS
             </label>
+        </div>
+
+        <div class="card mb-3">
+            <div class="card-header">Preferências SMS</div>
+            <div class="card-body">
+                <div class="form-check mb-2">
+                    <input class="form-check-input" type="checkbox" id="receive_sms_controller" name="receive_sms_controller" value="1" <?= !empty($receive_sms_controller_e) ? 'checked' : ''; ?>>
+                    <label class="form-check-label" for="receive_sms_controller">Alarmes de controlador</label>
+                </div>
+                <div class="form-check mb-2">
+                    <input class="form-check-input" type="checkbox" id="receive_sms_chemical" name="receive_sms_chemical" value="1" <?= !empty($receive_sms_chemical_e) ? 'checked' : ''; ?>>
+                    <label class="form-check-label" for="receive_sms_chemical">Alarmes químicos (cloro / pH)</label>
+                </div>
+                <div class="form-check mb-2">
+                    <input class="form-check-input" type="checkbox" id="receive_sms_lora_offline" name="receive_sms_lora_offline" value="1" <?= !empty($receive_sms_lora_offline_e) ? 'checked' : ''; ?>>
+                    <label class="form-check-label" for="receive_sms_lora_offline">LoRa offline</label>
+                </div>
+                <div class="form-check mb-3">
+                    <input class="form-check-input" type="checkbox" id="receive_sms_equipment_off" name="receive_sms_equipment_off" value="1" <?= !empty($receive_sms_equipment_off_e) ? 'checked' : ''; ?>>
+                    <label class="form-check-label" for="receive_sms_equipment_off">Equipamento OFF (LoRa)</label>
+                </div>
+
+                <div class="mb-2">
+                    <label for="sms_alarm_min_minutes" class="form-label">Minutos mínimos em alarme (controlador/químicos)</label>
+                    <input type="number" class="form-control" id="sms_alarm_min_minutes" name="sms_alarm_min_minutes" min="0" max="1440" value="<?= htmlspecialchars((string)$sms_alarm_min_minutes_e); ?>">
+                    <small class="text-muted">0 = envio imediato quando o alarme entra.</small>
+                </div>
+            </div>
         </div>
 
         <div class="mb-3">

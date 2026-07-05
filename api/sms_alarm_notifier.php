@@ -106,18 +106,139 @@ function alarm_label(string $type): string
 }
 
 /**
+ * Classifica o tipo de alarme para aplicar preferências por utilizador.
+ */
+function sms_alarm_group(string $type): string
+{
+    if (in_array($type, ['cloro_baixo', 'cloro_alto', 'ph_baixo', 'ph_alto'], true)) {
+        return 'chemical';
+    }
+    if ($type === 'lora_offline') {
+        return 'lora_offline';
+    }
+    if ($type === 'equipment_off') {
+        return 'equipment_off';
+    }
+    return 'controller';
+}
+
+/**
  * Devolve a lista de destinatários (arrays com id, nome, phone).
  */
 function get_sms_recipients(mysqli $conn): array
 {
-    $res = $conn->query(
-        "SELECT id, first_name, last_name, phone
-         FROM users
-         WHERE receive_sms_alarms = 1
-           AND phone IS NOT NULL AND phone <> ''"
+    $defaultMin = defined('SMS_ALARM_MIN_MINUTES') ? (int)SMS_ALARM_MIN_MINUTES : 17;
+
+    $sqlNew = "SELECT id, first_name, last_name, phone,
+                      receive_sms_alarms,
+                      COALESCE(receive_sms_controller, receive_sms_alarms) AS receive_sms_controller,
+                      COALESCE(receive_sms_chemical, receive_sms_alarms) AS receive_sms_chemical,
+                      COALESCE(receive_sms_lora_offline, receive_sms_alarms) AS receive_sms_lora_offline,
+                      COALESCE(receive_sms_equipment_off, receive_sms_alarms) AS receive_sms_equipment_off,
+                      COALESCE(sms_alarm_min_minutes, {$defaultMin}) AS sms_alarm_min_minutes
+               FROM users
+               WHERE receive_sms_alarms = 1
+                 AND phone IS NOT NULL AND phone <> ''";
+    $res = $conn->query($sqlNew);
+    if ($res) {
+        return $res->fetch_all(MYSQLI_ASSOC);
+    }
+
+    // Compatibilidade com esquemas antigos (sem colunas novas).
+    $sqlOld = "SELECT id, first_name, last_name, phone,
+                      receive_sms_alarms,
+                      receive_sms_alarms AS receive_sms_controller,
+                      receive_sms_alarms AS receive_sms_chemical,
+                      receive_sms_alarms AS receive_sms_lora_offline,
+                      receive_sms_alarms AS receive_sms_equipment_off,
+                      {$defaultMin} AS sms_alarm_min_minutes
+               FROM users
+               WHERE receive_sms_alarms = 1
+                 AND phone IS NOT NULL AND phone <> ''";
+    $resOld = $conn->query($sqlOld);
+    if (!$resOld) {
+        return [];
+    }
+    return $resOld->fetch_all(MYSQLI_ASSOC);
+}
+
+/**
+ * Verifica se o utilizador pretende receber este tipo de alarme.
+ */
+function user_wants_alarm(array $user, string $type): bool
+{
+    if (empty($user['receive_sms_alarms'])) {
+        return false;
+    }
+
+    $group = sms_alarm_group($type);
+    if ($group === 'controller') {
+        return !empty($user['receive_sms_controller']);
+    }
+    if ($group === 'chemical') {
+        return !empty($user['receive_sms_chemical']);
+    }
+    if ($group === 'lora_offline') {
+        return !empty($user['receive_sms_lora_offline']);
+    }
+    if ($group === 'equipment_off') {
+        return !empty($user['receive_sms_equipment_off']);
+    }
+    return true;
+}
+
+/**
+ * Minutos mínimos de alarme para envio (por utilizador).
+ * Aplicado a alarmes de controlador e químicos.
+ */
+function user_alarm_min_minutes(array $user, string $type): int
+{
+    $group = sms_alarm_group($type);
+    if (!in_array($group, ['controller', 'chemical'], true)) {
+        return 0;
+    }
+
+    $v = isset($user['sms_alarm_min_minutes']) ? (int)$user['sms_alarm_min_minutes'] : 0;
+    if ($v < 0) { $v = 0; }
+    if ($v > 1440) { $v = 1440; }
+    return $v;
+}
+
+/**
+ * Verifica se já foi enviado SMS deste evento para o utilizador na janela atual.
+ */
+function was_event_sent_to_user_in_window(
+    mysqli $conn,
+    string $to,
+    int $tankId,
+    string $type,
+    string $event,
+    ?string $firstActiveAt
+): bool {
+    if ($firstActiveAt === null || $firstActiveAt === '') {
+        return false;
+    }
+    $prefix = $event === 'OK' ? '[OK]%' : '[ALARME]%';
+    $stmt = $conn->prepare(
+        "SELECT 1
+         FROM sms_log
+         WHERE to_number = ?
+           AND tank_id = ?
+           AND alarm_type = ?
+           AND status = 'sent'
+           AND ts >= ?
+           AND message LIKE ?
+         LIMIT 1"
     );
-    if (!$res) { return []; }
-    return $res->fetch_all(MYSQLI_ASSOC);
+    if (!$stmt) {
+        return false;
+    }
+    $stmt->bind_param('sisss', $to, $tankId, $type, $firstActiveAt, $prefix);
+    $stmt->execute();
+    $res = $stmt->get_result();
+    $ok = $res ? (bool)$res->fetch_row() : false;
+    $stmt->close();
+    return $ok;
 }
 
 /**
@@ -230,8 +351,6 @@ function process_controller_alarms(mysqli $conn, array $pool, array $data): void
     }
     sms_alarm_log("tanque={$tankName} id={$tankId} alarmes_detetados=" . json_encode($current));
 
-    $debounceMin = defined('SMS_DEBOUNCE_MINUTES') ? (int)SMS_DEBOUNCE_MINUTES : 15;
-    $minActiveMin = defined('SMS_ALARM_MIN_MINUTES') ? (int)SMS_ALARM_MIN_MINUTES : 17;
     $recipients  = null;   // lazy load — só carrega se realmente houver alarme novo
     $client      = null;
 
@@ -239,81 +358,99 @@ function process_controller_alarms(mysqli $conn, array $pool, array $data): void
         $prev      = get_alarm_state($conn, $tankId, $type);
         $wasActive = $prev ? (int)$prev['is_active'] === 1 : false;
         $firstActiveAt = $prev['first_active_at'] ?? null;
-        $lastSmsAt     = $prev['last_sms_at']     ?? null;
-
-        // Já enviámos um SMS de ALARME para a janela ativa atual?
-        // (last_sms_at posterior ao início da janela ativa)
-        $smsSentForWindow = $wasActive
-            && $firstActiveAt !== null
-            && $lastSmsAt !== null
-            && strtotime((string)$lastSmsAt) >= strtotime((string)$firstActiveAt);
-
-        $shouldSend = false;
-        $event      = null; // 'ALARME' | 'OK'
-        $reason     = 'NO_CHANGE';
+        $shouldSendAny = false;
+        $reason        = 'NO_CHANGE';
 
         if ($active && !$wasActive) {
-            // Início de janela: NÃO enviar já — esperar SMS_ALARM_MIN_MINUTES
-            // O upsert vai gravar first_active_at = NOW().
-            $reason = 'ARMED_WAIT_' . $minActiveMin . 'MIN';
+            // Início de janela: não envia já. Vai aguardar os minutos de cada utilizador.
+            $reason = 'ARMED_WAIT_USER_MINUTES';
         } elseif ($active && $wasActive) {
-            // Continua ativo — verificar se já passou o threshold e ainda não enviámos
-            if (!$smsSentForWindow && $firstActiveAt !== null) {
+            if ($firstActiveAt === null) {
+                $reason = 'WAITING_FIRST_ACTIVE_TIMESTAMP';
+            } else {
                 $ageSec = time() - strtotime((string)$firstActiveAt);
                 $ageMin = $ageSec / 60;
-                if ($ageMin >= $minActiveMin) {
-                    $shouldSend = true;
-                    $event      = 'ALARME';
-                    $reason     = 'THRESHOLD_REACHED_' . round($ageMin, 1) . 'MIN';
-                } else {
-                    $reason = 'WAITING_' . round($ageMin, 1) . '/' . $minActiveMin . 'MIN';
-                }
-            } else {
-                $reason = 'ALREADY_SENT_FOR_WINDOW';
+                $reason = 'ACTIVE_' . round($ageMin, 1) . 'MIN';
             }
         } elseif (!$active && $wasActive) {
-            // Recuperação — só enviar [OK] se tinhamos disparado [ALARME] nesta janela
-            if ($smsSentForWindow) {
-                $shouldSend = true;
-                $event      = 'OK';
-                $reason     = 'RECOVERY_AFTER_ALARM';
-            } else {
-                $reason = 'SILENT_RECOVERY_UNDER_THRESHOLD';
-            }
+            // Recuperação: envio é decidido por utilizador, apenas para quem recebeu [ALARME].
+            $reason = 'RECOVERY_CHECK_PER_USER';
         }
 
-        $decision = $shouldSend ? ('SEND(' . $event . ') ' . $reason) : $reason;
+        $decision = $reason;
         sms_alarm_log("  tipo={$type} active=" . ($active ? '1' : '0')
             . ' was_active=' . ($wasActive ? '1' : '0')
             . ' first=' . ($firstActiveAt ?? '-')
             . " -> {$decision}");
 
         $sentOk = false;
-        if ($shouldSend) {
-            sms_alarm_log("TRANSICAO tanque={$tankName} tipo={$type} -> {$event} ({$reason})");
+        if (($active && $wasActive) || (!$active && $wasActive)) {
             if ($recipients === null) {
                 $recipients = get_sms_recipients($conn);
                 $client     = new TeltonikaSmsClient();
                 sms_alarm_log('destinatarios=' . count($recipients));
             }
-            $msg = build_alarm_message($tankName, $type, $event, $data);
+
             if (!empty($recipients)) {
                 foreach ($recipients as $r) {
                     $to = trim((string)$r['phone']);
                     if ($to === '') { continue; }
-                    $res = $client->send($to, $msg);
-                    $status   = $res['ok'] ? 'sent' : 'failed';
-                    $respTxt  = $res['ok'] ? (is_string($res['response']) ? $res['response'] : json_encode($res['response']))
-                                           : ($res['error'] ?? '');
-                    log_sms($conn, $to, $msg, $status, $respTxt, $tankId, $type);
-                    sms_alarm_log("SMS to={$to} status={$status} resp=" . substr($respTxt, 0, 200));
-                    if ($res['ok']) { $sentOk = true; }
+                    if (!user_wants_alarm($r, $type)) { continue; }
+
+                    if ($active && $wasActive) {
+                        if ($firstActiveAt === null) { continue; }
+                        $ageSec = time() - strtotime((string)$firstActiveAt);
+                        $ageMin = $ageSec / 60;
+                        $minForUser = user_alarm_min_minutes($r, $type);
+                        if ($ageMin < $minForUser) {
+                            continue;
+                        }
+                        if (was_event_sent_to_user_in_window($conn, $to, $tankId, $type, 'ALARME', $firstActiveAt)) {
+                            continue;
+                        }
+
+                        $msg = build_alarm_message($tankName, $type, 'ALARME', $data);
+                        $res = $client->send($to, $msg);
+                        $status   = $res['ok'] ? 'sent' : 'failed';
+                        $respTxt  = $res['ok'] ? (is_string($res['response']) ? $res['response'] : json_encode($res['response']))
+                                               : ($res['error'] ?? '');
+                        log_sms($conn, $to, $msg, $status, $respTxt, $tankId, $type);
+                        sms_alarm_log("SMS to={$to} tipo={$type} event=ALARME min_user={$minForUser} status={$status} resp=" . substr($respTxt, 0, 200));
+                        if ($res['ok']) {
+                            $sentOk = true;
+                            $shouldSendAny = true;
+                        }
+                    } elseif (!$active && $wasActive) {
+                        if ($firstActiveAt === null) { continue; }
+                        if (!was_event_sent_to_user_in_window($conn, $to, $tankId, $type, 'ALARME', $firstActiveAt)) {
+                            continue;
+                        }
+                        if (was_event_sent_to_user_in_window($conn, $to, $tankId, $type, 'OK', $firstActiveAt)) {
+                            continue;
+                        }
+
+                        $msg = build_alarm_message($tankName, $type, 'OK', $data);
+                        $res = $client->send($to, $msg);
+                        $status   = $res['ok'] ? 'sent' : 'failed';
+                        $respTxt  = $res['ok'] ? (is_string($res['response']) ? $res['response'] : json_encode($res['response']))
+                                               : ($res['error'] ?? '');
+                        log_sms($conn, $to, $msg, $status, $respTxt, $tankId, $type);
+                        sms_alarm_log("SMS to={$to} tipo={$type} event=OK status={$status} resp=" . substr($respTxt, 0, 200));
+                        if ($res['ok']) {
+                            $sentOk = true;
+                            $shouldSendAny = true;
+                        }
+                    }
                 }
             } else {
                 sms_alarm_log('SEM DESTINATARIOS (nenhum utilizador com receive_sms_alarms=1 e phone)');
-                log_sms($conn, '(sem destinatarios)', $msg,
+                log_sms($conn, '(sem destinatarios)', '[SKIPPED] sem destinatarios para este alarme',
                         'skipped', 'Nenhum utilizador com receive_sms_alarms=1', $tankId, $type);
             }
+        }
+
+        if ($shouldSendAny) {
+            sms_alarm_log("ENVIO_REAL tanque={$tankName} tipo={$type}");
         }
 
         upsert_alarm_state($conn, $tankId, $type, (bool)$active, $sentOk, (bool)$wasActive);
@@ -432,6 +569,7 @@ function process_lora_alarms(mysqli $conn): void
                     foreach ($recipients as $r) {
                         $to = trim((string)$r['phone']);
                         if ($to === '') { continue; }
+                        if (!user_wants_alarm($r, $type)) { continue; }
                         $r2 = $client->send($to, $msg);
                         $status  = $r2['ok'] ? 'sent' : 'failed';
                         $respTxt = $r2['ok'] ? (is_string($r2['response']) ? $r2['response'] : json_encode($r2['response']))

@@ -9,14 +9,60 @@ if (!isset($_SESSION['user_id']) || $_SESSION['user_type'] !== 'admin') {
 
 include 'db.php'; // Conexão ao banco de dados
 
+function ensure_sms_pref_columns(mysqli $conn): void
+{
+    $conn->query("ALTER TABLE users ADD COLUMN IF NOT EXISTS receive_sms_controller TINYINT(1) NOT NULL DEFAULT 1");
+    $conn->query("ALTER TABLE users ADD COLUMN IF NOT EXISTS receive_sms_chemical TINYINT(1) NOT NULL DEFAULT 1");
+    $conn->query("ALTER TABLE users ADD COLUMN IF NOT EXISTS receive_sms_lora_offline TINYINT(1) NOT NULL DEFAULT 1");
+    $conn->query("ALTER TABLE users ADD COLUMN IF NOT EXISTS receive_sms_equipment_off TINYINT(1) NOT NULL DEFAULT 1");
+    $conn->query("ALTER TABLE users ADD COLUMN IF NOT EXISTS sms_alarm_min_minutes INT NOT NULL DEFAULT 17");
+}
+
+ensure_sms_pref_columns($conn);
+
 // Consulta para obter todos os usuários
 $users = [];
-$stmt = $conn->prepare("SELECT id, first_name, last_name, email, phone, user_type, accepted FROM users");
+$stmt = $conn->prepare("SELECT id, first_name, last_name, email, phone, user_type, accepted,
+                               receive_sms_alarms,
+                               COALESCE(receive_sms_controller, receive_sms_alarms) AS receive_sms_controller,
+                               COALESCE(receive_sms_chemical, receive_sms_alarms) AS receive_sms_chemical,
+                               COALESCE(receive_sms_lora_offline, receive_sms_alarms) AS receive_sms_lora_offline,
+                               COALESCE(receive_sms_equipment_off, receive_sms_alarms) AS receive_sms_equipment_off,
+                               COALESCE(sms_alarm_min_minutes, 17) AS sms_alarm_min_minutes
+                        FROM users");
 if ($stmt) {
     $stmt->execute();
-    $stmt->bind_result($user_id, $first_name, $last_name, $email, $phone, $user_type, $accepted);
+    $stmt->bind_result(
+        $user_id,
+        $first_name,
+        $last_name,
+        $email,
+        $phone,
+        $user_type,
+        $accepted,
+        $receive_sms_alarms,
+        $receive_sms_controller,
+        $receive_sms_chemical,
+        $receive_sms_lora_offline,
+        $receive_sms_equipment_off,
+        $sms_alarm_min_minutes
+    );
     while ($stmt->fetch()) {
-        $users[] = ['id' => $user_id, 'first_name' => $first_name, 'last_name' => $last_name, 'email' => $email, 'phone' => $phone, 'user_type' => $user_type, 'accepted' => $accepted];
+        $users[] = [
+            'id' => $user_id,
+            'first_name' => $first_name,
+            'last_name' => $last_name,
+            'email' => $email,
+            'phone' => $phone,
+            'user_type' => $user_type,
+            'accepted' => $accepted,
+            'receive_sms_alarms' => $receive_sms_alarms,
+            'receive_sms_controller' => $receive_sms_controller,
+            'receive_sms_chemical' => $receive_sms_chemical,
+            'receive_sms_lora_offline' => $receive_sms_lora_offline,
+            'receive_sms_equipment_off' => $receive_sms_equipment_off,
+            'sms_alarm_min_minutes' => $sms_alarm_min_minutes,
+        ];
     }
     $stmt->close();
 } else {
@@ -51,6 +97,7 @@ if ($stmt) {
                 <th>Email</th>
                 <th>Telefone</th>
                 <th>Tipo</th>
+                <th>SMS</th>
                 <th>Ações</th>
             </tr>
         </thead>
@@ -62,6 +109,17 @@ if ($stmt) {
                 <td><?= htmlspecialchars($user['email']); ?></td>
                 <td><?= htmlspecialchars($user['phone']); ?></td>
                 <td><?= htmlspecialchars($user['user_type']); ?></td>
+                <td>
+                    <?php if (!empty($user['receive_sms_alarms'])): ?>
+                        <?= !empty($user['receive_sms_controller']) ? 'Ctrl ' : ''; ?>
+                        <?= !empty($user['receive_sms_chemical']) ? 'Quim ' : ''; ?>
+                        <?= !empty($user['receive_sms_lora_offline']) ? 'LoRaOff ' : ''; ?>
+                        <?= !empty($user['receive_sms_equipment_off']) ? 'EquipOff ' : ''; ?>
+                        (<?= (int)$user['sms_alarm_min_minutes']; ?> min)
+                    <?php else: ?>
+                        Desativado
+                    <?php endif; ?>
+                </td>
                 <td>
                     <a href="edit_user.php?id=<?= $user['id']; ?>" class="btn btn-warning btn-sm">Editar</a>
                     <?php if ($_SESSION['user_id'] !== $user['id']): // Verifica se não é o próprio usuário ?>

@@ -9,6 +9,17 @@ if (!isset($_SESSION['user_id']) || $_SESSION['user_type'] != 'admin') {
 
 include 'db.php';
 
+function ensure_sms_pref_columns(mysqli $conn): void
+{
+    $conn->query("ALTER TABLE users ADD COLUMN IF NOT EXISTS receive_sms_controller TINYINT(1) NOT NULL DEFAULT 1");
+    $conn->query("ALTER TABLE users ADD COLUMN IF NOT EXISTS receive_sms_chemical TINYINT(1) NOT NULL DEFAULT 1");
+    $conn->query("ALTER TABLE users ADD COLUMN IF NOT EXISTS receive_sms_lora_offline TINYINT(1) NOT NULL DEFAULT 1");
+    $conn->query("ALTER TABLE users ADD COLUMN IF NOT EXISTS receive_sms_equipment_off TINYINT(1) NOT NULL DEFAULT 1");
+    $conn->query("ALTER TABLE users ADD COLUMN IF NOT EXISTS sms_alarm_min_minutes INT NOT NULL DEFAULT 17");
+}
+
+ensure_sms_pref_columns($conn);
+
 $message = "";
 
 // Verificar se o formulário foi enviado
@@ -22,6 +33,13 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
     $confirm_password = $_POST['confirm_password'];
     $user_type = $_POST['user_type']; // papel do usuário (admin ou utilizador)
     $receive_sms_alarms = isset($_POST['receive_sms_alarms']) ? 1 : 0;
+    $receive_sms_controller = isset($_POST['receive_sms_controller']) ? 1 : 0;
+    $receive_sms_chemical = isset($_POST['receive_sms_chemical']) ? 1 : 0;
+    $receive_sms_lora_offline = isset($_POST['receive_sms_lora_offline']) ? 1 : 0;
+    $receive_sms_equipment_off = isset($_POST['receive_sms_equipment_off']) ? 1 : 0;
+    $sms_alarm_min_minutes = isset($_POST['sms_alarm_min_minutes']) ? (int)$_POST['sms_alarm_min_minutes'] : 17;
+    if ($sms_alarm_min_minutes < 0) { $sms_alarm_min_minutes = 0; }
+    if ($sms_alarm_min_minutes > 1440) { $sms_alarm_min_minutes = 1440; }
 
     // Verificar se as senhas coincidem
     if ($password !== $confirm_password) {
@@ -40,12 +58,31 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
             $hashed_password = password_hash($password, PASSWORD_DEFAULT);
 
             // Inserir o novo utilizador na base de dados
-            $stmt = $conn->prepare("INSERT INTO users (username, first_name, last_name, email, phone, password, user_type, accepted, receive_sms_alarms) VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?)");
+            $stmt = $conn->prepare("INSERT INTO users (
+                username, first_name, last_name, email, phone, password, user_type, accepted,
+                receive_sms_alarms, receive_sms_controller, receive_sms_chemical,
+                receive_sms_lora_offline, receive_sms_equipment_off, sms_alarm_min_minutes
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?, ?, ?, ?)");
             if (!$stmt) {
                 die("Erro na preparação da consulta: " . $conn->error);
             }
 
-            $stmt->bind_param("sssssssi", $username, $first_name, $last_name, $email, $phone, $hashed_password, $user_type, $receive_sms_alarms);
+            $stmt->bind_param(
+                "sssssssiiiiii",
+                $username,
+                $first_name,
+                $last_name,
+                $email,
+                $phone,
+                $hashed_password,
+                $user_type,
+                $receive_sms_alarms,
+                $receive_sms_controller,
+                $receive_sms_chemical,
+                $receive_sms_lora_offline,
+                $receive_sms_equipment_off,
+                $sms_alarm_min_minutes
+            );
 
             if ($stmt->execute()) {
                 $message = "Utilizador criado com sucesso!";
@@ -119,8 +156,36 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
         <div class="form-check mb-3">
             <input class="form-check-input" type="checkbox" id="receive_sms_alarms" name="receive_sms_alarms" value="1">
             <label class="form-check-label" for="receive_sms_alarms">
-                Receber SMS quando um controlador entrar em alarme
+                Ativar receção de SMS
             </label>
+        </div>
+
+        <div class="card mb-3">
+            <div class="card-header">Preferências SMS</div>
+            <div class="card-body">
+                <div class="form-check mb-2">
+                    <input class="form-check-input" type="checkbox" id="receive_sms_controller" name="receive_sms_controller" value="1" checked>
+                    <label class="form-check-label" for="receive_sms_controller">Alarmes de controlador</label>
+                </div>
+                <div class="form-check mb-2">
+                    <input class="form-check-input" type="checkbox" id="receive_sms_chemical" name="receive_sms_chemical" value="1" checked>
+                    <label class="form-check-label" for="receive_sms_chemical">Alarmes químicos (cloro / pH)</label>
+                </div>
+                <div class="form-check mb-2">
+                    <input class="form-check-input" type="checkbox" id="receive_sms_lora_offline" name="receive_sms_lora_offline" value="1" checked>
+                    <label class="form-check-label" for="receive_sms_lora_offline">LoRa offline</label>
+                </div>
+                <div class="form-check mb-3">
+                    <input class="form-check-input" type="checkbox" id="receive_sms_equipment_off" name="receive_sms_equipment_off" value="1" checked>
+                    <label class="form-check-label" for="receive_sms_equipment_off">Equipamento OFF (LoRa)</label>
+                </div>
+
+                <div class="mb-2">
+                    <label for="sms_alarm_min_minutes" class="form-label">Minutos mínimos em alarme (controlador/químicos)</label>
+                    <input type="number" class="form-control" id="sms_alarm_min_minutes" name="sms_alarm_min_minutes" min="0" max="1440" value="17">
+                    <small class="text-muted">Cada utilizador pode ter o seu próprio tempo (0 = imediato).</small>
+                </div>
+            </div>
         </div>
         <button type="submit" class="btn btn-primary">Criar Utilizador</button>
         <a href="manage_users.php" class="btn btn-secondary">Cancelar</a>
