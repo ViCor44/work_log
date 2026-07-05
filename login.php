@@ -108,6 +108,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
 function send_security_alert_email($user_email, $user_name, $login_ip) {
 
+    // Permite guardar credenciais fora do código-fonte para facilitar commits seguros.
+    $smtp_password = getenv('GMAIL_APP_PASSWORD');
+    if ($smtp_password === false || $smtp_password === '') {
+        return;
+    }
+
     $mail = new PHPMailer();
     $mail->CharSet = 'UTF-8';
     $mail->Encoding = 'base64';
@@ -119,7 +125,7 @@ function send_security_alert_email($user_email, $user_name, $login_ip) {
     $mail->SMTPSecure = 'tls';
     $mail->SMTPAuth = true;
     $mail->Username = 'slide.rocketchat@gmail.com';
-    $mail->Password = 'jbbo gsys gvmq bise'; // Sua senha de aplicação
+    $mail->Password = $smtp_password;
     $mail->setFrom('slide.rocketchat@gmail.com', 'WorkLog');
     $mail->addAddress($user_email);
     $mail->isHTML(true);
