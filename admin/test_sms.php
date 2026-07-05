@@ -10,23 +10,30 @@ if (!isset($_SESSION['user_type']) || $_SESSION['user_type'] !== 'admin') {
 }
 
 $feedback = null;
+$diag = null;
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    $to  = trim((string)($_POST['to'] ?? ''));
-    $msg = trim((string)($_POST['message'] ?? ''));
-    if ($to === '' || $msg === '') {
-        $feedback = ['type' => 'warning', 'text' => 'Preenche o número e a mensagem.'];
-    } else {
+    $action = $_POST['action'] ?? 'send';
+    if ($action === 'diagnose') {
         $client = new TeltonikaSmsClient();
-        $res = $client->send($to, $msg);
-        $status = $res['ok'] ? 'sent' : 'failed';
-        $respTxt = $res['ok']
-            ? (is_string($res['response']) ? $res['response'] : json_encode($res['response']))
-            : ($res['error'] ?? '');
-        log_sms($conn, $to, $msg, $status, $respTxt, null, 'teste_manual');
-        $feedback = [
-            'type' => $res['ok'] ? 'success' : 'danger',
-            'text' => $res['ok'] ? 'SMS enviado com sucesso.' : 'Falha: ' . htmlspecialchars($res['error'] ?? 'erro desconhecido'),
-        ];
+        $diag = $client->diagnose();
+    } else {
+        $to  = trim((string)($_POST['to'] ?? ''));
+        $msg = trim((string)($_POST['message'] ?? ''));
+        if ($to === '' || $msg === '') {
+            $feedback = ['type' => 'warning', 'text' => 'Preenche o número e a mensagem.'];
+        } else {
+            $client = new TeltonikaSmsClient();
+            $res = $client->send($to, $msg);
+            $status = $res['ok'] ? 'sent' : 'failed';
+            $respTxt = $res['ok']
+                ? (is_string($res['response']) ? $res['response'] : json_encode($res['response']))
+                : ($res['error'] ?? '');
+            log_sms($conn, $to, $msg, $status, $respTxt, null, 'teste_manual');
+            $feedback = [
+                'type' => $res['ok'] ? 'success' : 'danger',
+                'text' => $res['ok'] ? 'SMS enviado com sucesso.' : 'Falha: ' . htmlspecialchars($res['error'] ?? 'erro desconhecido'),
+            ];
+        }
     }
 }
 
@@ -66,8 +73,37 @@ $tokenStatus = $client->getTokenStatus();
         <div class="alert alert-<?= htmlspecialchars($feedback['type']) ?>"><?= $feedback['text'] ?></div>
     <?php endif; ?>
 
+    <?php if ($diag): ?>
+        <div class="card mb-3">
+            <div class="card-body">
+                <h6 class="card-title">Diagnóstico</h6>
+                <ol class="mb-0 small">
+                    <?php foreach ($diag['steps'] as $s): ?>
+                        <li>
+                            <strong><?= htmlspecialchars($s['name']) ?>:</strong>
+                            <?php if ($s['ok']): ?>
+                                <span class="badge bg-success">OK</span>
+                            <?php else: ?>
+                                <span class="badge bg-danger">FALHA</span>
+                            <?php endif; ?>
+                            <br><code style="white-space:pre-wrap"><?= htmlspecialchars($s['detail']) ?></code>
+                        </li>
+                    <?php endforeach; ?>
+                </ol>
+            </div>
+        </div>
+    <?php endif; ?>
+
+    <form method="post" class="mb-3">
+        <input type="hidden" name="action" value="diagnose">
+        <button type="submit" class="btn btn-outline-info btn-sm">
+            <i class="fas fa-stethoscope me-1"></i>Diagnosticar ligação ao modem
+        </button>
+    </form>
+
     <form method="post" class="card">
         <div class="card-body">
+            <input type="hidden" name="action" value="send">
             <div class="mb-3">
                 <label class="form-label">Número (formato internacional, ex. <code>+351912345678</code>)</label>
                 <input type="tel" class="form-control" name="to" required

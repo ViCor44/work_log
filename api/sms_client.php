@@ -34,6 +34,8 @@ class TeltonikaSmsClient
     private $tokenFile;
     /** @var int  Margem de segurança antes da expiração real (segundos). */
     private $safetyWindow = 20;
+    /** @var string  Último erro (para diagnóstico) */
+    private $lastError = '';
 
     public function __construct()
     {
@@ -67,7 +69,8 @@ class TeltonikaSmsClient
 
         $token = $this->getToken();
         if ($token === null) {
-            return ['ok' => false, 'http_code' => 0, 'response' => null, 'error' => 'Falha a obter token do modem'];
+            $detail = $this->lastError !== '' ? (' — ' . $this->lastError) : '';
+            return ['ok' => false, 'http_code' => 0, 'response' => null, 'error' => 'Falha a obter token do modem' . $detail];
         }
 
         $result = $this->doSend($number, $message, $token);
@@ -82,6 +85,69 @@ class TeltonikaSmsClient
         }
 
         return $result;
+    }
+
+    /**
+     * Corre um teste de diagnóstico contra o modem: tenta fazer login e devolve
+     * detalhes do que aconteceu (não guarda o token em cache).
+     * @return array{ok:bool, steps:array<int,array{name:string,ok:bool,detail:string}>}
+     */
+    public function diagnose(): array
+    {
+        $steps = [];
+
+        // 1. Config
+        $cfgOk = ($this->pass !== '');
+        $steps[] = [
+            'name'   => 'Configuração',
+            'ok'     => $cfgOk,
+            'detail' => 'URL=' . $this->baseUrl . ' user=' . $this->user
+                        . ' pass=' . ($cfgOk ? '(definida)' : 'VAZIA')
+                        . ' timeout=' . $this->timeout . 's',
+        ];
+        if (!$cfgOk) {
+            return ['ok' => false, 'steps' => $steps];
+        }
+
+        // 2. TCP/HTTP reachability (GET raiz)
+        $probe = $this->httpRequest('GET', $this->baseUrl . '/', null, null);
+        $steps[] = [
+            'name'   => 'Alcançabilidade HTTP (' . $this->baseUrl . ')',
+            'ok'     => $probe['http_code'] > 0,
+            'detail' => $probe['http_code'] > 0
+                        ? ('HTTP ' . $probe['http_code'])
+                        : ($probe['error'] ?: 'sem resposta'),
+        ];
+        if ($probe['http_code'] === 0) {
+            return ['ok' => false, 'steps' => $steps];
+        }
+
+        // 3. Login
+        $url = $this->baseUrl . '/api/login';
+        $payload = json_encode(['username' => $this->user, 'password' => $this->pass]);
+        $res = $this->httpRequest('POST', $url, $payload, null);
+        $loginOk = false;
+        $detail  = '';
+        if (!$res['ok']) {
+            $detail = 'HTTP ' . $res['http_code'] . ' — '
+                    . (is_array($res['response']) ? json_encode($res['response']) : substr((string)$res['response'], 0, 300));
+            if ($res['error'] !== '') { $detail = $res['error']; }
+        } else {
+            $body = $res['response'];
+            $tok  = null;
+            if (is_array($body) && isset($body['data']['token'])) { $tok = (string)$body['data']['token']; }
+            elseif (is_array($body) && isset($body['token']))     { $tok = (string)$body['token']; }
+            if ($tok) {
+                $loginOk = true;
+                $detail  = 'token OK (' . strlen($tok) . ' chars)';
+            } else {
+                $detail = 'HTTP 200 mas sem campo token. Resposta: '
+                        . substr(is_array($body) ? json_encode($body) : (string)$body, 0, 300);
+            }
+        }
+        $steps[] = ['name' => 'POST /api/login', 'ok' => $loginOk, 'detail' => $detail];
+
+        return ['ok' => $loginOk, 'steps' => $steps];
     }
 
     /**
@@ -141,6 +207,7 @@ class TeltonikaSmsClient
 
         $res = $this->httpRequest('POST', $url, $payload, null);
         if (!$res['ok']) {
+            $this->lastError = 'login: ' . ($res['error'] ?: ('HTTP ' . $res['http_code']));
             return null;
         }
 
@@ -157,6 +224,8 @@ class TeltonikaSmsClient
             if ($token === null && isset($body['token'])) { $token = (string)$body['token']; }
         }
         if ($token === null || $token === '') {
+            $snippet = is_array($body) ? json_encode($body) : (string)$body;
+            $this->lastError = 'login OK mas sem token na resposta: ' . substr($snippet, 0, 300);
             return null;
         }
 
