@@ -29,6 +29,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $fakeData = ['alarms' => []];
         if ($type === 'controlador_interno') {
             $fakeData['alarme'] = 0; // 0 = alarme ativo
+        } elseif ($type === 'cloro_baixo') {
+            $fakeData['freeChlorine'] = 0.50;
+        } elseif ($type === 'cloro_alto') {
+            $fakeData['freeChlorine'] = 4.00;
+        } elseif ($type === 'ph_baixo') {
+            $fakeData['pH'] = 6.50;
+        } elseif ($type === 'ph_alto') {
+            $fakeData['pH'] = 8.50;
         } else {
             $fakeData['alarms'][$type] = '1';
         }
@@ -81,6 +89,10 @@ if ($res) { $tanks = $res->fetch_all(MYSQLI_ASSOC); }
 
 $alarmTypes = [
     'controlador_interno' => 'Alarme interno do controlador',
+    'cloro_baixo'         => 'Cloro baixo',
+    'cloro_alto'          => 'Cloro alto',
+    'ph_baixo'            => 'pH baixo',
+    'ph_alto'             => 'pH alto',
     'power_failure'       => 'Pane de corrente',
     'pneumatic_low'       => 'Pressão pneumática baixa',
     'pin_high'            => 'Pressão entrada filtro alta',

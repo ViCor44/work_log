@@ -13,6 +13,15 @@
 require_once dirname(__DIR__) . '/config.php';
 require_once __DIR__ . '/sms_client.php';
 
+/** Converte para float ou devolve null. */
+function sms_float_or_null($v): ?float
+{
+    if ($v === null || $v === '' || $v === 'NAN') { return null; }
+    if (is_array($v)) { return null; }
+    $s = str_replace(',', '.', (string)$v);
+    return is_numeric($s) ? (float)$s : null;
+}
+
 /**
  * Log dedicado do notifier de alarmes. Escreve em logs/sms_alarms_YYYY-MM-DD.log
  * e replica no logger global do worker (file_log), se existir.
@@ -57,6 +66,18 @@ function extract_controller_alarms(array $data): array
         }
     }
 
+    // Valores químicos fora dos limites (envia em ambas as transições).
+    $cloro = sms_float_or_null($data['freeChlorine'] ?? null);
+    if ($cloro !== null) {
+        $alarms['cloro_baixo'] = $cloro < (defined('LIMIT_CLORO_MIN') ? LIMIT_CLORO_MIN : 1.0);
+        $alarms['cloro_alto']  = $cloro > (defined('LIMIT_CLORO_MAX') ? LIMIT_CLORO_MAX : 3.0);
+    }
+    $ph = sms_float_or_null($data['pH'] ?? null);
+    if ($ph !== null) {
+        $alarms['ph_baixo'] = $ph < (defined('LIMIT_PH_MIN') ? LIMIT_PH_MIN : 7.0);
+        $alarms['ph_alto']  = $ph > (defined('LIMIT_PH_MAX') ? LIMIT_PH_MAX : 7.8);
+    }
+
     return $alarms;
 }
 
@@ -74,6 +95,10 @@ function alarm_label(string $type): string
         'delta_p_high'        => 'Pressao diferencial alta',
         'pump1_fault'         => 'Falha Bomba 1',
         'pump2_fault'         => 'Falha Bomba 2',
+        'cloro_baixo'         => 'Cloro baixo',
+        'cloro_alto'          => 'Cloro alto',
+        'ph_baixo'            => 'pH baixo',
+        'ph_alto'             => 'pH alto',
     ];
     return $map[$type] ?? $type;
 }
@@ -212,38 +237,34 @@ function process_controller_alarms(mysqli $conn, array $pool, array $data): void
         $wasActive = $prev ? (int)$prev['is_active'] === 1 : false;
 
         $shouldSend = false;
-        // Transição OK -> ALARME → sempre envia
+        $event      = null; // 'ALARME' | 'OK'
+        // Transição OK -> ALARME
         if ($active && !$wasActive) {
             $shouldSend = true;
+            $event      = 'ALARME';
         }
-        // Alarme persistente → reenvia se passou o debounce
-        elseif ($active && $wasActive && $debounceMin > 0 && $prev && !empty($prev['last_sms_at'])) {
-            $lastTs = strtotime($prev['last_sms_at']);
-            if ($lastTs !== false && (time() - $lastTs) >= ($debounceMin * 60)) {
-                // NÃO reenviar automaticamente enquanto persiste — só edge é obrigatório.
-                // Deixa comentado: só enviar em transição. Caso queira lembretes:
-                //   $shouldSend = true;
-                $shouldSend = false;
-            }
+        // Transição ALARME -> OK (recuperação) — só se havia registo prévio ativo
+        elseif (!$active && $wasActive) {
+            $shouldSend = true;
+            $event      = 'OK';
         }
 
         // Log da decisão para cada tipo — ajuda a perceber porque não houve SMS.
-        $decision = $shouldSend ? 'SEND'
-                   : ($active === $wasActive ? 'NO_CHANGE'
-                       : ($active && $wasActive ? 'PERSIST' : 'CLEAR'));
+        $decision = $shouldSend ? ('SEND(' . $event . ')')
+                   : ($active === $wasActive ? 'NO_CHANGE' : '?');
         sms_alarm_log("  tipo={$type} active=" . ($active ? '1' : '0')
             . ' was_active=' . ($wasActive ? '1' : '0') . " -> {$decision}");
 
         $sentOk = false;
         if ($shouldSend) {
-            sms_alarm_log("TRANSICAO tanque={$tankName} tipo={$type} prev_active=" . ($wasActive ? '1' : '0') . ' -> ACTIVE');
+            sms_alarm_log("TRANSICAO tanque={$tankName} tipo={$type} prev_active=" . ($wasActive ? '1' : '0') . ' -> ' . $event);
             if ($recipients === null) {
                 $recipients = get_sms_recipients($conn);
                 $client     = new TeltonikaSmsClient();
                 sms_alarm_log('destinatarios=' . count($recipients));
             }
+            $msg = build_alarm_message($tankName, $type, $event, $data);
             if (!empty($recipients)) {
-                $msg = build_alarm_message($tankName, $type);
                 foreach ($recipients as $r) {
                     $to = trim((string)$r['phone']);
                     if ($to === '') { continue; }
@@ -257,7 +278,7 @@ function process_controller_alarms(mysqli $conn, array $pool, array $data): void
                 }
             } else {
                 sms_alarm_log('SEM DESTINATARIOS (nenhum utilizador com receive_sms_alarms=1 e phone)');
-                log_sms($conn, '(sem destinatarios)', build_alarm_message($tankName, $type),
+                log_sms($conn, '(sem destinatarios)', $msg,
                         'skipped', 'Nenhum utilizador com receive_sms_alarms=1', $tankId, $type);
             }
         }
@@ -268,13 +289,30 @@ function process_controller_alarms(mysqli $conn, array $pool, array $data): void
 
 /**
  * Constrói a mensagem de SMS (curta, sem acentos, dentro de 160 chars).
+ * $event = 'ALARME' | 'OK' (recuperação)
+ * $data  = payload do controlador (opcional — usado para meter valor atual em alarmes químicos)
  */
-function build_alarm_message(string $tankName, string $type): string
+function build_alarm_message(string $tankName, string $type, string $event = 'ALARME', array $data = []): string
 {
     $label = alarm_label($type);
     $ts = date('d/m H:i');
-    // Remove acentos para caber em GSM-7 e não usar Unicode (que reduz o limite para 70 chars).
-    $safe = strtr($label, [
+
+    // Contexto numérico para alarmes químicos
+    $ctx = '';
+    if ($event === 'ALARME') {
+        if (in_array($type, ['cloro_baixo', 'cloro_alto'], true)) {
+            $v = sms_float_or_null($data['freeChlorine'] ?? null);
+            if ($v !== null) { $ctx = ' (' . number_format($v, 2, '.', '') . ')'; }
+        } elseif (in_array($type, ['ph_baixo', 'ph_alto'], true)) {
+            $v = sms_float_or_null($data['pH'] ?? null);
+            if ($v !== null) { $ctx = ' (' . number_format($v, 2, '.', '') . ')'; }
+        }
+    }
+
+    $prefix = $event === 'OK' ? '[OK]' : '[ALARME]';
+    $suffix = $event === 'OK' ? ' normalizado' : '';
+
+    $strip = [
         'á'=>'a','à'=>'a','â'=>'a','ã'=>'a',
         'é'=>'e','ê'=>'e',
         'í'=>'i',
@@ -283,12 +321,11 @@ function build_alarm_message(string $tankName, string $type): string
         'ç'=>'c',
         'Á'=>'A','À'=>'A','Â'=>'A','Ã'=>'A',
         'É'=>'E','Ê'=>'E','Í'=>'I','Ó'=>'O','Ô'=>'O','Õ'=>'O','Ú'=>'U','Ç'=>'C',
-    ]);
-    $tankSafe = strtr($tankName, [
-        'á'=>'a','à'=>'a','â'=>'a','ã'=>'a','é'=>'e','ê'=>'e','í'=>'i','ó'=>'o','ô'=>'o','õ'=>'o','ú'=>'u','ç'=>'c',
-        'Á'=>'A','À'=>'A','Â'=>'A','Ã'=>'A','É'=>'E','Ê'=>'E','Í'=>'I','Ó'=>'O','Ô'=>'O','Õ'=>'O','Ú'=>'U','Ç'=>'C',
-    ]);
-    $msg = "[ALARME] {$tankSafe}: {$safe} ({$ts})";
+    ];
+    $safe     = strtr($label,    $strip);
+    $tankSafe = strtr($tankName, $strip);
+
+    $msg = "{$prefix} {$tankSafe}: {$safe}{$suffix}{$ctx} ({$ts})";
     if (strlen($msg) > 160) { $msg = substr($msg, 0, 157) . '...'; }
     return $msg;
 }

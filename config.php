@@ -27,6 +27,13 @@ define('MODEM_VERIFY_SSL',  false);           // false se usar https com certifi
 // se o alarme oscilar rapidamente. Coloca 0 para desativar.
 define('SMS_DEBOUNCE_MINUTES', 15);
 
+// Limites químicos (SMS quando um valor sai destes intervalos e
+// também quando regressa aos valores normais).
+define('LIMIT_CLORO_MIN', 1.0);
+define('LIMIT_CLORO_MAX', 3.0);
+define('LIMIT_PH_MIN',    7.0);
+define('LIMIT_PH_MAX',    7.8);
+
 // Ficheiro onde é guardado o token em cache (evita login em cada envio)
 define('MODEM_TOKEN_FILE', __DIR__ . '/sessions/modem_token.json');
 
