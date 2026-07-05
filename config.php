@@ -38,8 +38,9 @@ if (is_file(__DIR__ . '/config.local.php')) {
     require_once __DIR__ . '/config.local.php';
 }
 
-// Fallback: se config.local.php não definiu MODEM_PASS, fica vazia.
+// Fallback: variável de ambiente (ex.: Apache SetEnv MODEM_PASS ...)
+// e, se não existir, fica vazia.
 if (!defined('MODEM_PASS')) {
-    define('MODEM_PASS', '');
+    define('MODEM_PASS', getenv('MODEM_PASS') ?: '');
 }
 ?>

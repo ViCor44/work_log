@@ -6,5 +6,8 @@ gerar_licenca.php
 pools/cache/
 report_pdfs/*.pdf
 vendor/
+sessions/
+uploads/
+printscreen/
 config.local.php
 sessions/modem_token.json
