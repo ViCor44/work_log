@@ -97,6 +97,7 @@ $recipients = get_sms_recipients($conn);
     <div class="d-flex justify-content-between align-items-center mb-3">
         <h1 class="h3 mb-0">Estado de alarmes / SMS</h1>
         <div>
+            <a href="controller_raw.php" class="btn btn-outline-info btn-sm">Ver XML crú</a>
             <a href="sms_log.php" class="btn btn-outline-secondary btn-sm">Log completo</a>
             <a href="test_sms.php" class="btn btn-outline-secondary btn-sm">Enviar teste</a>
             <a href="../redirect_page.php" class="btn btn-secondary btn-sm">Voltar</a>

@@ -195,7 +195,11 @@ function process_controller_alarms(mysqli $conn, array $pool, array $data): void
 
     $current = extract_controller_alarms($data);
     if (empty($current)) {
-        return; // nenhum campo de alarme reconhecido no payload
+        // Não encontrou nenhum campo de alarme reconhecido. Registar as chaves
+        // do payload para podermos ver o que o XML deste controlador expõe.
+        $keys = is_array($data) ? array_keys($data) : [];
+        sms_alarm_log("tanque={$tankName} id={$tankId} SEM_CAMPOS_ALARME payload_keys=" . json_encode($keys));
+        return;
     }
     sms_alarm_log("tanque={$tankName} id={$tankId} alarmes_detetados=" . json_encode($current));
 
@@ -222,6 +226,13 @@ function process_controller_alarms(mysqli $conn, array $pool, array $data): void
                 $shouldSend = false;
             }
         }
+
+        // Log da decisão para cada tipo — ajuda a perceber porque não houve SMS.
+        $decision = $shouldSend ? 'SEND'
+                   : ($active === $wasActive ? 'NO_CHANGE'
+                       : ($active && $wasActive ? 'PERSIST' : 'CLEAR'));
+        sms_alarm_log("  tipo={$type} active=" . ($active ? '1' : '0')
+            . ' was_active=' . ($wasActive ? '1' : '0') . " -> {$decision}");
 
         $sentOk = false;
         if ($shouldSend) {
