@@ -1,6 +1,10 @@
 <?php
-require_once '../header.php'; // Usamos ../ para subir um nível de diretoria
+require_once dirname(__DIR__) . '/core.php';
 
+if (!isset($_SESSION['user_id'])) {
+    header('Location: ../login.php');
+    exit;
+}
 // ======================================================
 // == PASSO DE SEGURANÇA: SÓ ADMINS PODEM VER ESTA PÁGINA ==
 // ======================================================
@@ -10,6 +14,8 @@ if (!isset($_SESSION['user_type']) || $_SESSION['user_type'] !== 'admin') {
     header("Location: ../index.php");
     exit;
 }
+
+require_once '../header.php'; // Usamos ../ para subir um nível de diretoria
 
 // Busca todos os logs, ordenados do mais recente para o mais antigo
 // Fazemos um JOIN com a tabela de users para ir buscar o nome do utilizador

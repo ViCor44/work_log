@@ -1,11 +1,17 @@
 <?php
-require_once '../header.php';
+require_once dirname(__DIR__) . '/core.php';
 
+if (!isset($_SESSION['user_id'])) {
+    header('Location: ../login.php');
+    exit;
+}
 if (!isset($_SESSION['user_type']) || $_SESSION['user_type'] !== 'admin') {
     $_SESSION['error_message'] = "Acesso negado.";
     header("Location: ../index.php");
     exit;
 }
+
+require_once '../header.php';
 
 // Últimos 500 envios.
 $rows = [];
