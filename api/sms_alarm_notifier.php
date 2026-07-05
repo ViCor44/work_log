@@ -361,8 +361,14 @@ function process_controller_alarms(mysqli $conn, array $pool, array $data): void
         $shouldSendAny = false;
         $reason        = 'NO_CHANGE';
 
+        // Se acabou de entrar em alarme, considera "first_active_at" = agora
+        // para efeitos de cálculo de idade nesta iteração (o valor é persistido
+        // no upsert_alarm_state no fim do ciclo).
+        $effectiveFirstActive = $firstActiveAt;
         if ($active && !$wasActive) {
-            // Início de janela: não envia já. Vai aguardar os minutos de cada utilizador.
+            $effectiveFirstActive = date('Y-m-d H:i:s');
+            // Ainda marcamos como "arme" no log, mas utilizadores com min=0
+            // recebem já nesta iteração (ver bloco de envio abaixo).
             $reason = 'ARMED_WAIT_USER_MINUTES';
         } elseif ($active && $wasActive) {
             if ($firstActiveAt === null) {
@@ -384,7 +390,9 @@ function process_controller_alarms(mysqli $conn, array $pool, array $data): void
             . " -> {$decision}");
 
         $sentOk = false;
-        if (($active && $wasActive) || (!$active && $wasActive)) {
+        // Passa a considerar também a primeira detecção ($active && !$wasActive):
+        // utilizadores com min_minutes = 0 devem receber já.
+        if ($active || (!$active && $wasActive)) {
             if ($recipients === null) {
                 $recipients = get_sms_recipients($conn);
                 $client     = new TeltonikaSmsClient();
@@ -397,15 +405,17 @@ function process_controller_alarms(mysqli $conn, array $pool, array $data): void
                     if ($to === '') { continue; }
                     if (!user_wants_alarm($r, $type)) { continue; }
 
-                    if ($active && $wasActive) {
-                        if ($firstActiveAt === null) { continue; }
-                        $ageSec = time() - strtotime((string)$firstActiveAt);
+                    if ($active) {
+                        if ($effectiveFirstActive === null) { continue; }
+                        $ageSec = time() - strtotime((string)$effectiveFirstActive);
                         $ageMin = $ageSec / 60;
                         $minForUser = user_alarm_min_minutes($r, $type);
                         if ($ageMin < $minForUser) {
                             continue;
                         }
-                        if (was_event_sent_to_user_in_window($conn, $to, $tankId, $type, 'ALARME', $firstActiveAt)) {
+                        // Só verifica duplicado quando já tinha estado persistido
+                        // (evita chamada inútil na primeira iteração da janela).
+                        if ($wasActive && was_event_sent_to_user_in_window($conn, $to, $tankId, $type, 'ALARME', $firstActiveAt)) {
                             continue;
                         }
 
