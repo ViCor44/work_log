@@ -2,6 +2,15 @@
 // Este script corre automaticamente no servidor
 require_once dirname(__DIR__) . '/db.php';
 date_default_timezone_set('Europe/Lisbon');
+
+// Impede execuções concorrentes (evita rajadas de SMS duplicados quando o
+// cron dispara mais rápido do que o script termina).
+$__lock_fh = @fopen(sys_get_temp_dir() . DIRECTORY_SEPARATOR . 'worklog_check_lorawan.lock', 'c');
+if ($__lock_fh === false || !flock($__lock_fh, LOCK_EX | LOCK_NB)) {
+    if ($__lock_fh) { fclose($__lock_fh); }
+    exit("Verificação LoRaWAN já está em curso noutra instância. A sair.\n");
+}
+
 // Define o tempo limite em minutos. Se um dispositivo não enviar dados
 // por mais de 15 minutos, será considerado offline.
 $timeout_minutes = 10;
@@ -25,4 +34,10 @@ try {
 
 $conn->close();
 echo "Verificação de estado dos dispositivos LoRaWAN concluída.";
+
+// Liberta o lock ao terminar.
+if (isset($__lock_fh) && is_resource($__lock_fh)) {
+    flock($__lock_fh, LOCK_UN);
+    fclose($__lock_fh);
+}
 ?>

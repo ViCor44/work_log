@@ -3,6 +3,14 @@
 // Incluímos os ficheiros essenciais.
 require_once dirname(__DIR__) . '/core.php';
 
+// Impede execuções concorrentes deste worker (evita disparo múltiplo do mesmo
+// SMS quando o cron reinicia o script antes de o anterior terminar).
+$__lock_fh = @fopen(sys_get_temp_dir() . DIRECTORY_SEPARATOR . 'worklog_fetch_controller.lock', 'c');
+if ($__lock_fh === false || !flock($__lock_fh, LOCK_EX | LOCK_NB)) {
+    if ($__lock_fh) { fclose($__lock_fh); }
+    exit("fetch_controller_data já está em curso noutra instância. A sair.\n");
+}
+
 // ─── Logger para ficheiro ────────────────────────────────────────────────────
 // Escreve TUDO o que este worker faz em logs/fetch_controller_YYYY-MM-DD.log
 // Mantém também os logs em consola (echo) e em DB (log_system_action).
@@ -759,4 +767,10 @@ cleanup_old_controller_history($conn);
 $conn->close();
 echo "Processo concluído.\n";
 file_log('=== FIM worker fetch_controller_data ===');
+
+// Liberta o lock ao terminar.
+if (isset($__lock_fh) && is_resource($__lock_fh)) {
+    flock($__lock_fh, LOCK_UN);
+    fclose($__lock_fh);
+}
 ?>
