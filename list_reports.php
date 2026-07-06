@@ -202,9 +202,7 @@ $result = $stmt->get_result(); // O resultado da execução da query é atribuí
                                 <th>Detalhes</th>
                                 <th>Ações</th>
                                 <th>Impressão</th>
-                                <?php if ($is_admin == 'admin'): ?>
-                                    <th>Recebido</th>
-                                <?php endif; ?>
+                                <th>Recebido</th>
                             </tr>
                         </thead>
                         <tbody>
@@ -237,27 +235,26 @@ $result = $stmt->get_result(); // O resultado da execução da query é atribuí
                                 <td class="center-text">
                                     <input type="checkbox" class="printed-checkbox" data-id="<?= $row['id']; ?>" <?= $row['printed'] ? 'checked' : ''; ?>>
                                 </td>
-                                <?php if ($is_admin == 'admin'): ?>
-                                    <?php
-                                        $received_tooltip = '';
-                                        if (!empty($row['received']) && !empty($row['received_by_name'])) {
-                                            $received_tooltip = 'Recebido por ' . $row['received_by_name'];
-                                            if (!empty($row['received_at'])) {
-                                                $received_tooltip .= ' em ' . date('Y-m-d H:i', strtotime($row['received_at']));
-                                            }
+                                <?php
+                                    $received_tooltip = '';
+                                    if (!empty($row['received']) && !empty($row['received_by_name'])) {
+                                        $received_tooltip = 'Recebido por ' . $row['received_by_name'];
+                                        if (!empty($row['received_at'])) {
+                                            $received_tooltip .= ' em ' . date('Y-m-d H:i', strtotime($row['received_at']));
                                         }
-                                    ?>
-                                    <td class="center-text">
-                                        <span class="received-wrapper"
-                                              data-bs-toggle="tooltip"
-                                              title="<?= htmlspecialchars($received_tooltip); ?>">
-                                            <input type="checkbox"
-                                                   class="received-checkbox"
-                                                   data-id="<?= $row['id']; ?>"
-                                                   <?= !empty($row['received']) ? 'checked' : ''; ?>>
-                                        </span>
-                                    </td>
-                                <?php endif; ?>
+                                    }
+                                ?>
+                                <td class="center-text">
+                                    <span class="received-wrapper"
+                                          data-bs-toggle="tooltip"
+                                          title="<?= htmlspecialchars($received_tooltip); ?>">
+                                        <input type="checkbox"
+                                               class="received-checkbox"
+                                               data-id="<?= $row['id']; ?>"
+                                               <?= !empty($row['received']) ? 'checked' : ''; ?>
+                                               <?= $is_admin == 'admin' ? '' : 'disabled'; ?>>
+                                    </span>
+                                </td>
                             </tr>
                             <!-- Modal para visualização das fotos -->
                             <div class="modal fade" id="photoModal<?= $row['id']; ?>" tabindex="-1" aria-labelledby="photoModalLabel<?= $row['id']; ?>" aria-hidden="true">
