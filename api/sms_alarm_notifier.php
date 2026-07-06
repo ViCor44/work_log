@@ -539,7 +539,19 @@ function process_controller_alarms(mysqli $conn, array $pool, array $data): void
  */
 function build_alarm_message(string $tankName, string $type, string $event = 'ALARME', array $data = []): string
 {
-    $label = alarm_label($type);
+    // Etiquetas específicas para o evento OK (mais naturais que apenas
+    // acrescentar " normalizado" à etiqueta de ALARME).
+    $okLabels = [
+        'equipment_off' => 'Equipamento em funcionamento',
+        'lora_offline'  => 'LoRa online',
+    ];
+    if ($event === 'OK' && isset($okLabels[$type])) {
+        $label = $okLabels[$type];
+        $useSuffix = false;
+    } else {
+        $label = alarm_label($type);
+        $useSuffix = ($event === 'OK');
+    }
     $ts = date('d/m H:i');
 
     // Contexto numérico para alarmes químicos
@@ -555,7 +567,7 @@ function build_alarm_message(string $tankName, string $type, string $event = 'AL
     }
 
     $prefix = $event === 'OK' ? '[OK]' : '[ALARME]';
-    $suffix = $event === 'OK' ? ' normalizado' : '';
+    $suffix = $useSuffix ? ' normalizado' : '';
 
     $strip = [
         'á'=>'a','à'=>'a','â'=>'a','ã'=>'a',
