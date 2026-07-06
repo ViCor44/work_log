@@ -47,10 +47,13 @@ if (!empty($type_filter) && $type_filter !== 'Todos') {
 }
 
 if ($is_admin == 'admin') {
-    $sql = "SELECT r.id, r.report_date, r.execution_date, r.report_details, r.report_type, r.pdf_generated, r.printed, r.technician_id, 
-               CONCAT(u.first_name, ' ', u.last_name) AS technician_name
+    $sql = "SELECT r.id, r.report_date, r.execution_date, r.report_details, r.report_type, r.pdf_generated, r.printed,
+               r.received, r.received_at, r.technician_id,
+               CONCAT(u.first_name, ' ', u.last_name) AS technician_name,
+               CONCAT(a.first_name, ' ', a.last_name) AS received_by_name
             FROM reports r 
             JOIN users u ON r.technician_id = u.id
+            LEFT JOIN users a ON a.id = r.received_by
             WHERE (r.report_details LIKE ? OR u.first_name LIKE ?)" . $type_clause . "
             ORDER BY r.report_date DESC";
 
@@ -61,10 +64,13 @@ if ($is_admin == 'admin') {
         $stmt->bind_param("ss", $search_param, $search_param);
     }
 } else {
-    $sql = "SELECT r.id, r.report_date, r.execution_date, r.report_details, r.report_type, r.pdf_generated, r.printed, r.technician_id, 
-               CONCAT(u.first_name, ' ', u.last_name) AS technician_name 
+    $sql = "SELECT r.id, r.report_date, r.execution_date, r.report_details, r.report_type, r.pdf_generated, r.printed,
+               r.received, r.received_at, r.technician_id,
+               CONCAT(u.first_name, ' ', u.last_name) AS technician_name,
+               CONCAT(a.first_name, ' ', a.last_name) AS received_by_name
             FROM reports r 
             JOIN users u ON r.technician_id = u.id
+            LEFT JOIN users a ON a.id = r.received_by
             WHERE r.technician_id = ? AND r.report_details LIKE ?" . $type_clause . "
             ORDER BY r.report_date DESC";
 
@@ -196,6 +202,9 @@ $result = $stmt->get_result(); // O resultado da execução da query é atribuí
                                 <th>Detalhes</th>
                                 <th>Ações</th>
                                 <th>Impressão</th>
+                                <?php if ($is_admin == 'admin'): ?>
+                                    <th>Recebido</th>
+                                <?php endif; ?>
                             </tr>
                         </thead>
                         <tbody>
@@ -228,6 +237,27 @@ $result = $stmt->get_result(); // O resultado da execução da query é atribuí
                                 <td class="center-text">
                                     <input type="checkbox" class="printed-checkbox" data-id="<?= $row['id']; ?>" <?= $row['printed'] ? 'checked' : ''; ?>>
                                 </td>
+                                <?php if ($is_admin == 'admin'): ?>
+                                    <?php
+                                        $received_tooltip = '';
+                                        if (!empty($row['received']) && !empty($row['received_by_name'])) {
+                                            $received_tooltip = 'Recebido por ' . $row['received_by_name'];
+                                            if (!empty($row['received_at'])) {
+                                                $received_tooltip .= ' em ' . date('Y-m-d H:i', strtotime($row['received_at']));
+                                            }
+                                        }
+                                    ?>
+                                    <td class="center-text">
+                                        <span class="received-wrapper"
+                                              data-bs-toggle="tooltip"
+                                              title="<?= htmlspecialchars($received_tooltip); ?>">
+                                            <input type="checkbox"
+                                                   class="received-checkbox"
+                                                   data-id="<?= $row['id']; ?>"
+                                                   <?= !empty($row['received']) ? 'checked' : ''; ?>>
+                                        </span>
+                                    </td>
+                                <?php endif; ?>
                             </tr>
                             <!-- Modal para visualização das fotos -->
                             <div class="modal fade" id="photoModal<?= $row['id']; ?>" tabindex="-1" aria-labelledby="photoModalLabel<?= $row['id']; ?>" aria-hidden="true">
@@ -279,6 +309,16 @@ $result = $stmt->get_result(); // O resultado da execução da query é atribuí
 	<script src="/work_log/js/sweetalert2.all.min.js"></script>
 	
     <script>
+        // Inicializa tooltips do Bootstrap
+        function initTooltips() {
+            document.querySelectorAll('[data-bs-toggle="tooltip"]').forEach(el => {
+                const existing = bootstrap.Tooltip.getInstance(el);
+                if (existing) existing.dispose();
+                new bootstrap.Tooltip(el);
+            });
+        }
+        initTooltips();
+
         document.querySelectorAll('.printed-checkbox').forEach(checkbox => {
             checkbox.addEventListener('change', function() {
                 const reportId = this.getAttribute('data-id');
@@ -294,6 +334,62 @@ $result = $stmt->get_result(); // O resultado da execução da query é atribuí
                     }
                 };
                 xhr.send('report_id=' + reportId + '&printed=' + printed);
+            });
+        });
+
+        // Handler para o checkbox de "Recebido" (apenas admin)
+        document.querySelectorAll('.received-checkbox').forEach(checkbox => {
+            checkbox.addEventListener('change', function() {
+                const reportId = this.getAttribute('data-id');
+                const received = this.checked ? 1 : 0;
+                const wrapper = this.closest('.received-wrapper');
+                const originalTitle = wrapper ? wrapper.getAttribute('title') || '' : '';
+
+                const formData = new URLSearchParams();
+                formData.append('report_id', reportId);
+                formData.append('received', received);
+
+                fetch('update_received_status.php', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                    body: formData.toString()
+                })
+                .then(r => r.json())
+                .then(data => {
+                    if (!data || !data.success) {
+                        // reverte estado em caso de erro
+                        this.checked = !this.checked;
+                        Swal.fire({
+                            icon: 'error',
+                            title: 'Erro',
+                            text: (data && data.message) ? data.message : 'Não foi possível atualizar o estado.'
+                        });
+                        return;
+                    }
+                    if (wrapper) {
+                        let newTitle = '';
+                        if (data.received && data.received_by) {
+                            newTitle = 'Recebido por ' + data.received_by;
+                            if (data.received_at) {
+                                newTitle += ' em ' + data.received_at.substring(0, 16).replace('T', ' ');
+                            }
+                        }
+                        wrapper.setAttribute('title', newTitle);
+                        wrapper.setAttribute('data-bs-original-title', newTitle);
+                        const tip = bootstrap.Tooltip.getInstance(wrapper);
+                        if (tip) tip.dispose();
+                        new bootstrap.Tooltip(wrapper);
+                    }
+                })
+                .catch(err => {
+                    this.checked = !this.checked;
+                    console.error(err);
+                    Swal.fire({
+                        icon: 'error',
+                        title: 'Erro',
+                        text: 'Falha na comunicação com o servidor.'
+                    });
+                });
             });
         });
 
