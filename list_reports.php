@@ -48,7 +48,7 @@ if (!empty($type_filter) && $type_filter !== 'Todos') {
 
 if ($is_admin == 'admin') {
     $sql = "SELECT r.id, r.report_date, r.execution_date, r.report_details, r.report_type, r.pdf_generated, r.printed,
-               r.received, r.received_at, r.technician_id,
+               r.received, r.received_by, r.received_at, r.technician_id,
                CONCAT(u.first_name, ' ', u.last_name) AS technician_name,
                CONCAT(a.first_name, ' ', a.last_name) AS received_by_name
             FROM reports r 
@@ -65,7 +65,7 @@ if ($is_admin == 'admin') {
     }
 } else {
     $sql = "SELECT r.id, r.report_date, r.execution_date, r.report_details, r.report_type, r.pdf_generated, r.printed,
-               r.received, r.received_at, r.technician_id,
+               r.received, r.received_by, r.received_at, r.technician_id,
                CONCAT(u.first_name, ' ', u.last_name) AS technician_name,
                CONCAT(a.first_name, ' ', a.last_name) AS received_by_name
             FROM reports r 
@@ -243,6 +243,17 @@ $result = $stmt->get_result(); // O resultado da execução da query é atribuí
                                             $received_tooltip .= ' em ' . date('Y-m-d H:i', strtotime($row['received_at']));
                                         }
                                     }
+
+                                    // Regras de edição:
+                                    // - Não-admin: sempre disabled
+                                    // - Admin: pode marcar/desmarcar apenas se ainda não estiver recebido
+                                    //          ou se tiver sido ele próprio a receber
+                                    $can_edit_received = false;
+                                    if ($is_admin == 'admin') {
+                                        if (empty($row['received']) || (int) $row['received_by'] === (int) $user_id) {
+                                            $can_edit_received = true;
+                                        }
+                                    }
                                 ?>
                                 <td class="center-text">
                                     <span class="received-wrapper"
@@ -252,7 +263,7 @@ $result = $stmt->get_result(); // O resultado da execução da query é atribuí
                                                class="received-checkbox"
                                                data-id="<?= $row['id']; ?>"
                                                <?= !empty($row['received']) ? 'checked' : ''; ?>
-                                               <?= $is_admin == 'admin' ? '' : 'disabled'; ?>>
+                                               <?= $can_edit_received ? '' : 'disabled'; ?>>
                                     </span>
                                 </td>
                             </tr>
