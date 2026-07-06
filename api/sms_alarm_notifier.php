@@ -389,6 +389,34 @@ function process_controller_alarms(mysqli $conn, array $pool, array $data): void
         $shouldSendAny = false;
         $reason        = 'NO_CHANGE';
 
+        // Histerese para alarmes químicos: se o alarme já estava ATIVO e o valor
+        // apenas roçou a normalidade, mantém-o ativo para evitar SMS repetidos
+        // por flapping ao redor do limite.
+        if ($wasActive && !$active) {
+            $cloro   = sms_float_or_null($data['freeChlorine'] ?? null);
+            $ph      = sms_float_or_null($data['pH'] ?? null);
+            $hCloro  = defined('LIMIT_CLORO_HYST') ? (float)LIMIT_CLORO_HYST : 0.0;
+            $hPh     = defined('LIMIT_PH_HYST')    ? (float)LIMIT_PH_HYST    : 0.0;
+            $lCMin   = defined('LIMIT_CLORO_MIN')  ? (float)LIMIT_CLORO_MIN  : 1.0;
+            $lCMax   = defined('LIMIT_CLORO_MAX')  ? (float)LIMIT_CLORO_MAX  : 3.0;
+            $lPhMin  = defined('LIMIT_PH_MIN')     ? (float)LIMIT_PH_MIN     : 7.0;
+            $lPhMax  = defined('LIMIT_PH_MAX')     ? (float)LIMIT_PH_MAX     : 7.8;
+
+            if ($type === 'cloro_alto' && $cloro !== null && $cloro > ($lCMax - $hCloro)) {
+                $active = true;
+                sms_alarm_log("  tipo={$type} HISTERESE cloro={$cloro} > " . ($lCMax - $hCloro) . " -> mantem_ativo");
+            } elseif ($type === 'cloro_baixo' && $cloro !== null && $cloro < ($lCMin + $hCloro)) {
+                $active = true;
+                sms_alarm_log("  tipo={$type} HISTERESE cloro={$cloro} < " . ($lCMin + $hCloro) . " -> mantem_ativo");
+            } elseif ($type === 'ph_alto' && $ph !== null && $ph > ($lPhMax - $hPh)) {
+                $active = true;
+                sms_alarm_log("  tipo={$type} HISTERESE ph={$ph} > " . ($lPhMax - $hPh) . " -> mantem_ativo");
+            } elseif ($type === 'ph_baixo' && $ph !== null && $ph < ($lPhMin + $hPh)) {
+                $active = true;
+                sms_alarm_log("  tipo={$type} HISTERESE ph={$ph} < " . ($lPhMin + $hPh) . " -> mantem_ativo");
+            }
+        }
+
         // Se acabou de entrar em alarme, considera "first_active_at" = agora
         // para efeitos de cálculo de idade nesta iteração (o valor é persistido
         // no upsert_alarm_state no fim do ciclo).

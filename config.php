@@ -40,6 +40,14 @@ define('LIMIT_CLORO_MAX', 3.0);
 define('LIMIT_PH_MIN',    7.0);
 define('LIMIT_PH_MAX',    7.8);
 
+// Histerese (zona morta) para alarmes químicos. Um alarme já ATIVO só é
+// considerado limpo quando o valor recua pelo menos esta margem para dentro
+// dos limites (evita flapping perto do limiar e SMS repetidos).
+//   Ex.: cloro_alto disparado com 3.05 só limpa quando cair abaixo de
+//        LIMIT_CLORO_MAX - LIMIT_CLORO_HYST = 3.0 - 0.2 = 2.8.
+define('LIMIT_CLORO_HYST', 0.2);
+define('LIMIT_PH_HYST',    0.15);
+
 // Ficheiro onde é guardado o token em cache (evita login em cada envio)
 define('MODEM_TOKEN_FILE', __DIR__ . '/sessions/modem_token.json');
 
