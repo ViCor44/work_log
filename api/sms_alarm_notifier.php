@@ -101,6 +101,7 @@ function alarm_label(string $type): string
         'ph_alto'             => 'pH alto',
         'lora_offline'        => 'LoRa offline (sem sinal)',
         'equipment_off'       => 'Equipamento desligado',
+        'perlite_change_due'  => 'Substituir perlite (falta 1 dia)',
     ];
     return $map[$type] ?? $type;
 }
@@ -119,6 +120,9 @@ function sms_alarm_group(string $type): string
     if ($type === 'equipment_off') {
         return 'equipment_off';
     }
+    if ($type === 'perlite_change_due') {
+        return 'perlite';
+    }
     return 'controller';
 }
 
@@ -135,6 +139,7 @@ function get_sms_recipients(mysqli $conn): array
                       COALESCE(receive_sms_chemical, receive_sms_alarms) AS receive_sms_chemical,
                       COALESCE(receive_sms_lora_offline, receive_sms_alarms) AS receive_sms_lora_offline,
                       COALESCE(receive_sms_equipment_off, receive_sms_alarms) AS receive_sms_equipment_off,
+                      COALESCE(receive_sms_perlite, receive_sms_alarms) AS receive_sms_perlite,
                       COALESCE(sms_alarm_min_minutes, {$defaultMin}) AS sms_alarm_min_minutes
                FROM users
                WHERE receive_sms_alarms = 1
@@ -151,6 +156,7 @@ function get_sms_recipients(mysqli $conn): array
                       receive_sms_alarms AS receive_sms_chemical,
                       receive_sms_alarms AS receive_sms_lora_offline,
                       receive_sms_alarms AS receive_sms_equipment_off,
+                      receive_sms_alarms AS receive_sms_perlite,
                       {$defaultMin} AS sms_alarm_min_minutes
                FROM users
                WHERE receive_sms_alarms = 1
@@ -183,6 +189,9 @@ function user_wants_alarm(array $user, string $type): bool
     }
     if ($group === 'equipment_off') {
         return !empty($user['receive_sms_equipment_off']);
+    }
+    if ($group === 'perlite') {
+        return !empty($user['receive_sms_perlite']);
     }
     return true;
 }
@@ -542,8 +551,9 @@ function build_alarm_message(string $tankName, string $type, string $event = 'AL
     // Etiquetas específicas para o evento OK (mais naturais que apenas
     // acrescentar " normalizado" à etiqueta de ALARME).
     $okLabels = [
-        'equipment_off' => 'Equipamento em funcionamento',
-        'lora_offline'  => 'LoRa online',
+        'equipment_off'      => 'Equipamento em funcionamento',
+        'lora_offline'       => 'LoRa online',
+        'perlite_change_due' => 'Perlite substituida',
     ];
     if ($event === 'OK' && isset($okLabels[$type])) {
         $label = $okLabels[$type];
@@ -681,4 +691,82 @@ function process_lora_alarms(mysqli $conn): void
             upsert_alarm_state($conn, $stateKey, $type, (bool)$active, $sentOk, (bool)$wasActive);
         }
     }
+}
+
+/**
+ * Convenção de chave de estado para filtros (evita colisão com tanks / lora):
+ *   tank_id = -(1000000 + filter_id).
+ */
+function filter_perlite_state_key(int $filterId): int
+{
+    return -(1000000 + $filterId);
+}
+
+/**
+ * Processa o alarme "falta 1 dia para trocar perlite" de um filtro específico.
+ * Chamado a partir de pools/get_filter_modbus_data.php após a leitura Modbus.
+ *
+ * Trigger:
+ *   - ALARME: remaining_time <= FILTER_PERLITE_ALERT_DAYS (default 1)
+ *   - OK    : remaining_time  > FILTER_PERLITE_ALERT_DAYS após ter estado ativo
+ */
+function process_filter_perlite_alarm(mysqli $conn, int $filterId, string $filterName, $remainingDays): void
+{
+    if (!defined('SMS_ENABLED') || !SMS_ENABLED) {
+        return;
+    }
+    $remaining = sms_float_or_null($remainingDays);
+    if ($remaining === null) {
+        return;
+    }
+    $threshold = defined('FILTER_PERLITE_ALERT_DAYS') ? (float)FILTER_PERLITE_ALERT_DAYS : 1.0;
+
+    $type      = 'perlite_change_due';
+    $stateKey  = filter_perlite_state_key($filterId);
+    $active    = ($remaining <= $threshold);
+
+    $prev      = get_alarm_state($conn, $stateKey, $type);
+    $wasActive = $prev ? (int)$prev['is_active'] === 1 : false;
+
+    $shouldSend = false;
+    $event      = null;
+    if ($active && !$wasActive)      { $shouldSend = true; $event = 'ALARME'; }
+    elseif (!$active && $wasActive)  { $shouldSend = true; $event = 'OK'; }
+
+    sms_alarm_log("filtro={$filterName} id={$filterId} restantes={$remaining}d thr={$threshold}d"
+        . ' active=' . ($active ? '1' : '0') . ' was=' . ($wasActive ? '1' : '0')
+        . ' -> ' . ($shouldSend ? "SEND({$event})" : 'NO_CHANGE'));
+
+    $sentOk = false;
+    if ($shouldSend) {
+        $recipients = get_sms_recipients($conn);
+        if (!empty($recipients)) {
+            $client = new TeltonikaSmsClient();
+            $msg = build_alarm_message($filterName, $type, $event);
+            foreach ($recipients as $r) {
+                $to = trim((string)$r['phone']);
+                if ($to === '') { continue; }
+                if (!user_wants_alarm($r, $type)) { continue; }
+                // Defesa concorrente / on-view: várias abas / recargas podem
+                // disparar em segundos — não repetir o mesmo SMS em 30s.
+                if (was_recently_sent($conn, $to, $stateKey, $type, 30)) {
+                    sms_alarm_log("SMS perlite to={$to} filtro={$filterName} SKIP_DUP_30s");
+                    continue;
+                }
+                $r2 = $client->send($to, $msg);
+                $status  = $r2['ok'] ? 'sent' : 'failed';
+                $respTxt = $r2['ok'] ? (is_string($r2['response']) ? $r2['response'] : json_encode($r2['response']))
+                                     : ($r2['error'] ?? '');
+                log_sms($conn, $to, $msg, $status, $respTxt, $stateKey, $type);
+                sms_alarm_log("SMS perlite to={$to} filtro={$filterName} event={$event} status={$status} resp=" . substr($respTxt, 0, 200));
+                if ($r2['ok']) { $sentOk = true; }
+            }
+        } else {
+            sms_alarm_log('SEM DESTINATARIOS (perlite)');
+            log_sms($conn, '(sem destinatarios)', "[SKIPPED] sem destinatarios perlite {$filterName}",
+                    'skipped', 'Nenhum utilizador com receive_sms_alarms=1', $stateKey, $type);
+        }
+    }
+
+    upsert_alarm_state($conn, $stateKey, $type, $active, $sentOk, $wasActive);
 }

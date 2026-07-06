@@ -15,6 +15,7 @@ function ensure_sms_pref_columns(mysqli $conn): void
     $conn->query("ALTER TABLE users ADD COLUMN IF NOT EXISTS receive_sms_chemical TINYINT(1) NOT NULL DEFAULT 1");
     $conn->query("ALTER TABLE users ADD COLUMN IF NOT EXISTS receive_sms_lora_offline TINYINT(1) NOT NULL DEFAULT 1");
     $conn->query("ALTER TABLE users ADD COLUMN IF NOT EXISTS receive_sms_equipment_off TINYINT(1) NOT NULL DEFAULT 1");
+    $conn->query("ALTER TABLE users ADD COLUMN IF NOT EXISTS receive_sms_perlite TINYINT(1) NOT NULL DEFAULT 1");
     $conn->query("ALTER TABLE users ADD COLUMN IF NOT EXISTS sms_alarm_min_minutes INT NOT NULL DEFAULT 17");
 }
 
@@ -28,6 +29,7 @@ $stmt = $conn->prepare("SELECT id, first_name, last_name, email, phone, user_typ
                                COALESCE(receive_sms_chemical, receive_sms_alarms) AS receive_sms_chemical,
                                COALESCE(receive_sms_lora_offline, receive_sms_alarms) AS receive_sms_lora_offline,
                                COALESCE(receive_sms_equipment_off, receive_sms_alarms) AS receive_sms_equipment_off,
+                               COALESCE(receive_sms_perlite, receive_sms_alarms) AS receive_sms_perlite,
                                COALESCE(sms_alarm_min_minutes, 17) AS sms_alarm_min_minutes
                         FROM users");
 if ($stmt) {
@@ -45,6 +47,7 @@ if ($stmt) {
         $receive_sms_chemical,
         $receive_sms_lora_offline,
         $receive_sms_equipment_off,
+        $receive_sms_perlite,
         $sms_alarm_min_minutes
     );
     while ($stmt->fetch()) {
@@ -61,6 +64,7 @@ if ($stmt) {
             'receive_sms_chemical' => $receive_sms_chemical,
             'receive_sms_lora_offline' => $receive_sms_lora_offline,
             'receive_sms_equipment_off' => $receive_sms_equipment_off,
+            'receive_sms_perlite' => $receive_sms_perlite,
             'sms_alarm_min_minutes' => $sms_alarm_min_minutes,
         ];
     }
@@ -115,6 +119,7 @@ if ($stmt) {
                         <?= !empty($user['receive_sms_chemical']) ? 'Quim ' : ''; ?>
                         <?= !empty($user['receive_sms_lora_offline']) ? 'LoRaOff ' : ''; ?>
                         <?= !empty($user['receive_sms_equipment_off']) ? 'EquipOff ' : ''; ?>
+                        <?= !empty($user['receive_sms_perlite']) ? 'Perlite ' : ''; ?>
                         (<?= (int)$user['sms_alarm_min_minutes']; ?> min)
                     <?php else: ?>
                         Desativado

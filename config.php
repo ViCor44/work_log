@@ -48,6 +48,11 @@ define('LIMIT_PH_MAX',    7.8);
 define('LIMIT_CLORO_HYST', 0.2);
 define('LIMIT_PH_HYST',    0.15);
 
+// Alerta de troca de perlite nos filtros: dispara SMS quando o tempo
+// restante (em dias) devolvido pelo controlador Modbus é <= a este valor.
+// A leitura acontece nas chamadas AJAX do dashboard dos filtros.
+define('FILTER_PERLITE_ALERT_DAYS', 1.0);
+
 // Ficheiro onde é guardado o token em cache (evita login em cada envio)
 define('MODEM_TOKEN_FILE', __DIR__ . '/sessions/modem_token.json');
 

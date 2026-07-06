@@ -45,4 +45,5 @@ ALTER TABLE `users`
     ADD COLUMN IF NOT EXISTS `receive_sms_chemical` TINYINT(1) NOT NULL DEFAULT 1,
     ADD COLUMN IF NOT EXISTS `receive_sms_lora_offline` TINYINT(1) NOT NULL DEFAULT 1,
     ADD COLUMN IF NOT EXISTS `receive_sms_equipment_off` TINYINT(1) NOT NULL DEFAULT 1,
+    ADD COLUMN IF NOT EXISTS `receive_sms_perlite` TINYINT(1) NOT NULL DEFAULT 1,
     ADD COLUMN IF NOT EXISTS `sms_alarm_min_minutes` INT NOT NULL DEFAULT 17;

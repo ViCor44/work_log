@@ -602,8 +602,7 @@ $feedback_word    = isset($regs[33]) ? $regs[33] : 0;
 $estimatedPerliteChangeAt = null;
 $usingEstimatedPerliteDate = false;
 
-if ($lastPerliteChangeAt === null && $interval_perlite !== null && $remaining_time !== null) {
-    $elapsedDays = (float)$interval_perlite - (float)$remaining_time;
+if ($lastPerliteChangeAt === null && $interval_perlite !== null && $remaining_time !== null) {    $elapsedDays = (float)$interval_perlite - (float)$remaining_time;
     // Aceita atraso (remaining negativo): ex. intervalo 7, restante -18 => 25 dias decorridos.
     // Limita só para evitar datas absurdas por ruído de leitura.
     $maxElapsedDays = max(30.0, abs((float)$interval_perlite) * 12.0);
@@ -646,6 +645,24 @@ if ($perliteTrackingSupported && $charging_cycles !== null) {
             $updateCycles->execute();
             $updateCycles->close();
         }
+    }
+}
+
+// Avalia alarme de troca de perlite (SMS quando faltar 1 dia ou menos).
+// A chamada é on-view (executada em cada leitura AJAX do dashboard) e
+// interna­mente só envia SMS na transição, com dedup de 30s.
+if ($remaining_time !== null) {
+    require_once dirname(__DIR__) . '/api/sms_alarm_notifier.php';
+    try {
+        process_filter_perlite_alarm(
+            $conn,
+            $filter_id,
+            (string)$filter['name'],
+            (float)$remaining_time
+        );
+    } catch (\Throwable $e) {
+        // Nunca deixar o notifier partir a resposta JSON do dashboard.
+        error_log('[perlite_sms] ' . $e->getMessage());
     }
 }
 
