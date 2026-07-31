@@ -95,11 +95,11 @@ $isViewer = isset($_SESSION['user_type']) && $_SESSION['user_type'] === 'viewer'
         color: var(--scada-text-secondary);
         margin-left: 4px;
     }
-    
+
     .alarm-content { display: none; }
     .scada-card.status-alarm .list-group, .scada-card.status-alarm .card-footer { display: none; }
     .scada-card.status-alarm .alarm-content { display: block; }
-    
+
     .scada-card a { color: inherit; text-decoration: none; }
 
     @keyframes pulse-red-bs { 
@@ -218,11 +218,11 @@ $isViewer = isset($_SESSION['user_type']) && $_SESSION['user_type'] === 'viewer'
         text-align: center;
         display: none;
     }
-    .perlite-overview { background:#212529; border:1px solid var(--scada-border-color); border-left:4px solid #0dcaf0; color:var(--scada-text-primary); }
-    .perlite-overview-header { padding:12px 16px; border-bottom:1px solid var(--scada-border-color); }
-    .perlite-overview .table { --bs-table-bg:transparent; --bs-table-color:var(--scada-text-primary); --bs-table-border-color:var(--scada-border-color); margin-bottom:0; }
-    .perlite-overview .table th { color:var(--scada-text-secondary); font-size:.72rem; font-weight:600; text-transform:uppercase; }
-    .perlite-overview .table td, .perlite-overview .table th { padding:9px 16px; vertical-align:middle; }
+
+
+    .perlite-modal .table { --bs-table-bg:transparent; --bs-table-color:var(--scada-text-primary); --bs-table-border-color:var(--scada-border-color); margin-bottom:0; }
+    .perlite-modal .table th { color:var(--scada-text-secondary); font-size:.72rem; font-weight:600; text-transform:uppercase; }
+    .perlite-modal .table td, .perlite-modal .table th { padding:9px 16px; vertical-align:middle; }
     .perlite-days-badge { display:inline-block; min-width:108px; text-align:center; }
     .filtro-footer {
         background-color: var(--scada-section-bg);
@@ -243,6 +243,10 @@ $isViewer = isset($_SESSION['user_type']) && $_SESSION['user_type'] === 'viewer'
             <?php endif; ?>
         </h1>
         <div class="d-flex gap-2">
+            <button type="button" class="btn btn-info text-dark" data-bs-toggle="modal" data-bs-target="#perliteOverviewModal">
+                <i class="fas fa-calendar-alt me-1"></i>Mudanças de perlite
+            </button>
+
             <?php if (!$isViewer): ?>
             <button type="button" id="btnGlobalHaToggle" class="btn btn-outline-warning" data-state="off" title="Liga/desliga Alta Afluência em todos os tanques com SP dinâmico ativo.">
                 🏊 Alta afluência GLOBAL: <span id="globalHaState">OFF</span>
@@ -257,12 +261,6 @@ $isViewer = isset($_SESSION['user_type']) && $_SESSION['user_type'] === 'viewer'
         </div>
     </div>
 
-    <section class="perlite-overview mb-4" aria-labelledby="perlite-overview-title">
-      <div class="perlite-overview-header d-flex justify-content-between"><h2 class="h6 mb-0" id="perlite-overview-title"><i class="fas fa-calendar-alt text-info me-2"></i>Próximas mudanças de perlite</h2><span class="text-secondary">Atualização em tempo real</span></div>
-      <div class="table-responsive"><table class="table table-sm align-middle"><thead><tr><th>Filtro</th><th>Data estimada</th><th class="text-end">Tempo restante</th></tr></thead><tbody>
-      <?php if (!empty($filters)): foreach ($filters as $filter): ?><tr><td class="fw-semibold"><?= htmlspecialchars($filter['name']) ?></td><td id="perlite-date-<?= $filter['id'] ?>" class="font-monospace text-secondary">A aguardar...</td><td class="text-end"><span id="perlite-days-<?= $filter['id'] ?>" class="badge bg-secondary perlite-days-badge">A aguardar...</span></td></tr><?php endforeach; else: ?><tr><td colspan="3" class="text-center text-secondary">Nenhum filtro configurado.</td></tr><?php endif; ?>
-      </tbody></table></div>
-    </section>
     <ul class="nav nav-tabs" id="dashboardTabs" role="tablist">
         <li class="nav-item" role="presentation">
             <button class="nav-link active" id="piscinas-tab" data-bs-toggle="tab" data-bs-target="#piscinas-pane" type="button" role="tab">
@@ -287,7 +285,7 @@ $isViewer = isset($_SESSION['user_type']) && $_SESSION['user_type'] === 'viewer'
     </ul>
 
     <div class="tab-content pt-4" id="dashboardTabsContent">
-        
+
         <div class="tab-pane fade show active" id="piscinas-pane" role="tabpanel">
             <div class="dashboard-grid" id="dashboard-container-piscinas">
                 <?php foreach ($pools as $pool): ?>
@@ -324,7 +322,7 @@ $isViewer = isset($_SESSION['user_type']) && $_SESSION['user_type'] === 'viewer'
                 <?php endforeach; ?>
             </div>
         </div>
-        
+
         <div class="tab-pane fade" id="lora-pane" role="tabpanel">
             <div class="dashboard-grid" id="dashboard-container-lora">
                 <div class="text-center p-4 text-muted"><i class="fas fa-spinner fa-spin"></i> A carregar estado da rede...</div>
@@ -445,6 +443,22 @@ $isViewer = isset($_SESSION['user_type']) && $_SESSION['user_type'] === 'viewer'
     </div>
 </div>
 
+<div class="modal fade perlite-modal" id="perliteOverviewModal" tabindex="-1" aria-labelledby="perliteOverviewModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg modal-dialog-scrollable">
+        <div class="modal-content" style="background:#212529;color:#dee2e6;border:1px solid #495057">
+            <div class="modal-header" style="border-bottom:1px solid #495057">
+                <div><h5 class="modal-title" id="perliteOverviewModalLabel"><i class="fas fa-calendar-alt text-info me-2"></i>Próximas mudanças de perlite</h5><div class="text-secondary" style="font-size:.8rem">Atualização em tempo real</div></div>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Fechar"></button>
+            </div>
+            <div class="modal-body p-0"><div class="table-responsive"><table class="table table-sm align-middle">
+                <thead><tr><th>Filtro</th><th>Data estimada</th><th class="text-end">Tempo restante</th></tr></thead><tbody>
+                <?php if (!empty($filters)): foreach ($filters as $filter): ?><tr><td class="fw-semibold"><?= htmlspecialchars($filter['name']) ?></td><td id="perlite-date-<?= $filter['id'] ?>" class="font-monospace text-secondary">A aguardar...</td><td class="text-end"><span id="perlite-days-<?= $filter['id'] ?>" class="badge bg-secondary perlite-days-badge">A aguardar...</span></td></tr><?php endforeach; else: ?><tr><td colspan="3" class="text-center text-secondary py-3">Nenhum filtro configurado.</td></tr><?php endif; ?>
+                </tbody>
+            </table></div></div>
+            <div class="modal-footer" style="border-top:1px solid #495057"><button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Fechar</button></div>
+        </div>
+    </div>
+</div>
 <!-- Modal detalhe Filtro Defender -->
 <div class="modal fade" id="filtroDetailModal" tabindex="-1" aria-labelledby="filtroDetailModalLabel" aria-hidden="true">
     <div class="modal-dialog modal-lg modal-dialog-scrollable">
@@ -914,7 +928,7 @@ document.addEventListener('DOMContentLoaded', function() {
         try {
             const response = await fetch(`get_controller_data.php?ip=${ip}`);
             if (!response.ok) throw new Error("HTTP " + response.status);
-            
+
 const data = await response.json();
 if (data.error) throw new Error(data.error);
 
@@ -1065,7 +1079,7 @@ function createLoraCard(device) {
         </a>
     `;
 }
-    
+
     async function updateMedidaCard(cardElement) {
         const ip = cardElement.dataset.ip;
         const meterId = cardElement.id.split('-')[2];
@@ -1348,7 +1362,7 @@ function createLoraCard(device) {
             const response = await fetch('../api/get_lorawan_status.php');
             const devices = await response.json();
             if (devices.error) throw new Error(devices.error);
-            
+
             if (devices.length > 0) {
                 loraContainer.innerHTML = devices.map(createLoraCard).join('');
             } else {
