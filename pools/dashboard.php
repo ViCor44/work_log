@@ -218,6 +218,12 @@ $isViewer = isset($_SESSION['user_type']) && $_SESSION['user_type'] === 'viewer'
         text-align: center;
         display: none;
     }
+    .perlite-overview { background:#212529; border:1px solid var(--scada-border-color); border-left:4px solid #0dcaf0; color:var(--scada-text-primary); }
+    .perlite-overview-header { padding:12px 16px; border-bottom:1px solid var(--scada-border-color); }
+    .perlite-overview .table { --bs-table-bg:transparent; --bs-table-color:var(--scada-text-primary); --bs-table-border-color:var(--scada-border-color); margin-bottom:0; }
+    .perlite-overview .table th { color:var(--scada-text-secondary); font-size:.72rem; font-weight:600; text-transform:uppercase; }
+    .perlite-overview .table td, .perlite-overview .table th { padding:9px 16px; vertical-align:middle; }
+    .perlite-days-badge { display:inline-block; min-width:108px; text-align:center; }
     .filtro-footer {
         background-color: var(--scada-section-bg);
         border-top: 1px solid var(--scada-border-color);
@@ -251,6 +257,12 @@ $isViewer = isset($_SESSION['user_type']) && $_SESSION['user_type'] === 'viewer'
         </div>
     </div>
 
+    <section class="perlite-overview mb-4" aria-labelledby="perlite-overview-title">
+      <div class="perlite-overview-header d-flex justify-content-between"><h2 class="h6 mb-0" id="perlite-overview-title"><i class="fas fa-calendar-alt text-info me-2"></i>Próximas mudanças de perlite</h2><span class="text-secondary">Atualização em tempo real</span></div>
+      <div class="table-responsive"><table class="table table-sm align-middle"><thead><tr><th>Filtro</th><th>Data estimada</th><th class="text-end">Tempo restante</th></tr></thead><tbody>
+      <?php if (!empty($filters)): foreach ($filters as $filter): ?><tr><td class="fw-semibold"><?= htmlspecialchars($filter['name']) ?></td><td id="perlite-date-<?= $filter['id'] ?>" class="font-monospace text-secondary">A aguardar...</td><td class="text-end"><span id="perlite-days-<?= $filter['id'] ?>" class="badge bg-secondary perlite-days-badge">A aguardar...</span></td></tr><?php endforeach; else: ?><tr><td colspan="3" class="text-center text-secondary">Nenhum filtro configurado.</td></tr><?php endif; ?>
+      </tbody></table></div>
+    </section>
     <ul class="nav nav-tabs" id="dashboardTabs" role="tablist">
         <li class="nav-item" role="presentation">
             <button class="nav-link active" id="piscinas-tab" data-bs-toggle="tab" data-bs-target="#piscinas-pane" type="button" role="tab">
@@ -498,6 +510,10 @@ function getPerliteExceededDays(data) {
     const remaining = data && data.remaining_time != null ? parseFloat(data.remaining_time) : null;
     if (!Number.isFinite(remaining) || remaining >= 0) return null;
     return Math.abs(remaining);
+}
+
+function getEstimatedPerliteReplacementDate(remainingDays) {
+    return Number.isFinite(remainingDays) ? new Date(Date.now() + remainingDays * 86400000) : null;
 }
 
 function lsIndicator(open, closed) {
@@ -1111,6 +1127,8 @@ function createLoraCard(device) {
         const bumpCycleEl = document.getElementById(`filtro-bump-cycle-${filterId}`);
         const perliteWarningEl = document.getElementById(`filtro-perlite-warning-${filterId}`);
         const perliteBadgeEl = document.getElementById(`filtro-perlite-badge-${filterId}`);
+        const perliteDateEl = document.getElementById(`perlite-date-${filterId}`);
+        const perliteDaysEl = document.getElementById(`perlite-days-${filterId}`);
 
         const metricsEl   = cardElement.querySelector('.filtro-metrics');
         const statePanelEl = cardElement.querySelector('.filtro-state-panel');
@@ -1212,12 +1230,29 @@ function createLoraCard(device) {
             }
 
             const perliteDue = isPerliteReplacementDue(data);
+            const remainingDays = data.remaining_time != null ? parseFloat(data.remaining_time) : null;
+            if (Number.isFinite(remainingDays)) {
+                setTextIfChanged(perliteDateEl, getEstimatedPerliteReplacementDate(remainingDays).toLocaleDateString('pt-PT'));
+                if (perliteDateEl) perliteDateEl.className = 'font-monospace';
+                if (perliteDue) {
+                    const exceededDays = Math.abs(remainingDays);
+                    setClassIfChanged(perliteDaysEl, 'badge bg-danger perlite-days-badge');
+                    setTextIfChanged(perliteDaysEl, exceededDays < .05 ? 'Trocar hoje' : `Atrasada ${exceededDays.toFixed(1)} d`);
+                } else {
+                    const badgeClass = remainingDays <= 1 ? 'bg-danger' : (remainingDays < 5 ? 'bg-warning text-dark' : 'bg-success');
+                    setClassIfChanged(perliteDaysEl, `badge ${badgeClass} perlite-days-badge`);
+                    setTextIfChanged(perliteDaysEl, `Faltam ${remainingDays.toFixed(1)} d`);
+                }
+            } else {
+                setTextIfChanged(perliteDateEl, 'Não disponível');
+                setClassIfChanged(perliteDaysEl, 'badge bg-secondary perlite-days-badge');
+                setTextIfChanged(perliteDaysEl, 'Sem dados');
+            }
             if (perliteWarningEl) {
                 const disp = perliteDue ? '' : 'none';
                 if (perliteWarningEl.style.display !== disp) perliteWarningEl.style.display = disp;
             }
             if (perliteBadgeEl) {
-                const remainingDays = data.remaining_time != null ? parseFloat(data.remaining_time) : null;
                 if (perliteBadgeEl.style.display !== 'inline-block') perliteBadgeEl.style.display = 'inline-block';
                 let cls, txt, ttl;
                 if (perliteDue) {
@@ -1282,6 +1317,10 @@ function createLoraCard(device) {
                 perliteBadgeEl.title = '';
                 perliteBadgeEl.removeAttribute('aria-label');
             }
+
+            setTextIfChanged(perliteDateEl, 'Offline');
+            setClassIfChanged(perliteDaysEl, 'badge bg-danger perlite-days-badge');
+            setTextIfChanged(perliteDaysEl, 'Offline');
 
             if (metricsEl)    metricsEl.style.display    = 'none';
             if (statePanelEl) statePanelEl.style.display = 'none';
