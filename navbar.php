@@ -413,6 +413,11 @@ document.querySelector("form").addEventListener("submit", function () {
     };
 
     const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!window.isSecureContext) {
+        button.title = 'O microfone requer HTTPS';
+        button.addEventListener('click', () => showFeedback('O microfone está bloqueado porque esta página usa HTTP. Abra o WorkLog através de HTTPS.', true));
+        return;
+    }
     if (!SpeechRecognition) {
         button.disabled = true;
         button.title = 'Navegação por voz não suportada neste navegador';
@@ -439,7 +444,7 @@ document.querySelector("form").addEventListener("submit", function () {
     };
     recognition.onerror = event => {
         const messages = {
-            'not-allowed': 'Permissão do microfone recusada.',
+            'not-allowed': 'Permissão do microfone recusada. Verifique a permissão deste site no Chrome.',
             'audio-capture': 'Não foi encontrado um microfone.',
             'no-speech': 'Não foi detetada voz.'
         };

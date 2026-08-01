@@ -300,6 +300,15 @@ if ($result) {
         if (!button || !status) return;
         updateVoiceCommandList();
         const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+        if (!window.isSecureContext) {
+            button.addEventListener('click', () => {
+                status.textContent = 'O microfone está bloqueado porque esta página usa HTTP. Abra o WorkLog através de HTTPS.';
+                status.className = 'mt-3 text-sm text-red-300';
+            });
+            status.textContent = 'Reconhecimento de voz indisponível em HTTP. É necessário aceder através de HTTPS.';
+            status.className = 'mt-3 text-sm text-amber-300';
+            return;
+        }
         if (!SpeechRecognition) {
             button.disabled = true;
             status.textContent = 'Este navegador não suporta reconhecimento de voz. Use Chrome ou Edge atualizado.';
@@ -326,7 +335,7 @@ if ($result) {
             button.textContent = '🎙️ Ouvir comando';
         };
         voiceRecognition.onerror = event => {
-            const messages = { 'not-allowed': 'Permissão do microfone recusada.', 'audio-capture': 'Não foi encontrado um microfone disponível.', 'no-speech': 'Não foi detetada voz. Tente novamente.' };
+            const messages = { 'not-allowed': 'Permissão do microfone recusada. Verifique a permissão deste site no Chrome.', 'audio-capture': 'Não foi encontrado um microfone disponível.', 'no-speech': 'Não foi detetada voz. Tente novamente.' };
             status.textContent = messages[event.error] || `Erro no reconhecimento de voz: ${event.error}.`;
             status.className = 'mt-3 text-sm text-red-300';
         };
