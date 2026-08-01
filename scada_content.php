@@ -34,6 +34,7 @@ if ($result) {
         .detail-item h6 { font-size: 0.9rem; color: #94a3b8; font-weight: bold; margin-bottom: 1rem; border-bottom: 1px solid #475569; padding-bottom: 0.5rem; text-transform: uppercase; }
         .detail-item .value-pair { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 0.5rem; font-size: 0.95rem; }
         .detail-item .value-pair-top { align-items: flex-start; }
+        .voice-listening { animation: pulse-red 1.4s infinite; }
     </style>
 </head>
 <body class="bg-slate-900 p-4 font-sans text-slate-300">
@@ -41,6 +42,23 @@ if ($result) {
     <div id="loading-message" class="text-center p-4 text-slate-400 font-semibold">
         🔍 A ler equipamentos registados...
     </div>
+
+    <?php if (!$is_read_only_user): ?>
+    <section id="voice-control" class="mb-4 rounded-lg border border-slate-700 bg-slate-800 p-4" aria-labelledby="voice-control-title">
+        <div class="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+            <div>
+                <h2 id="voice-control-title" class="text-lg font-bold text-slate-100">Controlo por voz</h2>
+                <p class="text-sm text-slate-400">Aceita apenas: “ligar [equipamento]”, “parar [equipamento]”, “limpar falha [equipamento]” e “cancelar”.</p>
+            </div>
+            <button id="voice-control-button" type="button" class="rounded-md bg-blue-600 px-4 py-2 font-semibold text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-40" aria-pressed="false">🎙️ Ouvir comando</button>
+        </div>
+        <p id="voice-control-status" class="mt-3 text-sm text-slate-300" role="status" aria-live="polite">Microfone inativo.</p>
+        <details class="mt-2 text-sm text-slate-400">
+            <summary class="cursor-pointer text-blue-300">Ver comandos disponíveis</summary>
+            <ul id="voice-command-list" class="mt-2 list-disc pl-5"></ul>
+        </details>
+    </section>
+    <?php endif; ?>
 
     <div class="flex flex-col gap-4">
         <ul class="flex flex-wrap text-sm font-medium text-center text-gray-500 border-b border-gray-700" id="category-tabs"></ul>
@@ -72,6 +90,8 @@ if ($result) {
     const isReadOnlyUser = <?php echo json_encode($is_read_only_user); ?>;
     const UPDATE_INTERVAL = 15000;
     let onlineEquipments = [];
+    let voiceRecognition = null;
+    let isVoiceListening = false;
 
     const iconRunning = `<svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM9.555 7.168A1 1 0 008 8v4a1 1 0 001.555.832l3-2a1 1 0 000-1.664l-3-2z" clip-rule="evenodd" /></svg>`;
     const iconStopped = `<svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8 7a1 1 0 00-1 1v4a1 1 0 001 1h4a1 1 0 001-1V8a1 1 0 00-1-1H8z" clip-rule="evenodd" /></svg>`;
@@ -208,12 +228,114 @@ if ($result) {
             return;
         }
         try {
-            await fetch(`remote_command_api.php?command=${path.substring(1)}&slave_id=${slaveId}&ip=${ipAddress}`);
+            const response = await fetch(`remote_command_api.php?command=${encodeURIComponent(path.substring(1))}&slave_id=${encodeURIComponent(slaveId)}&ip=${encodeURIComponent(ipAddress)}`);
+            const result = await response.json().catch(() => ({}));
+            if (!response.ok || result.success === false) throw new Error(result.message || 'O controlador recusou o comando.');
             setTimeout(() => updateStatus({ slave_id: slaveId, ip_address: ipAddress }), 250);
+            return true;
         } catch(e) {
             alert(`Erro: ${e.message}`);
             handleUpdateError(slaveId);
+            return false;
         }
+    }
+
+    function normalizeVoiceText(value) {
+        return value.toLocaleLowerCase('pt-PT').normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]+/g, ' ').trim().replace(/\s+/g, ' ');
+    }
+
+    function updateVoiceCommandList() {
+        const list = document.getElementById('voice-command-list');
+        if (!list) return;
+        list.innerHTML = '';
+        const commands = onlineEquipments.flatMap(equipment => [`Ligar ${equipment.name}`, `Parar ${equipment.name}`, `Limpar falha ${equipment.name}`]);
+        commands.push('Cancelar');
+        commands.forEach(command => { const item = document.createElement('li'); item.textContent = command; list.appendChild(item); });
+    }
+
+    function findVoiceCommand(transcript) {
+        const spoken = normalizeVoiceText(transcript);
+        if (spoken === 'cancelar') return { cancelled: true };
+        const allowedActions = [
+            { phrase: 'limpar falha ', path: '/clear_fault', label: 'limpar a falha de' },
+            { phrase: 'ligar ', path: '/run', label: 'ligar' },
+            { phrase: 'parar ', path: '/stop', label: 'parar' }
+        ];
+        const action = allowedActions.find(item => spoken.startsWith(item.phrase));
+        if (!action) return null;
+        const spokenName = spoken.substring(action.phrase.length).trim();
+        const matches = onlineEquipments.filter(equipment => normalizeVoiceText(equipment.name) === spokenName);
+        if (matches.length !== 1) return null;
+        return { ...action, equipment: matches[0] };
+    }
+
+    async function handleVoiceCommand(transcript) {
+        const status = document.getElementById('voice-control-status');
+        const command = findVoiceCommand(transcript);
+        if (!command) {
+            status.textContent = `Comando não reconhecido: “${transcript}”. Consulte a lista permitida.`;
+            status.className = 'mt-3 text-sm text-red-300';
+            return;
+        }
+        if (command.cancelled) {
+            status.textContent = 'Comando cancelado.';
+            status.className = 'mt-3 text-sm text-slate-300';
+            return;
+        }
+        if (!window.confirm(`Confirma ${command.label} “${command.equipment.name}”?`)) {
+            status.textContent = 'Comando cancelado antes do envio.';
+            status.className = 'mt-3 text-sm text-slate-300';
+            return;
+        }
+        status.textContent = `A enviar comando para ${command.equipment.name}...`;
+        status.className = 'mt-3 text-sm text-blue-300';
+        const sent = await sendCommand(command.path, command.equipment.slave_id, command.equipment.ip_address);
+        status.textContent = sent ? `Comando enviado para ${command.equipment.name}.` : `Não foi possível enviar o comando para ${command.equipment.name}.`;
+        status.className = sent ? 'mt-3 text-sm text-green-300' : 'mt-3 text-sm text-red-300';
+    }
+
+    function initializeVoiceControl() {
+        const button = document.getElementById('voice-control-button');
+        const status = document.getElementById('voice-control-status');
+        if (!button || !status) return;
+        updateVoiceCommandList();
+        const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+        if (!SpeechRecognition) {
+            button.disabled = true;
+            status.textContent = 'Este navegador não suporta reconhecimento de voz. Use Chrome ou Edge atualizado.';
+            status.className = 'mt-3 text-sm text-amber-300';
+            return;
+        }
+        voiceRecognition = new SpeechRecognition();
+        voiceRecognition.lang = 'pt-PT';
+        voiceRecognition.continuous = false;
+        voiceRecognition.interimResults = false;
+        voiceRecognition.maxAlternatives = 1;
+        voiceRecognition.onstart = () => {
+            isVoiceListening = true;
+            button.setAttribute('aria-pressed', 'true');
+            button.classList.add('voice-listening', 'bg-red-600');
+            button.textContent = '⏹️ Parar escuta';
+            status.textContent = 'A ouvir… diga um comando da lista.';
+            status.className = 'mt-3 text-sm text-blue-300';
+        };
+        voiceRecognition.onend = () => {
+            isVoiceListening = false;
+            button.setAttribute('aria-pressed', 'false');
+            button.classList.remove('voice-listening', 'bg-red-600');
+            button.textContent = '🎙️ Ouvir comando';
+        };
+        voiceRecognition.onerror = event => {
+            const messages = { 'not-allowed': 'Permissão do microfone recusada.', 'audio-capture': 'Não foi encontrado um microfone disponível.', 'no-speech': 'Não foi detetada voz. Tente novamente.' };
+            status.textContent = messages[event.error] || `Erro no reconhecimento de voz: ${event.error}.`;
+            status.className = 'mt-3 text-sm text-red-300';
+        };
+        voiceRecognition.onresult = event => {
+            const transcript = event.results[0][0].transcript.trim();
+            status.textContent = `Ouvi: “${transcript}”.`;
+            handleVoiceCommand(transcript);
+        };
+        button.addEventListener('click', () => isVoiceListening ? voiceRecognition.stop() : voiceRecognition.start());
     }
     async function updateStatus(equipment) { try { const response = await fetch(`http://${equipment.ip_address}/api/status/${equipment.slave_id}`); if (!response.ok) throw new Error("Network"); const data = await response.json(); updateCardUI(equipment.slave_id, data); } catch(error) { handleUpdateError(equipment.slave_id); } }
     
@@ -253,6 +375,7 @@ if ($result) {
                     const pingData = await pingResponse.json();
                     if (pingData.success) {
                         onlineEquipments.push(equipment);
+                        updateVoiceCommandList();
                         const categoryName = equipment.category_name || 'Sem Casa de Máquinas';
                         const categoryId = "tab-" + categoryName.replace(/\s+/g, '-').toLowerCase();
                         document.getElementById(`grid-${categoryId}`).innerHTML += createSlaveCard(equipment);
@@ -332,6 +455,7 @@ if ($result) {
             });
         }
         
+        initializeVoiceControl();
         initializeDashboard();
     });
 </script>

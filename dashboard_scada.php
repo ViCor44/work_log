@@ -10,7 +10,7 @@ require_once 'header.php';
     </div>
 
     <!-- A <iframe> que irá mostrar o nosso dashboard com o design correto -->
-    <iframe src="scada_content.php" style="width: 100%; height: 80vh; border: none; border-radius: 8px;"></iframe>
+    <iframe src="scada_content.php" allow="microphone" title="Dashboard SCADA" style="width: 100%; height: 80vh; border: none; border-radius: 8px;"></iframe>
 
 </div>
 

@@ -161,6 +161,12 @@ $stmt->close();
         </button>
         <div class="collapse navbar-collapse" id="navbarNav">
             <ul class="navbar-nav ms-auto">
+				<li class="nav-item d-flex align-items-center me-2">
+                    <button type="button" id="voice-navigation-button" class="btn btn-sm btn-outline-light" aria-pressed="false" title="Navegação por voz">
+                        <i class="fas fa-microphone" aria-hidden="true"></i>
+                        <span class="visually-hidden">Iniciar navegação por voz</span>
+                    </button>
+                </li>
 				<li class="nav-item">
                     <a class="nav-link" href="#" onclick="openDashboardInNewWindow();" title="Abrir Dashboard noutra janela">
                         <i class="fas fa-external-link-alt"></i>
@@ -194,6 +200,8 @@ $stmt->close();
         </div>
     </div>
 </nav>
+
+<div id="voice-navigation-feedback" class="position-fixed bottom-0 end-0 m-3 p-3 rounded bg-dark text-white shadow d-none" style="z-index: 2000; max-width: 24rem;" role="status" aria-live="polite"></div>
 
 <!-- Modal de Edição de Perfil -->
 <div class="modal fade" id="editProfileModal" tabindex="-1" aria-labelledby="editProfileLabel" aria-hidden="true">
@@ -371,6 +379,89 @@ document.querySelector("form").addEventListener("submit", function () {
   const dataURL = canvas.toDataURL("image/png");
   document.getElementById("signature-data").value = dataURL;
 });
+</script>
+
+<script>
+(() => {
+    const button = document.getElementById('voice-navigation-button');
+    const feedback = document.getElementById('voice-navigation-feedback');
+    if (!button || !feedback) return;
+
+    const destinations = Object.freeze([
+        { phrases: ['ir para inicio', 'ir para o inicio', 'pagina inicial'], url: '/work_log/redirect_page.php', label: 'início' },
+        { phrases: ['ir para ativos', 'gerir ativos'], url: '/work_log/gerir_ativos.php', label: 'ativos' },
+        { phrases: ['ir para ordens de trabalho', 'ver ordens de trabalho'], url: '/work_log/list_work_orders.php', label: 'ordens de trabalho' },
+        { phrases: ['ir para relatorios', 'ver relatorios'], url: '/work_log/list_reports.php', label: 'relatórios' },
+        { phrases: ['ir para mensagens', 'ver mensagens'], url: '/work_log/inbox.php', label: 'mensagens' },
+        { phrases: ['ir para estatisticas', 'ver estatisticas'], url: '/work_log/statistics.php', label: 'estatísticas' },
+        { phrases: ['ir para piscinas', 'abrir piscinas'], url: '/work_log/pools/registos.php', label: 'piscinas' },
+        { phrases: ['ir para scada', 'abrir scada'], url: '/work_log/dashboard_scada.php', label: 'SCADA' },
+        { phrases: ['ir para utilizadores', 'gerir utilizadores'], url: '/work_log/manage_users.php', label: 'utilizadores' },
+        { phrases: ['ir para sobre', 'sobre o worklog'], url: '/work_log/about.php', label: 'sobre' }
+    ]);
+
+    const normalize = value => value.toLocaleLowerCase('pt-PT')
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .replace(/[^a-z0-9]+/g, ' ')
+        .trim()
+        .replace(/\s+/g, ' ');
+    const showFeedback = (message, isError = false) => {
+        feedback.textContent = message;
+        feedback.classList.remove('d-none', 'bg-dark', 'bg-danger');
+        feedback.classList.add(isError ? 'bg-danger' : 'bg-dark');
+    };
+
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!SpeechRecognition) {
+        button.disabled = true;
+        button.title = 'Navegação por voz não suportada neste navegador';
+        return;
+    }
+
+    const recognition = new SpeechRecognition();
+    recognition.lang = 'pt-PT';
+    recognition.continuous = false;
+    recognition.interimResults = false;
+    recognition.maxAlternatives = 1;
+    let listening = false;
+
+    recognition.onstart = () => {
+        listening = true;
+        button.setAttribute('aria-pressed', 'true');
+        button.classList.replace('btn-outline-light', 'btn-danger');
+        showFeedback('A ouvir… destinos: início, ativos, ordens de trabalho, relatórios, mensagens, estatísticas, piscinas, SCADA, utilizadores ou sobre.');
+    };
+    recognition.onend = () => {
+        listening = false;
+        button.setAttribute('aria-pressed', 'false');
+        button.classList.replace('btn-danger', 'btn-outline-light');
+    };
+    recognition.onerror = event => {
+        const messages = {
+            'not-allowed': 'Permissão do microfone recusada.',
+            'audio-capture': 'Não foi encontrado um microfone.',
+            'no-speech': 'Não foi detetada voz.'
+        };
+        showFeedback(messages[event.error] || `Erro de voz: ${event.error}.`, true);
+    };
+    recognition.onresult = event => {
+        const transcript = event.results[0][0].transcript.trim();
+        const spoken = normalize(transcript);
+        const destination = destinations.find(item => item.phrases.includes(spoken));
+        if (!destination) {
+            showFeedback(`Destino não reconhecido: “${transcript}”.`, true);
+            return;
+        }
+        showFeedback(`A abrir ${destination.label}…`);
+        window.location.assign(destination.url);
+    };
+
+    button.addEventListener('click', () => {
+        if (listening) recognition.stop();
+        else recognition.start();
+    });
+})();
 </script>
 
 <script>
