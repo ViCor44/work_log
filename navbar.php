@@ -395,6 +395,7 @@ document.querySelector("form").addEventListener("submit", function () {
         { phrases: ['ir para mensagens', 'ver mensagens'], url: '/work_log/inbox.php', label: 'mensagens' },
         { phrases: ['ir para estatisticas', 'ver estatisticas'], url: '/work_log/statistics.php', label: 'estatísticas' },
         { phrases: ['ir para piscinas', 'abrir piscinas'], url: '/work_log/pools/registos.php', label: 'piscinas' },
+        { phrases: ['ir para dashboard em tempo real', 'abrir dashboard em tempo real', 'dashboard em tempo real', 'painel de monitorizacao'], url: '/work_log/pools/dashboard.php', label: 'dashboard em tempo real' },
         { phrases: ['ir para scada', 'abrir scada'], url: '/work_log/dashboard_scada.php', label: 'SCADA' },
         { phrases: ['ir para utilizadores', 'gerir utilizadores'], url: '/work_log/manage_users.php', label: 'utilizadores' },
         { phrases: ['ir para sobre', 'sobre o worklog'], url: '/work_log/about.php', label: 'sobre' }
@@ -455,6 +456,11 @@ document.querySelector("form").addEventListener("submit", function () {
         const spoken = normalize(transcript);
         const destination = destinations.find(item => item.phrases.includes(spoken));
         if (!destination) {
+            const pageCommand = new CustomEvent('worklog:voice-command', {
+                cancelable: true,
+                detail: { transcript, spoken, showFeedback }
+            });
+            if (!window.dispatchEvent(pageCommand)) return;
             showFeedback(`Destino não reconhecido: “${transcript}”.`, true);
             return;
         }

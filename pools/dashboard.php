@@ -772,6 +772,64 @@ function openFiltroModal(filterId) {
 
 document.addEventListener('DOMContentLoaded', function() {
 
+    // Comandos de voz específicos deste dashboard. O reconhecimento é feito
+    // pelo botão do microfone existente na barra de navegação.
+    const normalizeDashboardVoice = value => value.toLocaleLowerCase('pt-PT')
+        .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+        .replace(/[^a-z0-9]+/g, ' ').trim().replace(/\s+/g, ' ');
+
+    const voiceTabs = [
+        { phrases: ['abrir separador piscinas', 'mostrar piscinas', 'controladores das piscinas'], id: 'piscinas-tab', label: 'Controladores das Piscinas' },
+        { phrases: ['abrir separador lora', 'mostrar equipamentos lora', 'equipamentos lora'], id: 'lora-tab', label: 'Equipamentos LoRa' },
+        { phrases: ['abrir separador centrais de medida', 'mostrar centrais de medida', 'centrais de medida'], id: 'medida-tab', label: 'Centrais de Medida' },
+        { phrases: ['abrir separador filtros', 'mostrar filtros', 'filtros'], id: 'filtros-tab', label: 'Filtros' }
+    ];
+
+    window.addEventListener('worklog:voice-command', event => {
+        const { spoken, transcript, showFeedback } = event.detail;
+        const requestedTab = voiceTabs.find(tab => tab.phrases.includes(spoken));
+        if (requestedTab) {
+            event.preventDefault();
+            const tabButton = document.getElementById(requestedTab.id);
+            if (tabButton) bootstrap.Tab.getOrCreateInstance(tabButton).show();
+            showFeedback('A abrir ' + requestedTab.label + '…');
+            return;
+        }
+
+        const prefixes = ['abrir detalhes de ', 'ver detalhes de ', 'abrir dispositivo ', 'ver dispositivo ', 'abrir piscina ', 'ver piscina ', 'abrir tanque ', 'ver tanque '];
+        const prefix = prefixes.find(item => spoken.startsWith(item));
+        if (!prefix) return;
+
+        event.preventDefault();
+        const requestedName = spoken.substring(prefix.length).trim();
+        const cards = [...document.querySelectorAll('#dashboardTabsContent .scada-card')];
+        const matches = cards.filter(card => {
+            const title = card.querySelector('.card-title');
+            return title && normalizeDashboardVoice(title.textContent) === requestedName;
+        });
+
+        if (matches.length !== 1) {
+            const heardName = transcript.substring(prefix.length);
+            showFeedback(matches.length > 1
+                ? 'Existe mais de um dispositivo chamado “' + heardName + '”.'
+                : 'Dispositivo não encontrado: “' + heardName + '”.', true);
+            return;
+        }
+
+        const card = matches[0];
+        const pane = card.closest('.tab-pane');
+        const tabButton = pane && document.querySelector('[data-bs-target="#' + pane.id + '"]');
+        if (tabButton) bootstrap.Tab.getOrCreateInstance(tabButton).show();
+        showFeedback('A abrir detalhes de ' + card.querySelector('.card-title').textContent.trim() + '…');
+
+        const link = card.closest('a[href]');
+        if (link) {
+            window.location.assign(link.href);
+        } else if (card.dataset.filterId) {
+            openFiltroModal(Number(card.dataset.filterId));
+        }
+    });
+
     // ── Botão GLOBAL Alta Afluência ───────────────────────────────────────────
     const btnHaGlobal = document.getElementById('btnGlobalHaToggle');
     const lblHaGlobal = document.getElementById('globalHaState');
