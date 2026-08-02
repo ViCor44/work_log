@@ -811,7 +811,11 @@ document.addEventListener('DOMContentLoaded', function() {
         {
             phrases: buildTabVoicePhrases([
                 'lora', 'equipamentos lora', 'os equipamentos lora',
-                'dispositivos lora', 'os dispositivos lora'
+                'dispositivos lora', 'os dispositivos lora',
+                'nora', 'lara', 'laura', 'loura', 'loira',
+                'lorawan', 'lora wan', 'rede lora',
+                'equipamentos nora', 'equipamentos lara',
+                'dispositivos nora', 'dispositivos lara'
             ]),
             id: 'lora-tab',
             label: 'Equipamentos LoRa'
@@ -843,7 +847,7 @@ document.addEventListener('DOMContentLoaded', function() {
     };
 
     const canonicalDeviceName = value => normalizeDashboardVoice(value)
-        .replace(/^(central de medida|equipamento lora|dispositivo lora|piscina|tanque|filtro|dispositivo|equipamento|lora) /, '')
+        .replace(/^(central de medida|equipamento lora|dispositivo lora|piscina|tanque|filtro|dispositivo|equipamento|lora wan|lorawan|lora|nora|lara|laura|loura|loira) /, '')
         .trim();
 
     const compactDeviceName = value => canonicalDeviceName(value).replace(/\s+/g, '');
@@ -858,7 +862,12 @@ document.addEventListener('DOMContentLoaded', function() {
         if (description.includes('central de medida')) return 'medida';
         if (description.includes('filtro')) return 'filtro';
         if (description.includes('piscina') || description.includes('tanque')) return 'piscina';
-        if (description.includes('lora') || description.includes('equipamento') || description.includes('dispositivo')) return 'lora';
+        if (
+            ['lora', 'lorawan', 'lora wan', 'nora', 'lara', 'laura', 'loura', 'loira']
+                .some(alias => description.includes(alias))
+            || description.includes('equipamento')
+            || description.includes('dispositivo')
+        ) return 'lora';
         return null;
     };
 
@@ -915,7 +924,8 @@ document.addEventListener('DOMContentLoaded', function() {
             'abrir central de medida ', 'ver central de medida ',
             'piscina ', 'tanque ', 'filtro ',
             'equipamento lora ', 'dispositivo lora ', 'equipamento ', 'dispositivo ',
-            'central de medida ', 'lora ',
+            'central de medida ', 'lora ', 'lorawan ', 'lora wan ',
+            'nora ', 'lara ', 'laura ', 'loura ', 'loira ',
             'abrir ', 'ver ', 'mostrar '
         ];
         const prefix = prefixes.find(item => spoken.startsWith(item));
