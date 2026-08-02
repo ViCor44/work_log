@@ -794,8 +794,24 @@ document.addEventListener('DOMContentLoaded', function() {
     };
 
     const canonicalDeviceName = value => normalizeDashboardVoice(value)
-        .replace(/^(piscina|tanque|filtro|dispositivo|equipamento|central de medida) /, '')
+        .replace(/^(central de medida|equipamento lora|dispositivo lora|piscina|tanque|filtro|dispositivo|equipamento|lora) /, '')
         .trim();
+
+    const detectRequestedDeviceType = (prefix, requestedName) => {
+        const description = normalizeDashboardVoice(prefix + ' ' + requestedName);
+        if (description.includes('central de medida')) return 'medida';
+        if (description.includes('filtro')) return 'filtro';
+        if (description.includes('piscina') || description.includes('tanque')) return 'piscina';
+        if (description.includes('lora') || description.includes('equipamento') || description.includes('dispositivo')) return 'lora';
+        return null;
+    };
+
+    const deviceTypeLabels = {
+        piscina: 'piscina',
+        filtro: 'filtro',
+        lora: 'equipamento LoRa',
+        medida: 'central de medida'
+    };
 
     window.addEventListener('worklog:voice-command', event => {
         const { spoken, transcript, showFeedback } = event.detail;
@@ -817,16 +833,20 @@ document.addEventListener('DOMContentLoaded', function() {
             'ver detalhes de ', 'ver detalhes da ', 'ver detalhes do ',
             'abrir dispositivo ', 'ver dispositivo ',
             'abrir piscina ', 'ver piscina ', 'abrir tanque ', 'ver tanque ',
-            'abrir equipamento ', 'ver equipamento ', 'abrir filtro ', 'ver filtro '
+            'abrir equipamento ', 'ver equipamento ', 'abrir equipamento lora ', 'ver equipamento lora ',
+            'abrir filtro ', 'ver filtro ',
+            'abrir central de medida ', 'ver central de medida '
         ];
         const prefix = prefixes.find(item => spoken.startsWith(item));
         if (!prefix) return;
 
         event.preventDefault();
         const requestedName = spoken.substring(prefix.length).trim();
+        const requestedType = detectRequestedDeviceType(prefix, requestedName);
         const canonicalRequestedName = canonicalDeviceName(requestedName);
         const cards = [...document.querySelectorAll('#dashboardTabsContent .scada-card')];
         const matches = cards.filter(card => {
+            if (requestedType && card.dataset.type !== requestedType) return false;
             const title = card.querySelector('.card-title');
             if (!title) return false;
             const titleName = normalizeDashboardVoice(title.textContent);
@@ -837,10 +857,17 @@ document.addEventListener('DOMContentLoaded', function() {
         });
 
         if (matches.length !== 1) {
-            const heardName = transcript.substring(prefix.length);
-            showFeedback(matches.length > 1
-                ? 'Existe mais de um dispositivo chamado “' + heardName + '”.'
-                : 'Dispositivo não encontrado: “' + heardName + '”.', true);
+            if (matches.length > 1 && !requestedType) {
+                const availableTypes = [...new Set(matches.map(card => deviceTypeLabels[card.dataset.type]).filter(Boolean))];
+                showFeedback(
+                    'Existe mais de um dispositivo chamado “' + requestedName + '”. Indique o tipo: '
+                    + availableTypes.join(' ou ') + '.',
+                    true
+                );
+            } else {
+                const typeDescription = requestedType ? ' na categoria ' + deviceTypeLabels[requestedType] : '';
+                showFeedback('Dispositivo não encontrado: “' + requestedName + '”' + typeDescription + '.', true);
+            }
             return;
         }
 
@@ -1137,7 +1164,7 @@ function createLoraCard(device) {
 
     return `
         <a href="view_lora_details.php?id=${device.id}" class="text-decoration-none">
-            <div class="card scada-card h-100 border-${borderClass} shadow-sm">
+            <div class="card scada-card h-100 border-${borderClass} shadow-sm" data-type="lora">
                 <div class="card-header d-flex justify-content-between align-items-center">
                     <h5 class="card-title mb-0 fw-bold">${device.name}</h5>
                     <span class="badge bg-${badgeClass}">LoRa ${badgeText}</span>
