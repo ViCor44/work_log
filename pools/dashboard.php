@@ -781,8 +781,13 @@ document.addEventListener('DOMContentLoaded', function() {
     const buildTabVoicePhrases = names => [...new Set(names.flatMap(name => [
         name,
         'abrir ' + name,
+        'abre ' + name,
         'ir para ' + name,
+        'vai para ' + name,
         'para ' + name,
+        'mudar para ' + name,
+        'muda para ' + name,
+        'selecionar ' + name,
         'mostrar ' + name,
         'ver ' + name,
         'abrir aba ' + name,
@@ -795,22 +800,35 @@ document.addEventListener('DOMContentLoaded', function() {
 
     const voiceTabs = [
         {
-            phrases: buildTabVoicePhrases(['piscinas', 'controladores das piscinas', 'controladores de piscinas']),
+            phrases: buildTabVoicePhrases([
+                'piscinas', 'as piscinas', 'piscina', 'a piscina',
+                'controladores das piscinas', 'os controladores das piscinas',
+                'controladores de piscinas'
+            ]),
             id: 'piscinas-tab',
             label: 'Controladores das Piscinas'
         },
         {
-            phrases: buildTabVoicePhrases(['lora', 'equipamentos lora', 'dispositivos lora']),
+            phrases: buildTabVoicePhrases([
+                'lora', 'equipamentos lora', 'os equipamentos lora',
+                'dispositivos lora', 'os dispositivos lora'
+            ]),
             id: 'lora-tab',
             label: 'Equipamentos LoRa'
         },
         {
-            phrases: buildTabVoicePhrases(['centrais de medida', 'centrais', 'medida']),
+            phrases: buildTabVoicePhrases([
+                'centrais de medida', 'as centrais de medida',
+                'centrais', 'as centrais', 'medida'
+            ]),
             id: 'medida-tab',
             label: 'Centrais de Medida'
         },
         {
-            phrases: buildTabVoicePhrases(['filtros', 'filtros defender']),
+            phrases: buildTabVoicePhrases([
+                'filtros', 'os filtros', 'filtro', 'o filtro',
+                'filtros defender', 'os filtros defender'
+            ]),
             id: 'filtros-tab',
             label: 'Filtros'
         }
