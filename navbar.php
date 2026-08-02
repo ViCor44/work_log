@@ -537,13 +537,14 @@ document.querySelector("form").addEventListener("submit", function () {
             stopListening('Escuta contínua desativada por voz.');
             return;
         }
+        const pageCommand = new CustomEvent('worklog:voice-command', {
+            cancelable: true,
+            detail: { transcript, spoken, showFeedback }
+        });
+        if (!window.dispatchEvent(pageCommand)) return;
+
         const destination = destinations.find(item => item.phrases.includes(spoken));
         if (!destination) {
-            const pageCommand = new CustomEvent('worklog:voice-command', {
-                cancelable: true,
-                detail: { transcript, spoken, showFeedback }
-            });
-            if (!window.dispatchEvent(pageCommand)) return;
             showFeedback(`Destino não reconhecido: “${transcript}”.`, true);
             return;
         }

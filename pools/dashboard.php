@@ -779,11 +779,23 @@ document.addEventListener('DOMContentLoaded', function() {
         .replace(/[^a-z0-9]+/g, ' ').trim().replace(/\s+/g, ' ');
 
     const voiceTabs = [
-        { phrases: ['abrir separador piscinas', 'mostrar piscinas', 'controladores das piscinas'], id: 'piscinas-tab', label: 'Controladores das Piscinas' },
-        { phrases: ['abrir separador lora', 'mostrar equipamentos lora', 'equipamentos lora'], id: 'lora-tab', label: 'Equipamentos LoRa' },
-        { phrases: ['abrir separador centrais de medida', 'mostrar centrais de medida', 'centrais de medida'], id: 'medida-tab', label: 'Centrais de Medida' },
-        { phrases: ['abrir separador filtros', 'mostrar filtros', 'filtros'], id: 'filtros-tab', label: 'Filtros' }
+        { phrases: ['abrir separador piscinas', 'abrir o separador piscinas', 'abrir aba piscinas', 'abrir a aba piscinas', 'mostrar piscinas', 'ver piscinas', 'ir para piscinas', 'controladores das piscinas'], id: 'piscinas-tab', label: 'Controladores das Piscinas' },
+        { phrases: ['abrir separador lora', 'abrir o separador lora', 'abrir aba lora', 'abrir a aba lora', 'mostrar equipamentos lora', 'ver equipamentos lora', 'ir para lora', 'equipamentos lora'], id: 'lora-tab', label: 'Equipamentos LoRa' },
+        { phrases: ['abrir separador centrais de medida', 'abrir o separador centrais de medida', 'abrir aba centrais de medida', 'abrir a aba centrais de medida', 'mostrar centrais de medida', 'ver centrais de medida', 'ir para centrais de medida', 'centrais de medida'], id: 'medida-tab', label: 'Centrais de Medida' },
+        { phrases: ['abrir separador filtros', 'abrir o separador filtros', 'abrir aba filtros', 'abrir a aba filtros', 'mostrar filtros', 'ver filtros', 'ir para filtros', 'filtros'], id: 'filtros-tab', label: 'Filtros' }
     ];
+
+    const showDashboardTab = tabButton => {
+        if (!tabButton) return false;
+        // O clique usa o mesmo mecanismo das abas acionadas manualmente e é
+        // compatível com a versão do Bootstrap carregada no rodapé.
+        tabButton.click();
+        return true;
+    };
+
+    const canonicalDeviceName = value => normalizeDashboardVoice(value)
+        .replace(/^(piscina|tanque|filtro|dispositivo|equipamento|central de medida) /, '')
+        .trim();
 
     window.addEventListener('worklog:voice-command', event => {
         const { spoken, transcript, showFeedback } = event.detail;
@@ -791,26 +803,37 @@ document.addEventListener('DOMContentLoaded', function() {
         if (requestedTab) {
             event.preventDefault();
             const tabButton = document.getElementById(requestedTab.id);
-            if (tabButton) bootstrap.Tab.getOrCreateInstance(tabButton).show();
-            showFeedback('A abrir ' + requestedTab.label + '…');
+            if (showDashboardTab(tabButton)) {
+                showFeedback('A abrir ' + requestedTab.label + '…');
+            } else {
+                showFeedback('Não foi possível abrir o separador ' + requestedTab.label + '.', true);
+            }
             return;
         }
 
         const prefixes = [
             'abrir detalhes de ', 'abrir detalhes da ', 'abrir detalhes do ',
+            'abrir detalhes ', 'mostrar detalhes de ', 'mostrar detalhes da ',
             'ver detalhes de ', 'ver detalhes da ', 'ver detalhes do ',
             'abrir dispositivo ', 'ver dispositivo ',
-            'abrir piscina ', 'ver piscina ', 'abrir tanque ', 'ver tanque '
+            'abrir piscina ', 'ver piscina ', 'abrir tanque ', 'ver tanque ',
+            'abrir equipamento ', 'ver equipamento ', 'abrir filtro ', 'ver filtro '
         ];
         const prefix = prefixes.find(item => spoken.startsWith(item));
         if (!prefix) return;
 
         event.preventDefault();
         const requestedName = spoken.substring(prefix.length).trim();
+        const canonicalRequestedName = canonicalDeviceName(requestedName);
         const cards = [...document.querySelectorAll('#dashboardTabsContent .scada-card')];
         const matches = cards.filter(card => {
             const title = card.querySelector('.card-title');
-            return title && normalizeDashboardVoice(title.textContent) === requestedName;
+            if (!title) return false;
+            const titleName = normalizeDashboardVoice(title.textContent);
+            const canonicalTitleName = canonicalDeviceName(title.textContent);
+            return titleName === requestedName
+                || canonicalTitleName === canonicalRequestedName
+                || (canonicalRequestedName.length >= 3 && canonicalTitleName.includes(canonicalRequestedName));
         });
 
         if (matches.length !== 1) {
@@ -824,7 +847,7 @@ document.addEventListener('DOMContentLoaded', function() {
         const card = matches[0];
         const pane = card.closest('.tab-pane');
         const tabButton = pane && document.querySelector('[data-bs-target="#' + pane.id + '"]');
-        if (tabButton) bootstrap.Tab.getOrCreateInstance(tabButton).show();
+        showDashboardTab(tabButton);
         showFeedback('A abrir detalhes de ' + card.querySelector('.card-title').textContent.trim() + '…');
 
         const link = card.closest('a[href]');
