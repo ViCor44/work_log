@@ -427,33 +427,82 @@ document.querySelector("form").addEventListener("submit", function () {
 
     const recognition = new SpeechRecognition();
     recognition.lang = 'pt-PT';
-    recognition.continuous = false;
+    recognition.continuous = true;
     recognition.interimResults = false;
     recognition.maxAlternatives = 1;
+    const sessionKey = 'worklogVoiceAlwaysListening';
     let listening = false;
+    let shouldListen = sessionStorage.getItem(sessionKey) === '1';
+    let restartTimer = null;
+
+    const setListeningPreference = enabled => {
+        shouldListen = enabled;
+        sessionStorage.setItem(sessionKey, enabled ? '1' : '0');
+        button.title = enabled ? 'Escuta contínua ativa — diga “WorkLog” antes do comando' : 'Ativar navegação por voz';
+    };
+    const startListening = () => {
+        if (!shouldListen || listening) return;
+        try {
+            recognition.start();
+        } catch (error) {
+            if (error.name !== 'InvalidStateError') {
+                showFeedback('Não foi possível iniciar a escuta. Clique novamente no microfone.', true);
+            }
+        }
+    };
+    const stopListening = message => {
+        clearTimeout(restartTimer);
+        setListeningPreference(false);
+        if (listening) recognition.stop();
+        showFeedback(message || 'Escuta contínua desativada.');
+    };
 
     recognition.onstart = () => {
         listening = true;
         button.setAttribute('aria-pressed', 'true');
         button.classList.replace('btn-outline-light', 'btn-danger');
-        showFeedback('A ouvir… destinos: início, ativos, ordens de trabalho, relatórios, mensagens, estatísticas, piscinas, SCADA, utilizadores ou sobre.');
+        showFeedback('Escuta contínua ativa. Diga “WorkLog” antes do comando.');
     };
     recognition.onend = () => {
         listening = false;
         button.setAttribute('aria-pressed', 'false');
         button.classList.replace('btn-danger', 'btn-outline-light');
+        if (shouldListen) restartTimer = setTimeout(startListening, 350);
     };
     recognition.onerror = event => {
         const messages = {
             'not-allowed': 'Permissão do microfone recusada. Verifique a permissão deste site no Chrome.',
             'audio-capture': 'Não foi encontrado um microfone.',
-            'no-speech': 'Não foi detetada voz.'
+            'no-speech': 'Escuta ativa; ainda não foi detetada voz.',
+            'aborted': 'Escuta interrompida.'
         };
+        if (event.error === 'not-allowed' || event.error === 'service-not-allowed' || event.error === 'audio-capture') {
+            setListeningPreference(false);
+        }
+        if (event.error === 'aborted' && !shouldListen) return;
         showFeedback(messages[event.error] || `Erro de voz: ${event.error}.`, true);
     };
     recognition.onresult = event => {
-        const transcript = event.results[0][0].transcript.trim();
-        const spoken = normalize(transcript);
+        const transcript = event.results[event.resultIndex][0].transcript.trim();
+        const heard = normalize(transcript);
+        const wakePrefixes = ['worklog ', 'work log '];
+        const wakePrefix = wakePrefixes.find(prefix => heard.startsWith(prefix));
+        if (!wakePrefix) {
+            if (heard === 'worklog' || heard === 'work log') {
+                showFeedback('Estou a ouvir. Diga o comando depois de “WorkLog”.');
+            }
+            return;
+        }
+
+        const spoken = heard.substring(wakePrefix.length).trim();
+        if (!spoken) {
+            showFeedback('Estou a ouvir. Diga o comando depois de “WorkLog”.');
+            return;
+        }
+        if (['parar escuta', 'desativar escuta', 'desligar microfone'].includes(spoken)) {
+            stopListening('Escuta contínua desativada por voz.');
+            return;
+        }
         const destination = destinations.find(item => item.phrases.includes(spoken));
         if (!destination) {
             const pageCommand = new CustomEvent('worklog:voice-command', {
@@ -469,9 +518,16 @@ document.querySelector("form").addEventListener("submit", function () {
     };
 
     button.addEventListener('click', () => {
-        if (listening) recognition.stop();
-        else recognition.start();
+        if (shouldListen) {
+            stopListening();
+        } else {
+            setListeningPreference(true);
+            startListening();
+        }
     });
+
+    setListeningPreference(shouldListen);
+    if (shouldListen) setTimeout(startListening, 250);
 })();
 </script>
 
