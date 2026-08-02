@@ -395,7 +395,17 @@ document.querySelector("form").addEventListener("submit", function () {
         { phrases: ['ir para mensagens', 'ver mensagens'], url: '/work_log/inbox.php', label: 'mensagens' },
         { phrases: ['ir para estatisticas', 'ver estatisticas'], url: '/work_log/statistics.php', label: 'estatísticas' },
         { phrases: ['ir para piscinas', 'abrir piscinas'], url: '/work_log/pools/registos.php', label: 'piscinas' },
-        { phrases: ['ir para dashboard', 'abrir dashboard', 'dashboard', 'painel de monitorizacao'], url: '/work_log/pools/dashboard.php', label: 'dashboard em tempo real' },
+        {
+            phrases: [
+                'dashboard', 'abrir dashboard', 'ir para dashboard',
+                'dashboard em tempo real', 'abrir dashboard em tempo real', 'ir para dashboard em tempo real',
+                'painel', 'abrir painel', 'ir para painel',
+                'painel em tempo real', 'abrir painel em tempo real', 'ir para painel em tempo real',
+                'painel de monitorizacao', 'abrir painel de monitorizacao', 'ir para painel de monitorizacao'
+            ],
+            url: '/work_log/pools/dashboard.php',
+            label: 'dashboard em tempo real'
+        },
         { phrases: ['ir para scada', 'abrir scada'], url: '/work_log/dashboard_scada.php', label: 'SCADA' },
         { phrases: ['ir para utilizadores', 'gerir utilizadores'], url: '/work_log/manage_users.php', label: 'utilizadores' },
         { phrases: ['ir para sobre', 'sobre o worklog'], url: '/work_log/about.php', label: 'sobre' }
