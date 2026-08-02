@@ -815,6 +815,27 @@ document.addEventListener('DOMContentLoaded', function() {
 
     window.addEventListener('worklog:voice-command', event => {
         const { spoken, transcript, showFeedback } = event.detail;
+
+        const closeCommands = [
+            'fechar', 'fechar detalhes', 'fechar dispositivo', 'fechar piscina',
+            'fechar tanque', 'fechar filtro', 'fechar janela', 'fechar painel',
+            'voltar ao dashboard'
+        ];
+        if (closeCommands.includes(spoken)) {
+            const visibleModal = document.querySelector('.modal.show');
+            if (visibleModal) {
+                event.preventDefault();
+                const closeButton = visibleModal.querySelector('[data-bs-dismiss="modal"]');
+                if (closeButton) {
+                    closeButton.click();
+                } else if (window.bootstrap && bootstrap.Modal) {
+                    bootstrap.Modal.getOrCreateInstance(visibleModal).hide();
+                }
+                showFeedback('Detalhes fechados.');
+                return;
+            }
+        }
+
         const requestedTab = voiceTabs.find(tab => tab.phrases.includes(spoken));
         if (requestedTab) {
             event.preventDefault();
