@@ -159,7 +159,7 @@ $result = $stmt->get_result(); // O resultado da execução da query é atribuí
         <h1>Lista de Relatórios</h1>
 
         <div class="d-flex mb-3">
-            <a href="create_report.php" class="btn btn-primary me-3">Criar Novo Relatório</a>
+            <a href="create_report.php" id="create-report-button" class="btn btn-primary me-3">Criar Novo Relatório</a>
             <a href="redirect_page.php" class="btn btn-secondary">Voltar</a>
         </div>
 		
@@ -439,6 +439,34 @@ $result = $stmt->get_result(); // O resultado da execução da query é atribuí
 		    });
 		        
         }
+    </script>
+    <script>
+        (() => {
+            const createReportButton = document.getElementById('create-report-button');
+            if (!createReportButton) return;
+
+            const createReportVoiceCommands = [
+                'novo relatorio',
+                'relatorio novo',
+                'criar relatorio',
+                'criar novo relatorio',
+                'novo',
+                'adicionar relatorio',
+                'fazer relatorio',
+                'fazer novo relatorio',
+                'registar relatorio',
+                'abrir novo relatorio'
+            ];
+
+            window.addEventListener('worklog:voice-command', event => {
+                const { spoken, showFeedback } = event.detail;
+                if (!createReportVoiceCommands.includes(spoken)) return;
+
+                event.preventDefault();
+                showFeedback('A criar novo relatório…');
+                window.location.assign(createReportButton.href);
+            });
+        })();
     </script>
 </body>
 </html>
