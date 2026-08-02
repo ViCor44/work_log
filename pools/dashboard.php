@@ -778,11 +778,42 @@ document.addEventListener('DOMContentLoaded', function() {
         .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
         .replace(/[^a-z0-9]+/g, ' ').trim().replace(/\s+/g, ' ');
 
+    const buildTabVoicePhrases = names => [...new Set(names.flatMap(name => [
+        name,
+        'abrir ' + name,
+        'ir para ' + name,
+        'para ' + name,
+        'mostrar ' + name,
+        'ver ' + name,
+        'abrir aba ' + name,
+        'abrir a aba ' + name,
+        'ir para a aba ' + name,
+        'abrir separador ' + name,
+        'abrir o separador ' + name,
+        'ir para o separador ' + name
+    ]))];
+
     const voiceTabs = [
-        { phrases: ['abrir separador piscinas', 'abrir o separador piscinas', 'abrir aba piscinas', 'abrir a aba piscinas', 'mostrar piscinas', 'ver piscinas', 'ir para piscinas', 'controladores das piscinas'], id: 'piscinas-tab', label: 'Controladores das Piscinas' },
-        { phrases: ['abrir separador lora', 'abrir o separador lora', 'abrir aba lora', 'abrir a aba lora', 'mostrar equipamentos lora', 'ver equipamentos lora', 'ir para lora', 'equipamentos lora'], id: 'lora-tab', label: 'Equipamentos LoRa' },
-        { phrases: ['abrir separador centrais de medida', 'abrir o separador centrais de medida', 'abrir aba centrais de medida', 'abrir a aba centrais de medida', 'mostrar centrais de medida', 'ver centrais de medida', 'ir para centrais de medida', 'centrais de medida'], id: 'medida-tab', label: 'Centrais de Medida' },
-        { phrases: ['abrir separador filtros', 'abrir o separador filtros', 'abrir aba filtros', 'abrir a aba filtros', 'mostrar filtros', 'ver filtros', 'ir para filtros', 'filtros'], id: 'filtros-tab', label: 'Filtros' }
+        {
+            phrases: buildTabVoicePhrases(['piscinas', 'controladores das piscinas', 'controladores de piscinas']),
+            id: 'piscinas-tab',
+            label: 'Controladores das Piscinas'
+        },
+        {
+            phrases: buildTabVoicePhrases(['lora', 'equipamentos lora', 'dispositivos lora']),
+            id: 'lora-tab',
+            label: 'Equipamentos LoRa'
+        },
+        {
+            phrases: buildTabVoicePhrases(['centrais de medida', 'centrais', 'medida']),
+            id: 'medida-tab',
+            label: 'Centrais de Medida'
+        },
+        {
+            phrases: buildTabVoicePhrases(['filtros', 'filtros defender']),
+            id: 'filtros-tab',
+            label: 'Filtros'
+        }
     ];
 
     const showDashboardTab = tabButton => {
