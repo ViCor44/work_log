@@ -848,13 +848,15 @@ document.addEventListener('DOMContentLoaded', function() {
 
     const canonicalDeviceName = value => normalizeDashboardVoice(value)
         .replace(/^(central de medida|equipamento lora|dispositivo lora|piscina|tanque|filtro|dispositivo|equipamento|lora wan|lorawan|lora|nora|lara|laura|loura|loira) /, '')
+        .replace(/\bactiva\b/g, 'ativa')
         .trim();
 
     const compactDeviceName = value => canonicalDeviceName(value).replace(/\s+/g, '');
 
     const deviceVoiceAliases = {
         'black hole': ['black', 'black all', 'black hall', 'black ol', 'blackhole'],
-        'whitewater': ['white water', 'whitewater']
+        'whitewater': ['white water', 'whitewater'],
+        'ativa': ['ativa', 'activa', 'a tiva', 'da ativa', 'de ativa', 'piscina ativa', 'piscina activa']
     };
 
     const detectRequestedDeviceType = (prefix, requestedName) => {
