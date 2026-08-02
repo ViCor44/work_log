@@ -434,7 +434,9 @@ document.querySelector("form").addEventListener("submit", function () {
         feedbackTimer = setTimeout(() => {
             feedbackHoldUntil = 0;
             if (shouldListen) {
-                feedback.textContent = 'Microfone ativo — diga “Slide”.';
+                feedback.textContent = Date.now() < commandArmedUntil
+                    ? 'Modo de comandos ativo — diga o próximo comando.'
+                    : 'Microfone ativo — diga “Slide”.';
                 feedback.classList.remove('d-none', 'bg-danger');
                 feedback.classList.add('bg-dark');
             } else {
@@ -461,10 +463,12 @@ document.querySelector("form").addEventListener("submit", function () {
     recognition.interimResults = true;
     recognition.maxAlternatives = 5;
     const sessionKey = 'worklogVoiceAlwaysListening';
+    const commandSessionKey = 'worklogVoiceCommandArmedUntil';
+    const commandWindowMs = 30000;
     let listening = false;
     shouldListen = sessionStorage.getItem(sessionKey) === '1';
     let restartTimer = null;
-    let commandArmedUntil = 0;
+    let commandArmedUntil = Number(sessionStorage.getItem(commandSessionKey)) || 0;
     let commandArmedTimer = null;
     const wakeAliases = ['slide', 'slaide', 'slid', 'slade', 'slyde', 'slight', 'se lide'];
     const wakeIntroductions = ['', 'ok ', 'ola ', 'o '];
@@ -481,14 +485,18 @@ document.querySelector("form").addEventListener("submit", function () {
         return null;
     };
 
-    const armCommandWindow = () => {
+    const armCommandWindow = (announce = true) => {
         clearTimeout(commandArmedTimer);
-        commandArmedUntil = Date.now() + 10000;
-        showFeedback('Palavra de ativação reconhecida — diga agora o comando.', false, 0);
+        commandArmedUntil = Date.now() + commandWindowMs;
+        sessionStorage.setItem(commandSessionKey, String(commandArmedUntil));
+        if (announce) {
+            showFeedback('Modo de comandos ativo durante 30 segundos.', false, 0);
+        }
         commandArmedTimer = setTimeout(() => {
             commandArmedUntil = 0;
+            sessionStorage.removeItem(commandSessionKey);
             if (shouldListen) showFeedback('Microfone ativo — diga “Slide”.', false, 0);
-        }, 10000);
+        }, commandWindowMs);
     };
 
     const setListeningPreference = enabled => {
@@ -510,6 +518,7 @@ document.querySelector("form").addEventListener("submit", function () {
         clearTimeout(restartTimer);
         clearTimeout(commandArmedTimer);
         commandArmedUntil = 0;
+        sessionStorage.removeItem(commandSessionKey);
         setListeningPreference(false);
         if (listening) recognition.stop();
         showFeedback(message || 'Escuta contínua desativada.');
@@ -519,8 +528,8 @@ document.querySelector("form").addEventListener("submit", function () {
         listening = true;
         button.setAttribute('aria-pressed', 'true');
         button.classList.replace('btn-outline-light', 'btn-danger');
-        if (Date.now() < commandArmedUntil) {
-            showFeedback('Palavra de ativação reconhecida — diga agora o comando.', false, 0);
+        if (Date.now() < commandArmedUntil && Date.now() >= feedbackHoldUntil) {
+            showFeedback('Modo de comandos ativo — diga o próximo comando.', false, 0);
         } else if (Date.now() >= feedbackHoldUntil) {
             showFeedback('Microfone ativo — diga “Slide”.', false, 0);
         }
@@ -584,8 +593,6 @@ document.querySelector("form").addEventListener("submit", function () {
             armCommandWindow();
             return;
         }
-        clearTimeout(commandArmedTimer);
-        commandArmedUntil = 0;
         if (['parar escuta', 'desativar escuta', 'desligar microfone'].includes(spoken)) {
             stopListening('Escuta contínua desativada por voz.');
             return;
@@ -594,7 +601,10 @@ document.querySelector("form").addEventListener("submit", function () {
             cancelable: true,
             detail: { transcript, spoken, showFeedback }
         });
-        if (!window.dispatchEvent(pageCommand)) return;
+        if (!window.dispatchEvent(pageCommand)) {
+            armCommandWindow(false);
+            return;
+        }
 
         const destination = destinations.find(item => item.phrases.includes(spoken));
         if (!destination) {
@@ -602,6 +612,7 @@ document.querySelector("form").addEventListener("submit", function () {
             return;
         }
         showFeedback(`A abrir ${destination.label}…`);
+        armCommandWindow(false);
         window.location.assign(destination.url);
     };
 
@@ -615,6 +626,7 @@ document.querySelector("form").addEventListener("submit", function () {
     });
 
     setListeningPreference(shouldListen);
+    if (commandArmedUntil > Date.now()) armCommandWindow(false);
     if (shouldListen) setTimeout(startListening, 250);
 })();
 </script>
