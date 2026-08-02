@@ -429,12 +429,26 @@ document.querySelector("form").addEventListener("submit", function () {
     recognition.lang = 'pt-PT';
     recognition.continuous = true;
     recognition.interimResults = false;
-    recognition.maxAlternatives = 1;
+    recognition.maxAlternatives = 5;
     const sessionKey = 'worklogVoiceAlwaysListening';
     let listening = false;
     let shouldListen = sessionStorage.getItem(sessionKey) === '1';
     let restartTimer = null;
     let commandArmedUntil = 0;
+    const wakeAliases = ['worklog', 'work log', 'work lock', 'work blog', 'work look', 'work low', 'work lot', 'word log'];
+    const wakeIntroductions = ['', 'ok ', 'ola ', 'o '];
+
+    const findWakeMatch = heard => {
+        for (const introduction of wakeIntroductions) {
+            for (const alias of wakeAliases) {
+                const candidate = introduction + alias;
+                if (heard === candidate || heard.startsWith(candidate + ' ')) {
+                    return { prefix: candidate, command: heard.substring(candidate.length).trim() };
+                }
+            }
+        }
+        return null;
+    };
 
     const setListeningPreference = enabled => {
         shouldListen = enabled;
@@ -485,22 +499,34 @@ document.querySelector("form").addEventListener("submit", function () {
         showFeedback(messages[event.error] || `Erro de voz: ${event.error}.`, true);
     };
     recognition.onresult = event => {
-        const transcript = event.results[event.resultIndex][0].transcript.trim();
-        const heard = normalize(transcript);
-        const wakePrefixes = ['worklog ', 'work log '];
-        const wakePrefix = wakePrefixes.find(prefix => heard.startsWith(prefix));
-        const wakeOnly = heard === 'worklog' || heard === 'work log';
+        const result = event.results[event.resultIndex];
+        const alternatives = Array.from(result).map(item => ({
+            transcript: item.transcript.trim(),
+            heard: normalize(item.transcript)
+        }));
+        const matchedAlternative = alternatives
+            .map(item => ({ ...item, wake: findWakeMatch(item.heard) }))
+            .find(item => item.wake);
+        const selected = matchedAlternative || { ...alternatives[0], wake: null };
+        const transcript = selected.transcript;
+        const heard = selected.heard;
+        const wakeMatch = selected.wake;
 
-        if (wakeOnly) {
+        if (wakeMatch && !wakeMatch.command) {
             commandArmedUntil = Date.now() + 10000;
             showFeedback('WorkLog ativado. Diga agora o comando.');
             return;
         }
 
         const isArmed = Date.now() < commandArmedUntil;
-        if (!wakePrefix && !isArmed) return;
+        if (!wakeMatch && !isArmed) {
+            if (heard.includes('work') || heard.includes('word')) {
+                showFeedback('Ouvi “' + transcript + '”. Tente dizer “Work Log” pausadamente.', true);
+            }
+            return;
+        }
 
-        const spoken = wakePrefix ? heard.substring(wakePrefix.length).trim() : heard;
+        const spoken = wakeMatch ? wakeMatch.command : heard;
         if (!spoken) {
             commandArmedUntil = Date.now() + 10000;
             showFeedback('WorkLog ativado. Diga agora o comando.');
