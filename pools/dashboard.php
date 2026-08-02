@@ -906,6 +906,9 @@ document.addEventListener('DOMContentLoaded', function() {
             'abrir equipamento ', 'ver equipamento ', 'abrir equipamento lora ', 'ver equipamento lora ',
             'abrir filtro ', 'ver filtro ',
             'abrir central de medida ', 'ver central de medida ',
+            'piscina ', 'tanque ', 'filtro ',
+            'equipamento lora ', 'dispositivo lora ', 'equipamento ', 'dispositivo ',
+            'central de medida ', 'lora ',
             'abrir ', 'ver ', 'mostrar '
         ];
         const prefix = prefixes.find(item => spoken.startsWith(item));
