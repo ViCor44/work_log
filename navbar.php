@@ -407,10 +407,15 @@ document.querySelector("form").addEventListener("submit", function () {
         .replace(/[^a-z0-9]+/g, ' ')
         .trim()
         .replace(/\s+/g, ' ');
+    let feedbackTimer = null;
     const showFeedback = (message, isError = false) => {
+        clearTimeout(feedbackTimer);
         feedback.textContent = message;
         feedback.classList.remove('d-none', 'bg-dark', 'bg-danger');
         feedback.classList.add(isError ? 'bg-danger' : 'bg-dark');
+        feedbackTimer = setTimeout(() => {
+            feedback.classList.add('d-none');
+        }, isError ? 7000 : 3500);
     };
 
     const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
