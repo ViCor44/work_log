@@ -424,7 +424,7 @@ document.querySelector("form").addEventListener("submit", function () {
         feedbackTimer = setTimeout(() => {
             feedbackHoldUntil = 0;
             if (shouldListen) {
-                feedback.textContent = 'Microfone ativo — diga “WorkLog”.';
+                feedback.textContent = 'Microfone ativo — diga “Slide”.';
                 feedback.classList.remove('d-none', 'bg-danger');
                 feedback.classList.add('bg-dark');
             } else {
@@ -456,7 +456,7 @@ document.querySelector("form").addEventListener("submit", function () {
     let restartTimer = null;
     let commandArmedUntil = 0;
     let commandArmedTimer = null;
-    const wakeAliases = ['worklog', 'work log', 'work lock', 'work blog', 'work look', 'work low', 'work lot', 'word log'];
+    const wakeAliases = ['slide', 'slaide', 'slid', 'slade', 'slyde', 'slight', 'se lide'];
     const wakeIntroductions = ['', 'ok ', 'ola ', 'o '];
 
     const findWakeMatch = heard => {
@@ -477,14 +477,14 @@ document.querySelector("form").addEventListener("submit", function () {
         showFeedback('Palavra de ativação reconhecida — diga agora o comando.', false, 0);
         commandArmedTimer = setTimeout(() => {
             commandArmedUntil = 0;
-            if (shouldListen) showFeedback('Microfone ativo — diga “WorkLog”.', false, 0);
+            if (shouldListen) showFeedback('Microfone ativo — diga “Slide”.', false, 0);
         }, 10000);
     };
 
     const setListeningPreference = enabled => {
         shouldListen = enabled;
         sessionStorage.setItem(sessionKey, enabled ? '1' : '0');
-        button.title = enabled ? 'Escuta contínua ativa — diga “WorkLog” antes do comando' : 'Ativar navegação por voz';
+        button.title = enabled ? 'Escuta contínua ativa — diga “Slide” antes do comando' : 'Ativar navegação por voz';
     };
     const startListening = () => {
         if (!shouldListen || listening) return;
@@ -512,7 +512,7 @@ document.querySelector("form").addEventListener("submit", function () {
         if (Date.now() < commandArmedUntil) {
             showFeedback('Palavra de ativação reconhecida — diga agora o comando.', false, 0);
         } else if (Date.now() >= feedbackHoldUntil) {
-            showFeedback('Microfone ativo — diga “WorkLog”.', false, 0);
+            showFeedback('Microfone ativo — diga “Slide”.', false, 0);
         }
     };
     recognition.onend = () => {
@@ -561,10 +561,10 @@ document.querySelector("form").addEventListener("submit", function () {
 
         const isArmed = Date.now() < commandArmedUntil;
         if (!wakeMatch && !isArmed) {
-            if (heard.includes('work') || heard.includes('word')) {
-                showFeedback('Ouvi “' + transcript + '”. Tente dizer “Work Log” pausadamente.', true);
+            if (heard.includes('sl') || heard.includes('lide')) {
+                showFeedback('Ouvi “' + transcript + '”. Tente dizer “Slide” pausadamente.', true);
             } else {
-                showFeedback('Microfone ativo — diga “WorkLog”.', false, 0);
+                showFeedback('Microfone ativo — diga “Slide”.', false, 0);
             }
             return;
         }
