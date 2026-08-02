@@ -887,7 +887,8 @@ document.addEventListener('DOMContentLoaded', function() {
             'abrir piscina ', 'ver piscina ', 'abrir tanque ', 'ver tanque ',
             'abrir equipamento ', 'ver equipamento ', 'abrir equipamento lora ', 'ver equipamento lora ',
             'abrir filtro ', 'ver filtro ',
-            'abrir central de medida ', 'ver central de medida '
+            'abrir central de medida ', 'ver central de medida ',
+            'abrir ', 'ver ', 'mostrar '
         ];
         const prefix = prefixes.find(item => spoken.startsWith(item));
         if (!prefix) return;
