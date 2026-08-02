@@ -846,6 +846,13 @@ document.addEventListener('DOMContentLoaded', function() {
         .replace(/^(central de medida|equipamento lora|dispositivo lora|piscina|tanque|filtro|dispositivo|equipamento|lora) /, '')
         .trim();
 
+    const compactDeviceName = value => canonicalDeviceName(value).replace(/\s+/g, '');
+
+    const deviceVoiceAliases = {
+        'black hole': ['black', 'black all', 'black hall', 'black ol', 'blackhole'],
+        'whitewater': ['white water', 'whitewater']
+    };
+
     const detectRequestedDeviceType = (prefix, requestedName) => {
         const description = normalizeDashboardVoice(prefix + ' ' + requestedName);
         if (description.includes('central de medida')) return 'medida';
@@ -918,6 +925,7 @@ document.addEventListener('DOMContentLoaded', function() {
         const requestedName = spoken.substring(prefix.length).trim();
         const requestedType = detectRequestedDeviceType(prefix, requestedName);
         const canonicalRequestedName = canonicalDeviceName(requestedName);
+        const compactRequestedName = compactDeviceName(requestedName);
         const cards = [...document.querySelectorAll('#dashboardTabsContent .scada-card')];
         const matches = cards.filter(card => {
             if (requestedType && card.dataset.type !== requestedType) return false;
@@ -925,8 +933,12 @@ document.addEventListener('DOMContentLoaded', function() {
             if (!title) return false;
             const titleName = normalizeDashboardVoice(title.textContent);
             const canonicalTitleName = canonicalDeviceName(title.textContent);
+            const compactTitleName = compactDeviceName(title.textContent);
+            const aliases = deviceVoiceAliases[canonicalTitleName] || deviceVoiceAliases[compactTitleName] || [];
             return titleName === requestedName
                 || canonicalTitleName === canonicalRequestedName
+                || compactTitleName === compactRequestedName
+                || aliases.some(alias => compactDeviceName(alias) === compactRequestedName)
                 || (canonicalRequestedName.length >= 3 && canonicalTitleName.includes(canonicalRequestedName));
         });
 
