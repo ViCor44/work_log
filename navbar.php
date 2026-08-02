@@ -434,6 +434,7 @@ document.querySelector("form").addEventListener("submit", function () {
     let listening = false;
     let shouldListen = sessionStorage.getItem(sessionKey) === '1';
     let restartTimer = null;
+    let commandArmedUntil = 0;
 
     const setListeningPreference = enabled => {
         shouldListen = enabled;
@@ -479,6 +480,7 @@ document.querySelector("form").addEventListener("submit", function () {
         if (event.error === 'not-allowed' || event.error === 'service-not-allowed' || event.error === 'audio-capture') {
             setListeningPreference(false);
         }
+        if (event.error === 'no-speech' && shouldListen) return;
         if (event.error === 'aborted' && !shouldListen) return;
         showFeedback(messages[event.error] || `Erro de voz: ${event.error}.`, true);
     };
@@ -487,18 +489,24 @@ document.querySelector("form").addEventListener("submit", function () {
         const heard = normalize(transcript);
         const wakePrefixes = ['worklog ', 'work log '];
         const wakePrefix = wakePrefixes.find(prefix => heard.startsWith(prefix));
-        if (!wakePrefix) {
-            if (heard === 'worklog' || heard === 'work log') {
-                showFeedback('Estou a ouvir. Diga o comando depois de “WorkLog”.');
-            }
+        const wakeOnly = heard === 'worklog' || heard === 'work log';
+
+        if (wakeOnly) {
+            commandArmedUntil = Date.now() + 10000;
+            showFeedback('WorkLog ativado. Diga agora o comando.');
             return;
         }
 
-        const spoken = heard.substring(wakePrefix.length).trim();
+        const isArmed = Date.now() < commandArmedUntil;
+        if (!wakePrefix && !isArmed) return;
+
+        const spoken = wakePrefix ? heard.substring(wakePrefix.length).trim() : heard;
         if (!spoken) {
-            showFeedback('Estou a ouvir. Diga o comando depois de “WorkLog”.');
+            commandArmedUntil = Date.now() + 10000;
+            showFeedback('WorkLog ativado. Diga agora o comando.');
             return;
         }
+        commandArmedUntil = 0;
         if (['parar escuta', 'desativar escuta', 'desligar microfone'].includes(spoken)) {
             stopListening('Escuta contínua desativada por voz.');
             return;

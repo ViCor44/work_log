@@ -796,7 +796,12 @@ document.addEventListener('DOMContentLoaded', function() {
             return;
         }
 
-        const prefixes = ['abrir detalhes de ', 'ver detalhes de ', 'abrir dispositivo ', 'ver dispositivo ', 'abrir piscina ', 'ver piscina ', 'abrir tanque ', 'ver tanque '];
+        const prefixes = [
+            'abrir detalhes de ', 'abrir detalhes da ', 'abrir detalhes do ',
+            'ver detalhes de ', 'ver detalhes da ', 'ver detalhes do ',
+            'abrir dispositivo ', 'ver dispositivo ',
+            'abrir piscina ', 'ver piscina ', 'abrir tanque ', 'ver tanque '
+        ];
         const prefix = prefixes.find(item => spoken.startsWith(item));
         if (!prefix) return;
 
