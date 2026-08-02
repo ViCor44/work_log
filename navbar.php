@@ -408,14 +408,29 @@ document.querySelector("form").addEventListener("submit", function () {
         .trim()
         .replace(/\s+/g, ' ');
     let feedbackTimer = null;
-    const showFeedback = (message, isError = false) => {
+    let feedbackHoldUntil = 0;
+    let shouldListen = false;
+    const showFeedback = (message, isError = false, durationMs = null) => {
         clearTimeout(feedbackTimer);
         feedback.textContent = message;
         feedback.classList.remove('d-none', 'bg-dark', 'bg-danger');
         feedback.classList.add(isError ? 'bg-danger' : 'bg-dark');
+        if (durationMs === 0) {
+            feedbackHoldUntil = 0;
+            return;
+        }
+        const actualDuration = durationMs ?? (isError ? 7000 : 2500);
+        feedbackHoldUntil = Date.now() + actualDuration;
         feedbackTimer = setTimeout(() => {
-            feedback.classList.add('d-none');
-        }, isError ? 7000 : 3500);
+            feedbackHoldUntil = 0;
+            if (shouldListen) {
+                feedback.textContent = 'Microfone ativo — diga “WorkLog”.';
+                feedback.classList.remove('d-none', 'bg-danger');
+                feedback.classList.add('bg-dark');
+            } else {
+                feedback.classList.add('d-none');
+            }
+        }, actualDuration);
     };
 
     const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
@@ -432,14 +447,15 @@ document.querySelector("form").addEventListener("submit", function () {
 
     const recognition = new SpeechRecognition();
     recognition.lang = 'pt-PT';
-    recognition.continuous = true;
-    recognition.interimResults = false;
+    recognition.continuous = false;
+    recognition.interimResults = true;
     recognition.maxAlternatives = 5;
     const sessionKey = 'worklogVoiceAlwaysListening';
     let listening = false;
-    let shouldListen = sessionStorage.getItem(sessionKey) === '1';
+    shouldListen = sessionStorage.getItem(sessionKey) === '1';
     let restartTimer = null;
     let commandArmedUntil = 0;
+    let commandArmedTimer = null;
     const wakeAliases = ['worklog', 'work log', 'work lock', 'work blog', 'work look', 'work low', 'work lot', 'word log'];
     const wakeIntroductions = ['', 'ok ', 'ola ', 'o '];
 
@@ -453,6 +469,16 @@ document.querySelector("form").addEventListener("submit", function () {
             }
         }
         return null;
+    };
+
+    const armCommandWindow = () => {
+        clearTimeout(commandArmedTimer);
+        commandArmedUntil = Date.now() + 10000;
+        showFeedback('Palavra de ativação reconhecida — diga agora o comando.', false, 0);
+        commandArmedTimer = setTimeout(() => {
+            commandArmedUntil = 0;
+            if (shouldListen) showFeedback('Microfone ativo — diga “WorkLog”.', false, 0);
+        }, 10000);
     };
 
     const setListeningPreference = enabled => {
@@ -472,6 +498,8 @@ document.querySelector("form").addEventListener("submit", function () {
     };
     const stopListening = message => {
         clearTimeout(restartTimer);
+        clearTimeout(commandArmedTimer);
+        commandArmedUntil = 0;
         setListeningPreference(false);
         if (listening) recognition.stop();
         showFeedback(message || 'Escuta contínua desativada.');
@@ -481,13 +509,17 @@ document.querySelector("form").addEventListener("submit", function () {
         listening = true;
         button.setAttribute('aria-pressed', 'true');
         button.classList.replace('btn-outline-light', 'btn-danger');
-        showFeedback('Escuta contínua ativa. Diga “WorkLog” antes do comando.');
+        if (Date.now() < commandArmedUntil) {
+            showFeedback('Palavra de ativação reconhecida — diga agora o comando.', false, 0);
+        } else if (Date.now() >= feedbackHoldUntil) {
+            showFeedback('Microfone ativo — diga “WorkLog”.', false, 0);
+        }
     };
     recognition.onend = () => {
         listening = false;
         button.setAttribute('aria-pressed', 'false');
         button.classList.replace('btn-danger', 'btn-outline-light');
-        if (shouldListen) restartTimer = setTimeout(startListening, 350);
+        if (shouldListen) restartTimer = setTimeout(startListening, 120);
     };
     recognition.onerror = event => {
         const messages = {
@@ -505,6 +537,11 @@ document.querySelector("form").addEventListener("submit", function () {
     };
     recognition.onresult = event => {
         const result = event.results[event.resultIndex];
+        const primaryTranscript = result[0].transcript.trim();
+        if (!result.isFinal) {
+            showFeedback('A ouvir: “' + primaryTranscript + '”…', false, 0);
+            return;
+        }
         const alternatives = Array.from(result).map(item => ({
             transcript: item.transcript.trim(),
             heard: normalize(item.transcript)
@@ -518,8 +555,7 @@ document.querySelector("form").addEventListener("submit", function () {
         const wakeMatch = selected.wake;
 
         if (wakeMatch && !wakeMatch.command) {
-            commandArmedUntil = Date.now() + 10000;
-            showFeedback('WorkLog ativado. Diga agora o comando.');
+            armCommandWindow();
             return;
         }
 
@@ -527,16 +563,18 @@ document.querySelector("form").addEventListener("submit", function () {
         if (!wakeMatch && !isArmed) {
             if (heard.includes('work') || heard.includes('word')) {
                 showFeedback('Ouvi “' + transcript + '”. Tente dizer “Work Log” pausadamente.', true);
+            } else {
+                showFeedback('Microfone ativo — diga “WorkLog”.', false, 0);
             }
             return;
         }
 
         const spoken = wakeMatch ? wakeMatch.command : heard;
         if (!spoken) {
-            commandArmedUntil = Date.now() + 10000;
-            showFeedback('WorkLog ativado. Diga agora o comando.');
+            armCommandWindow();
             return;
         }
+        clearTimeout(commandArmedTimer);
         commandArmedUntil = 0;
         if (['parar escuta', 'desativar escuta', 'desligar microfone'].includes(spoken)) {
             stopListening('Escuta contínua desativada por voz.');
