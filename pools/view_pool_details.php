@@ -667,8 +667,17 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 
     const dynamicVoiceCommands = {
-        on: ['ativar setpoint dinamico', 'ligar setpoint dinamico', 'ativar set point dinamico', 'ligar set point dinamico', 'ativar modo dinamico', 'ligar modo dinamico'],
-        off: ['desativar setpoint dinamico', 'desligar setpoint dinamico', 'desativar set point dinamico', 'desligar set point dinamico', 'desativar modo dinamico', 'desligar modo dinamico']
+        on: [
+            'setpoint dinamico', 'set point dinamico',
+            'ativar setpoint dinamico', 'ativar o setpoint dinamico', 'ligar setpoint dinamico', 'ligar o setpoint dinamico',
+            'ativar set point dinamico', 'ativar o set point dinamico', 'ligar set point dinamico', 'ligar o set point dinamico',
+            'ativar modo dinamico', 'ativar o modo dinamico', 'ligar modo dinamico', 'ligar o modo dinamico'
+        ],
+        off: [
+            'desativar setpoint dinamico', 'desativar o setpoint dinamico', 'desligar setpoint dinamico', 'desligar o setpoint dinamico',
+            'desativar set point dinamico', 'desativar o set point dinamico', 'desligar set point dinamico', 'desligar o set point dinamico',
+            'desativar modo dinamico', 'desativar o modo dinamico', 'desligar modo dinamico', 'desligar o modo dinamico'
+        ]
     };
     const highAttendanceVoiceCommands = {
         on: ['ativar alta afluencia', 'ligar alta afluencia', 'ativar afluencia alta', 'ativar modo alta afluencia', 'modo alta afluencia'],
