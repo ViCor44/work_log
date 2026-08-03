@@ -230,6 +230,15 @@ $stmt->close();
             <li>“Desligar microfone”</li>
         </ul>
 
+        <h3 class="h6 mb-2">Histórico</h3>
+        <ul class="small mb-3 ps-3">
+            <li>“Voltar”</li>
+            <li>“Voltar atrás”</li>
+            <li>“Página anterior”</li>
+            <li>“Regressar”</li>
+            <li>“Retroceder”</li>
+        </ul>
+
         <p class="small text-white-50 mb-0"><strong>Dica:</strong> fale pausadamente e use Chrome ou Edge através de HTTPS. O aviso inferior mostra o que foi ouvido e confirma a ação.</p>
     </div>
     <button type="button" id="voice-navigation-feedback" class="w-100 border-0 p-3 rounded bg-dark text-white shadow d-none text-start" aria-expanded="false" aria-controls="voice-command-panel"><span id="voice-navigation-feedback-message" role="status" aria-live="polite"></span><span class="d-block small text-white-50 mt-1">Clique para ver os comandos disponíveis</span></button>
@@ -558,6 +567,10 @@ document.querySelector("form").addEventListener("submit", function () {
     let commandArmedTimer = null;
     const wakeAliases = ['slide', 'slaide', 'slid', 'slade', 'slyde', 'slight', 'se lide'];
     const wakeIntroductions = ['', 'ok ', 'ola ', 'o '];
+    const historyBackCommands = [
+        'voltar', 'voltar atras', 'ir para tras', 'pagina anterior',
+        'regressar', 'retroceder', 'voltar a pagina anterior'
+    ];
 
     const findWakeMatch = heard => {
         for (const introduction of wakeIntroductions) {
@@ -689,6 +702,18 @@ document.querySelector("form").addEventListener("submit", function () {
         });
         if (!window.dispatchEvent(pageCommand)) {
             armCommandWindow(false);
+            return;
+        }
+
+        if (historyBackCommands.includes(spoken)) {
+            if (window.history.length <= 1) {
+                showFeedback('Não existe uma página anterior no histórico.', true);
+                armCommandWindow(false);
+                return;
+            }
+            showFeedback('A voltar à página anterior…');
+            armCommandWindow(false);
+            window.history.back();
             return;
         }
 
