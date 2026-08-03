@@ -680,8 +680,16 @@ document.addEventListener('DOMContentLoaded', function() {
         ]
     };
     const highAttendanceVoiceCommands = {
-        on: ['ativar alta afluencia', 'ligar alta afluencia', 'ativar afluencia alta', 'ativar modo alta afluencia', 'modo alta afluencia'],
-        off: ['desativar alta afluencia', 'desligar alta afluencia', 'desativar afluencia alta', 'desativar modo alta afluencia', 'ativar modo normal', 'voltar ao modo normal', 'modo normal']
+        on: [
+            'alta afluencia', 'afluencia alta', 'modo alta afluencia',
+            'ativar alta afluencia', 'ativar a alta afluencia', 'ligar alta afluencia', 'ligar a alta afluencia',
+            'ativar afluencia alta', 'ativar modo alta afluencia', 'ativar o modo alta afluencia'
+        ],
+        off: [
+            'desativar alta afluencia', 'desativar a alta afluencia', 'desligar alta afluencia', 'desligar a alta afluencia',
+            'desativar afluencia alta', 'desativar modo alta afluencia', 'desativar o modo alta afluencia',
+            'ativar modo normal', 'ativar o modo normal', 'voltar ao modo normal', 'modo normal'
+        ]
     };
     const remoteSetpointVoicePrefixes = [
         'aplicar setpoint remoto ', 'definir setpoint remoto ', 'colocar setpoint remoto ', 'alterar setpoint remoto ', 'mudar setpoint remoto ',
