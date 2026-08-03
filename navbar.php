@@ -482,6 +482,13 @@ document.querySelector("form").addEventListener("submit", function () {
             '“Abrir equipamento LoRa [nome]”',
             '“Abrir central de medida [nome]”',
             '“Fechar detalhes” ou “Voltar ao dashboard”'
+        ],
+        '/work_log/pools/view_pool_details.php': [
+            '“Ativar setpoint dinâmico” ou “Desativar setpoint dinâmico”',
+            '“Ativar alta afluência” ou “Desativar alta afluência”',
+            '“Ativar modo normal”',
+            '“Aplicar setpoint remoto 3 vírgula 20”',
+            '“Definir setpoint de cloro em 3 ponto 20”'
         ]
     };
     const commandsForThisPage = contextualCommands[window.location.pathname] || [];

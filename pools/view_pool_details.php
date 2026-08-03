@@ -665,6 +665,101 @@ document.addEventListener('DOMContentLoaded', function() {
             saveHighAttendance(cloroHaToggle.checked, cloroSetpointStatus);
         });
     }
+
+    const dynamicVoiceCommands = {
+        on: ['ativar setpoint dinamico', 'ligar setpoint dinamico', 'ativar set point dinamico', 'ligar set point dinamico', 'ativar modo dinamico', 'ligar modo dinamico'],
+        off: ['desativar setpoint dinamico', 'desligar setpoint dinamico', 'desativar set point dinamico', 'desligar set point dinamico', 'desativar modo dinamico', 'desligar modo dinamico']
+    };
+    const highAttendanceVoiceCommands = {
+        on: ['ativar alta afluencia', 'ligar alta afluencia', 'ativar afluencia alta', 'ativar modo alta afluencia', 'modo alta afluencia'],
+        off: ['desativar alta afluencia', 'desligar alta afluencia', 'desativar afluencia alta', 'desativar modo alta afluencia', 'ativar modo normal', 'voltar ao modo normal', 'modo normal']
+    };
+    const remoteSetpointVoicePrefixes = [
+        'aplicar setpoint remoto ', 'definir setpoint remoto ', 'colocar setpoint remoto ', 'alterar setpoint remoto ', 'mudar setpoint remoto ',
+        'aplicar set point remoto ', 'definir set point remoto ', 'colocar set point remoto ',
+        'aplicar setpoint de cloro ', 'definir setpoint de cloro ', 'alterar setpoint de cloro ',
+        'setpoint remoto ', 'set point remoto ', 'setpoint de cloro ', 'set point de cloro '
+    ];
+
+    function parseVoiceSetpoint(value) {
+        const numberWords = {
+            zero: '0', um: '1', uma: '1', dois: '2', duas: '2', tres: '3', quatro: '4',
+            cinco: '5', seis: '6', sete: '7', oito: '8', nove: '9', dez: '10',
+            vinte: '20', trinta: '30', quarenta: '40', cinquenta: '50'
+        };
+        let normalized = value.trim().replace(/^(?:em|para|a)\s+/, '');
+        normalized = normalized.replace(/\b(virgula|ponto)\b/g, '.');
+        normalized = normalized.split(/\s+/).map(token => numberWords[token] ?? token).join(' ');
+
+        const explicitDecimal = normalized.match(/^(\d+)\s*\.\s*(\d+)$/);
+        if (explicitDecimal) return Number(`${explicitDecimal[1]}.${explicitDecimal[2]}`);
+
+        const digits = normalized.match(/^\d+(?:[.,]\d+)?$/);
+        if (digits) return Number(normalized.replace(',', '.'));
+
+        // O reconhecimento de voz remove por vezes a vírgula: “três vinte” → “3 20”.
+        const separatedDigits = normalized.match(/^(\d+)\s+(\d{1,2})$/);
+        if (separatedDigits) return Number(`${separatedDigits[1]}.${separatedDigits[2]}`);
+        return NaN;
+    }
+
+    function setVoiceToggle(toggle, enabled, label, showFeedback) {
+        if (!toggle) {
+            showFeedback('Este controlo não está disponível para este utilizador.', true);
+            return;
+        }
+        if (toggle.checked === enabled) {
+            showFeedback(`${label} já está ${enabled ? 'ativo' : 'desativado'}.`);
+            return;
+        }
+        toggle.checked = enabled;
+        toggle.dispatchEvent(new Event('change', { bubbles: true }));
+        showFeedback(`${enabled ? 'A ativar' : 'A desativar'} ${label}…`);
+    }
+
+    window.addEventListener('worklog:voice-command', event => {
+        const { spoken, showFeedback } = event.detail;
+
+        if (dynamicVoiceCommands.on.includes(spoken) || dynamicVoiceCommands.off.includes(spoken)) {
+            event.preventDefault();
+            setVoiceToggle(cloroDynamicToggle, dynamicVoiceCommands.on.includes(spoken), 'o setpoint dinâmico', showFeedback);
+            return;
+        }
+
+        if (highAttendanceVoiceCommands.on.includes(spoken) || highAttendanceVoiceCommands.off.includes(spoken)) {
+            event.preventDefault();
+            if (!cloroDynamicToggle || !cloroDynamicToggle.checked) {
+                showFeedback('Ative primeiro o setpoint dinâmico para usar a alta afluência.', true);
+                return;
+            }
+            setVoiceToggle(cloroHaToggle, highAttendanceVoiceCommands.on.includes(spoken), 'a alta afluência', showFeedback);
+            return;
+        }
+
+        const setpointPrefix = remoteSetpointVoicePrefixes.find(prefix => spoken.startsWith(prefix));
+        if (!setpointPrefix) return;
+        event.preventDefault();
+
+        if (!cloroSetpointInput || !cloroSetpointForm) {
+            showFeedback('O setpoint remoto não está disponível para este utilizador.', true);
+            return;
+        }
+        if (cloroDynamicToggle && cloroDynamicToggle.checked) {
+            showFeedback('Desative primeiro o setpoint dinâmico para aplicar um setpoint remoto.', true);
+            return;
+        }
+
+        const value = parseVoiceSetpoint(spoken.substring(setpointPrefix.length));
+        if (!Number.isFinite(value)) {
+            showFeedback('Não reconheci o valor. Exemplo: “setpoint remoto três vírgula vinte”.', true);
+            return;
+        }
+
+        cloroSetpointInput.value = value.toFixed(2);
+        showFeedback(`A aplicar o setpoint remoto ${value.toFixed(2)}…`);
+        cloroSetpointForm.requestSubmit();
+    });
+
     let phHistoryChart, cloroHistoryChart;
     let tempGauge, phGauge, cloroGauge;
     let cloroNotes = [];
