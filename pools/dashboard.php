@@ -880,6 +880,20 @@ document.addEventListener('DOMContentLoaded', function() {
         medida: 'central de medida'
     };
 
+    const perliteOverviewCommands = [
+        'mudanca de perlite', 'mudancas de perlite', 'mudanca da perlite', 'mudanca perlite', 'mudar perlite',
+        'mudanca de perlita', 'mudancas de perlita', 'mudanca da perlita', 'mudanca perlita', 'mudar perlita',
+        'troca de perlite', 'trocas de perlite', 'trocar perlite',
+        'troca de perlita', 'trocas de perlita', 'trocar perlita',
+        'substituicao de perlite', 'substituicoes de perlite', 'substituir perlite',
+        'substituicao de perlita', 'substituicoes de perlita', 'substituir perlita',
+        'ver perlite', 'ver perlita', 'ver mudancas de perlite', 'mostrar mudancas de perlite', 'abrir mudancas de perlite',
+        'ver trocas de perlite', 'mostrar trocas de perlite', 'abrir trocas de perlite',
+        'proximas mudancas de perlite', 'proximas trocas de perlite',
+        'quando mudar a perlite', 'quando trocar a perlite', 'quando substituir a perlite',
+        'quando mudar a perlita', 'quando trocar a perlita', 'quando substituir a perlita'
+    ];
+
     window.addEventListener('worklog:voice-command', event => {
         const { spoken, transcript, showFeedback } = event.detail;
 
@@ -901,6 +915,18 @@ document.addEventListener('DOMContentLoaded', function() {
                 showFeedback('Detalhes fechados.');
                 return;
             }
+        }
+
+        if (perliteOverviewCommands.includes(spoken)) {
+            event.preventDefault();
+            const perliteModal = document.getElementById('perliteOverviewModal');
+            if (perliteModal && window.bootstrap && bootstrap.Modal) {
+                bootstrap.Modal.getOrCreateInstance(perliteModal).show();
+                showFeedback('A abrir as próximas mudanças de perlite…');
+            } else {
+                showFeedback('Não foi possível abrir as mudanças de perlite.', true);
+            }
+            return;
         }
 
         const requestedTab = voiceTabs.find(tab => tab.phrases.includes(spoken));

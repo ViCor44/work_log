@@ -472,6 +472,7 @@ document.querySelector("form").addEventListener("submit", function () {
             '“Registar relatório”'
         ],
         '/work_log/pools/dashboard.php': [
+            '“Mudanças de perlite” (também aceita “perlita”, “trocas”, “substituições” e “quando trocar a perlite”)',
             '“Abrir piscinas”',
             '“Abrir equipamentos LoRa”',
             '“Abrir centrais de medida”',
