@@ -737,9 +737,16 @@ document.addEventListener('DOMContentLoaded', function() {
     window.addEventListener('worklog:voice-command', event => {
         const { spoken, showFeedback } = event.detail;
 
-        if (dynamicVoiceCommands.on.includes(spoken) || dynamicVoiceCommands.off.includes(spoken)) {
+        const mentionsDynamicMode = /(?:set ?point|modo) dinamico/.test(spoken);
+        const requestsDynamicOff = mentionsDynamicMode && /\b(?:desativar|desativa|desligar|desliga|inativar|inativa|parar)\b/.test(spoken);
+        const requestsDynamicOn = mentionsDynamicMode
+            && !requestsDynamicOff
+            && (/\b(?:ativar|ativa|ligar|liga|iniciar|inicia)\b/.test(spoken) || ['setpoint dinamico', 'set point dinamico', 'modo dinamico'].includes(spoken));
+
+        if (requestsDynamicOn || requestsDynamicOff || dynamicVoiceCommands.on.includes(spoken) || dynamicVoiceCommands.off.includes(spoken)) {
             event.preventDefault();
-            setVoiceToggle(cloroDynamicToggle, dynamicVoiceCommands.on.includes(spoken), 'o setpoint dinâmico', showFeedback);
+            const enableDynamicMode = requestsDynamicOn || (!requestsDynamicOff && dynamicVoiceCommands.on.includes(spoken));
+            setVoiceToggle(cloroDynamicToggle, enableDynamicMode, 'o setpoint dinâmico', showFeedback);
             return;
         }
 
