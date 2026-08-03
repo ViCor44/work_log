@@ -202,7 +202,36 @@ $stmt->close();
 </nav>
 
 <div id="voice-navigation-help" class="position-fixed bottom-0 end-0 m-3" style="z-index: 2000; width: min(24rem, calc(100vw - 2rem));">
-    <div id="voice-command-panel" class="mb-2 p-3 rounded bg-dark text-white shadow d-none" aria-labelledby="voice-command-panel-title"><strong id="voice-command-panel-title">Comandos de voz</strong><button type="button" id="voice-command-panel-close" class="btn-close btn-close-white float-end" aria-label="Fechar lista de comandos"></button><p class="small my-2">Diga <strong>“Slide”</strong> e, de seguida:</p><ul id="voice-command-panel-list" class="small mb-2 ps-3"></ul><p class="small text-white-50 mb-0">Para terminar: “desligar microfone”.</p></div>
+    <div id="voice-command-panel" class="mb-2 p-3 rounded bg-dark text-white shadow d-none overflow-auto" style="max-height: min(70vh, 38rem);" aria-labelledby="voice-command-panel-title">
+        <div class="d-flex align-items-center justify-content-between mb-3">
+            <strong id="voice-command-panel-title">Como usar os comandos de voz</strong>
+            <button type="button" id="voice-command-panel-close" class="btn-close btn-close-white" aria-label="Fechar instruções de voz"></button>
+        </div>
+
+        <ol class="small ps-3 mb-3">
+            <li class="mb-2">Clique no <strong>ícone do microfone</strong> na barra superior e autorize o acesso ao microfone, se o navegador pedir.</li>
+            <li class="mb-2">Diga <strong>“Slide”</strong>. O modo de comandos fica ativo durante 30 segundos.</li>
+            <li class="mb-2">Diga um comando da lista abaixo. Também pode dizer tudo seguido, por exemplo: <strong>“Slide, ir para relatórios”</strong>.</li>
+            <li>Enquanto o modo estiver ativo, pode dar outros comandos sem repetir “Slide”.</li>
+        </ol>
+
+        <h3 class="h6 mb-2">Navegação</h3>
+        <ul id="voice-command-panel-list" class="small mb-3 ps-3"></ul>
+
+        <div id="voice-page-commands" class="d-none">
+            <h3 class="h6 mb-2">Nesta página</h3>
+            <ul id="voice-page-command-list" class="small mb-3 ps-3"></ul>
+        </div>
+
+        <h3 class="h6 mb-2">Controlar o microfone</h3>
+        <ul class="small mb-3 ps-3">
+            <li>“Parar escuta”</li>
+            <li>“Desativar escuta”</li>
+            <li>“Desligar microfone”</li>
+        </ul>
+
+        <p class="small text-white-50 mb-0"><strong>Dica:</strong> fale pausadamente e use Chrome ou Edge através de HTTPS. O aviso inferior mostra o que foi ouvido e confirma a ação.</p>
+    </div>
     <button type="button" id="voice-navigation-feedback" class="w-100 border-0 p-3 rounded bg-dark text-white shadow d-none text-start" aria-expanded="false" aria-controls="voice-command-panel"><span id="voice-navigation-feedback-message" role="status" aria-live="polite"></span><span class="d-block small text-white-50 mt-1">Clique para ver os comandos disponíveis</span></button>
 </div>
 
@@ -392,7 +421,9 @@ document.querySelector("form").addEventListener("submit", function () {
     const commandPanel = document.getElementById('voice-command-panel');
     const commandPanelList = document.getElementById('voice-command-panel-list');
     const commandPanelClose = document.getElementById('voice-command-panel-close');
-    if (!button || !feedback || !feedbackMessage || !commandPanel || !commandPanelList || !commandPanelClose) return;
+    const pageCommands = document.getElementById('voice-page-commands');
+    const pageCommandList = document.getElementById('voice-page-command-list');
+    if (!button || !feedback || !feedbackMessage || !commandPanel || !commandPanelList || !commandPanelClose || !pageCommands || !pageCommandList) return;
 
     const destinations = Object.freeze([
         { phrases: ['ir para inicio', 'ir para o inicio', 'pagina inicial'], url: '/work_log/redirect_page.php', label: 'início' },
@@ -424,6 +455,35 @@ document.querySelector("form").addEventListener("submit", function () {
         item.textContent = `“Ir para ${destination.label}”`;
         commandPanelList.appendChild(item);
     });
+
+    const contextualCommands = {
+        '/work_log/list_reports.php': [
+            '“Criar novo relatório”',
+            '“Fazer novo relatório”',
+            '“Registar relatório”'
+        ],
+        '/work_log/pools/dashboard.php': [
+            '“Abrir piscinas”',
+            '“Abrir equipamentos LoRa”',
+            '“Abrir centrais de medida”',
+            '“Abrir filtros”',
+            '“Abrir piscina [nome]”',
+            '“Abrir filtro [nome]”',
+            '“Abrir equipamento LoRa [nome]”',
+            '“Abrir central de medida [nome]”',
+            '“Fechar detalhes” ou “Voltar ao dashboard”'
+        ]
+    };
+    const commandsForThisPage = contextualCommands[window.location.pathname] || [];
+    if (commandsForThisPage.length) {
+        commandsForThisPage.forEach(command => {
+            const item = document.createElement('li');
+            item.className = 'mb-1';
+            item.textContent = command;
+            pageCommandList.appendChild(item);
+        });
+        pageCommands.classList.remove('d-none');
+    }
     const setCommandPanelOpen = open => {
         commandPanel.classList.toggle('d-none', !open);
         feedback.setAttribute('aria-expanded', open ? 'true' : 'false');
