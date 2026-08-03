@@ -201,7 +201,10 @@ $stmt->close();
     </div>
 </nav>
 
-<div id="voice-navigation-feedback" class="position-fixed bottom-0 end-0 m-3 p-3 rounded bg-dark text-white shadow d-none" style="z-index: 2000; max-width: 24rem;" role="status" aria-live="polite"></div>
+<div id="voice-navigation-help" class="position-fixed bottom-0 end-0 m-3" style="z-index: 2000; width: min(24rem, calc(100vw - 2rem));">
+    <div id="voice-command-panel" class="mb-2 p-3 rounded bg-dark text-white shadow d-none" aria-labelledby="voice-command-panel-title"><strong id="voice-command-panel-title">Comandos de voz</strong><button type="button" id="voice-command-panel-close" class="btn-close btn-close-white float-end" aria-label="Fechar lista de comandos"></button><p class="small my-2">Diga <strong>“Slide”</strong> e, de seguida:</p><ul id="voice-command-panel-list" class="small mb-2 ps-3"></ul><p class="small text-white-50 mb-0">Para terminar: “desligar microfone”.</p></div>
+    <button type="button" id="voice-navigation-feedback" class="w-100 border-0 p-3 rounded bg-dark text-white shadow d-none text-start" aria-expanded="false" aria-controls="voice-command-panel"><span id="voice-navigation-feedback-message" role="status" aria-live="polite"></span><span class="d-block small text-white-50 mt-1">Clique para ver os comandos disponíveis</span></button>
+</div>
 
 <!-- Modal de Edição de Perfil -->
 <div class="modal fade" id="editProfileModal" tabindex="-1" aria-labelledby="editProfileLabel" aria-hidden="true">
@@ -385,7 +388,11 @@ document.querySelector("form").addEventListener("submit", function () {
 (() => {
     const button = document.getElementById('voice-navigation-button');
     const feedback = document.getElementById('voice-navigation-feedback');
-    if (!button || !feedback) return;
+    const feedbackMessage = document.getElementById('voice-navigation-feedback-message');
+    const commandPanel = document.getElementById('voice-command-panel');
+    const commandPanelList = document.getElementById('voice-command-panel-list');
+    const commandPanelClose = document.getElementById('voice-command-panel-close');
+    if (!button || !feedback || !feedbackMessage || !commandPanel || !commandPanelList || !commandPanelClose) return;
 
     const destinations = Object.freeze([
         { phrases: ['ir para inicio', 'ir para o inicio', 'pagina inicial'], url: '/work_log/redirect_page.php', label: 'início' },
@@ -411,6 +418,25 @@ document.querySelector("form").addEventListener("submit", function () {
         { phrases: ['ir para sobre', 'sobre o worklog'], url: '/work_log/about.php', label: 'sobre' }
     ]);
 
+    destinations.forEach(destination => {
+        const item = document.createElement('li');
+        item.className = 'mb-1';
+        item.textContent = `“Ir para ${destination.label}”`;
+        commandPanelList.appendChild(item);
+    });
+    const setCommandPanelOpen = open => {
+        commandPanel.classList.toggle('d-none', !open);
+        feedback.setAttribute('aria-expanded', open ? 'true' : 'false');
+    };
+    feedback.addEventListener('click', () => setCommandPanelOpen(feedback.getAttribute('aria-expanded') !== 'true'));
+    commandPanelClose.addEventListener('click', () => { setCommandPanelOpen(false); feedback.focus(); });
+    document.addEventListener('click', event => {
+        if (!document.getElementById('voice-navigation-help').contains(event.target)) setCommandPanelOpen(false);
+    });
+    document.addEventListener('keydown', event => {
+        if (event.key === 'Escape' && feedback.getAttribute('aria-expanded') === 'true') { setCommandPanelOpen(false); feedback.focus(); }
+    });
+
     const normalize = value => value.toLocaleLowerCase('pt-PT')
         .normalize('NFD')
         .replace(/[\u0300-\u036f]/g, '')
@@ -422,7 +448,7 @@ document.querySelector("form").addEventListener("submit", function () {
     let shouldListen = false;
     const showFeedback = (message, isError = false, durationMs = null) => {
         clearTimeout(feedbackTimer);
-        feedback.textContent = message;
+        feedbackMessage.textContent = message;
         feedback.classList.remove('d-none', 'bg-dark', 'bg-danger');
         feedback.classList.add(isError ? 'bg-danger' : 'bg-dark');
         if (durationMs === 0) {
@@ -434,7 +460,7 @@ document.querySelector("form").addEventListener("submit", function () {
         feedbackTimer = setTimeout(() => {
             feedbackHoldUntil = 0;
             if (shouldListen) {
-                feedback.textContent = Date.now() < commandArmedUntil
+                feedbackMessage.textContent = Date.now() < commandArmedUntil
                     ? 'Modo de comandos ativo — diga o próximo comando.'
                     : 'Microfone ativo — diga “Slide”.';
                 feedback.classList.remove('d-none', 'bg-danger');
