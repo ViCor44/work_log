@@ -467,7 +467,10 @@ document.querySelector("form").addEventListener("submit", function () {
         visibleAlarm = alarm;
         document.getElementById('globalAlarmSubtitle').textContent = 'Requer a sua atenção';
         document.getElementById('globalAlarmController').textContent = alarm.name;
-        document.getElementById('globalAlarmType').textContent = alarm.label;
+        const valueText = alarm.current_value !== null && alarm.current_value !== undefined
+            ? ' — valor atual: ' + Number(alarm.current_value).toFixed(2)
+            : '';
+        document.getElementById('globalAlarmType').textContent = alarm.label + valueText;
         const since = new Date(String(alarm.first_active_at).replace(' ', 'T'));
         document.getElementById('globalAlarmSince').textContent = 'Ativo desde ' + since.toLocaleString('pt-PT');
         document.getElementById('globalAlarmOpen').href = '/work_log/pools/view_pool_details.php?id=' + encodeURIComponent(alarm.tank_id);

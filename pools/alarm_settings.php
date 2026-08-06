@@ -10,15 +10,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $cMax = (float)str_replace(',', '.', $_POST['chlorine_max'] ?? '3');
     $pMin = (float)str_replace(',', '.', $_POST['ph_min'] ?? '7');
     $pMax = (float)str_replace(',', '.', $_POST['ph_max'] ?? '7.8');
+    $modalCMax = (float)str_replace(',', '.', $_POST['modal_chlorine_max'] ?? '4');
+    $modalPhMax = (float)str_replace(',', '.', $_POST['modal_ph_max'] ?? '8.2');
     $delay = max(0, min(1440, (int)($_POST['modal_delay_minutes'] ?? 5)));
-    if ($tankId > 0 && $cMin < $cMax && $pMin < $pMax) {
+    if ($tankId > 0 && $cMin < $cMax && $pMin < $pMax && $modalCMax >= $cMax && $modalPhMax >= $pMax) {
         $modal = isset($_POST['modal_enabled']) ? 1 : 0;
         $sound = isset($_POST['sound_enabled']) ? 1 : 0;
-        $stmt = $conn->prepare("INSERT INTO controller_alarm_config (tank_id,chlorine_min,chlorine_max,ph_min,ph_max,modal_delay_minutes,modal_enabled,sound_enabled) VALUES (?,?,?,?,?,?,?,?) ON DUPLICATE KEY UPDATE chlorine_min=VALUES(chlorine_min),chlorine_max=VALUES(chlorine_max),ph_min=VALUES(ph_min),ph_max=VALUES(ph_max),modal_delay_minutes=VALUES(modal_delay_minutes),modal_enabled=VALUES(modal_enabled),sound_enabled=VALUES(sound_enabled)");
-        $stmt->bind_param('iddddiii', $tankId,$cMin,$cMax,$pMin,$pMax,$delay,$modal,$sound);
+        $stmt = $conn->prepare("INSERT INTO controller_alarm_config (tank_id,chlorine_min,chlorine_max,ph_min,ph_max,modal_chlorine_max,modal_ph_max,modal_delay_minutes,modal_enabled,sound_enabled) VALUES (?,?,?,?,?,?,?,?,?,?) ON DUPLICATE KEY UPDATE chlorine_min=VALUES(chlorine_min),chlorine_max=VALUES(chlorine_max),ph_min=VALUES(ph_min),ph_max=VALUES(ph_max),modal_chlorine_max=VALUES(modal_chlorine_max),modal_ph_max=VALUES(modal_ph_max),modal_delay_minutes=VALUES(modal_delay_minutes),modal_enabled=VALUES(modal_enabled),sound_enabled=VALUES(sound_enabled)");
+        $stmt->bind_param('idddddiiii', $tankId,$cMin,$cMax,$pMin,$pMax,$modalCMax,$modalPhMax,$delay,$modal,$sound);
         $stmt->execute(); $stmt->close();
         $message = 'Configuração guardada.';
-    } else $message = 'Os valores mínimos têm de ser inferiores aos máximos.';
+    } else $message = 'Os mínimos têm de ser inferiores aos máximos e os limiares do modal não podem ser inferiores aos limites normais.';
 }
 $tanks = $conn->query("SELECT id,name FROM tanks WHERE has_controller=1 ORDER BY name")->fetch_all(MYSQLI_ASSOC);
 ?>
@@ -35,6 +37,9 @@ $tanks = $conn->query("SELECT id,name FROM tanks WHERE has_controller=1 ORDER BY
     <div class="col-6"><label class="form-label">Cloro máximo (mg/L)</label><input class="form-control" type="number" step="0.01" min="0" name="chlorine_max" value="<?= htmlspecialchars($cfg['chlorine_max']) ?>" required></div>
     <div class="col-6"><label class="form-label">pH mínimo</label><input class="form-control" type="number" step="0.01" min="0" max="14" name="ph_min" value="<?= htmlspecialchars($cfg['ph_min']) ?>" required></div>
     <div class="col-6"><label class="form-label">pH máximo</label><input class="form-control" type="number" step="0.01" min="0" max="14" name="ph_max" value="<?= htmlspecialchars($cfg['ph_max']) ?>" required></div>
+    <div class="col-12"><hr class="my-1"><div class="fw-semibold">Limiares críticos do modal</div><div class="small text-muted">A indicação “fora dos limites” não abre o modal. O modal químico aparece apenas a partir destes valores.</div></div>
+    <div class="col-6"><label class="form-label">Cloro máximo para modal (mg/L)</label><input class="form-control" type="number" step="0.01" min="0" name="modal_chlorine_max" value="<?= htmlspecialchars($cfg['modal_chlorine_max']) ?>" required></div>
+    <div class="col-6"><label class="form-label">pH máximo para modal</label><input class="form-control" type="number" step="0.01" min="0" max="14" name="modal_ph_max" value="<?= htmlspecialchars($cfg['modal_ph_max']) ?>" required></div>
     <div class="col-12"><label class="form-label">Mostrar modal após alarme ativo durante</label><div class="input-group"><input class="form-control" type="number" min="0" max="1440" name="modal_delay_minutes" value="<?= (int)$cfg['modal_delay_minutes'] ?>"><span class="input-group-text">minutos</span></div></div>
     <div class="col-12 d-flex gap-4"><div class="form-check"><input class="form-check-input" type="checkbox" name="modal_enabled" id="modal<?= (int)$tank['id'] ?>" <?= $cfg['modal_enabled']?'checked':'' ?>><label class="form-check-label" for="modal<?= (int)$tank['id'] ?>">Modal global</label></div><div class="form-check"><input class="form-check-input" type="checkbox" name="sound_enabled" id="sound<?= (int)$tank['id'] ?>" <?= $cfg['sound_enabled']?'checked':'' ?>><label class="form-check-label" for="sound<?= (int)$tank['id'] ?>">Aviso sonoro</label></div></div>
    </div></div><div class="card-footer text-end"><button type="submit" class="btn btn-primary"><i class="fas fa-save me-1"></i>Guardar alterações</button></div>

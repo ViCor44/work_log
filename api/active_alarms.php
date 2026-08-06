@@ -97,7 +97,31 @@ if ($latestResult) {
         }
     }
 }
-$sql="SELECT s.tank_id,t.name,s.alarm_type,s.first_active_at,TIMESTAMPDIFF(SECOND,s.first_active_at,NOW()) age_seconds,COALESCE(c.modal_delay_minutes,5) modal_delay_minutes,COALESCE(c.sound_enabled,1) sound_enabled FROM controller_alarm_state s JOIN tanks t ON t.id=s.tank_id LEFT JOIN controller_alarm_config c ON c.tank_id=t.id WHERE s.is_active=1 AND COALESCE(c.modal_enabled,1)=1 AND s.first_active_at IS NOT NULL AND TIMESTAMPDIFF(MINUTE,s.first_active_at,NOW()) >= COALESCE(c.modal_delay_minutes,5) ORDER BY s.first_active_at";
+$sql="SELECT s.tank_id,t.name,s.alarm_type,s.first_active_at,
+             TIMESTAMPDIFF(SECOND,s.first_active_at,NOW()) age_seconds,
+             COALESCE(c.modal_delay_minutes,5) modal_delay_minutes,
+             COALESCE(c.sound_enabled,1) sound_enabled,
+             CASE WHEN s.alarm_type='cloro_alto' THEN latest.chlorine_value
+                  WHEN s.alarm_type='ph_alto' THEN latest.ph_value ELSE NULL END current_value
+      FROM controller_alarm_state s
+      JOIN tanks t ON t.id=s.tank_id
+      LEFT JOIN controller_alarm_config c ON c.tank_id=t.id
+      LEFT JOIN (
+          SELECT h.tank_id,h.chlorine_value,h.ph_value
+          FROM controller_history h
+          JOIN (SELECT tank_id,MAX(log_datetime) max_dt FROM controller_history GROUP BY tank_id) m
+            ON m.tank_id=h.tank_id AND m.max_dt=h.log_datetime
+      ) latest ON latest.tank_id=s.tank_id
+      WHERE s.is_active=1
+        AND COALESCE(c.modal_enabled,1)=1
+        AND s.first_active_at IS NOT NULL
+        AND TIMESTAMPDIFF(MINUTE,s.first_active_at,NOW()) >= COALESCE(c.modal_delay_minutes,5)
+        AND (
+            s.alarm_type NOT IN ('cloro_baixo','cloro_alto','ph_baixo','ph_alto')
+            OR (s.alarm_type='cloro_alto' AND latest.chlorine_value >= COALESCE(c.modal_chlorine_max,4.00))
+            OR (s.alarm_type='ph_alto' AND latest.ph_value >= COALESCE(c.modal_ph_max,8.20))
+        )
+      ORDER BY s.first_active_at";
 $result=$conn->query($sql);
 if (!$result) { echo json_encode(['alarms'=>[],'error'=>'Estado de alarmes indisponível']); exit; }
 $rows=$result->fetch_all(MYSQLI_ASSOC);

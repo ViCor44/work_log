@@ -4,6 +4,8 @@ CREATE TABLE IF NOT EXISTS controller_alarm_config (
     chlorine_max DECIMAL(6,2) NOT NULL DEFAULT 3.00,
     ph_min DECIMAL(5,2) NOT NULL DEFAULT 7.00,
     ph_max DECIMAL(5,2) NOT NULL DEFAULT 7.80,
+    modal_chlorine_max DECIMAL(6,2) NOT NULL DEFAULT 4.00,
+    modal_ph_max DECIMAL(5,2) NOT NULL DEFAULT 8.20,
     modal_delay_minutes INT NOT NULL DEFAULT 5,
     modal_enabled TINYINT(1) NOT NULL DEFAULT 1,
     sound_enabled TINYINT(1) NOT NULL DEFAULT 1,
