@@ -1059,14 +1059,15 @@ document.addEventListener('DOMContentLoaded', function() {
                 : [];
 
             // 2. Buscar notas deste tanque
-            try {
-                const notesResp = await fetch(`${apiBasePath}/get_controller_notes.php?tank_id=${tankId}`);
-                const notesData = await readApiResponse(notesResp);
-                cloroNotes = notesData.notes || [];
-            } catch (notesError) {
-                console.warn('Não foi possível carregar as notas do gráfico:', notesError);
-                cloroNotes = [];
-            }
+            // As notas são secundárias: não bloquear o desenho dos gráficos enquanto
+            // esta chamada termina. Ficam disponíveis no próximo refresh automático.
+            fetch(`${apiBasePath}/get_controller_notes.php?tank_id=${tankId}`)
+                .then(readApiResponse)
+                .then(notesData => { cloroNotes = notesData.notes || []; })
+                .catch(notesError => {
+                    console.warn('Não foi possível carregar as notas do gráfico:', notesError);
+                    cloroNotes = [];
+                });
 
             // 3. Destruir gráficos antigos
             if (phHistoryChart) phHistoryChart.destroy();

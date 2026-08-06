@@ -567,7 +567,10 @@ document.querySelector("form").addEventListener("submit", function () {
         document.getElementById('globalAlarmSoundNotice').style.display = 'none'; startSound();
     });
     document.getElementById('globalAlarmOpen').addEventListener('click', () => { logAlarmAction('modal_opened', visibleAlarm); stopSound(); });
-    poll(); setInterval(poll, 10000);
+    // Dá prioridade ao conteúdo da página (gráficos/formulários) antes da primeira
+    // ronda global, que consulta vários controladores em paralelo.
+    window.addEventListener('load', () => setTimeout(poll, 2000), {once:true});
+    setInterval(poll, 10000);
 })();
 </script>
 
