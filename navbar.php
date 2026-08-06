@@ -479,13 +479,14 @@ document.querySelector("form").addEventListener("submit", function () {
     async function poll() {
         try {
             const response = await fetch('/work_log/api/active_alarms.php', {cache:'no-store', credentials:'same-origin'});
-            if (!response.ok) return;
+            if (!response.ok) { console.warn('Monitor de alarmes indisponível:', response.status); return; }
             const data = await response.json();
+            if (data.error) console.warn('Monitor de alarmes:', data.error);
             const next = (data.alarms || []).find(a => localStorage.getItem(ignoredKey(a)) !== '1');
             if (!next) { if (visibleAlarm) hide(); return; }
             const same = visibleAlarm && ignoredKey(visibleAlarm) === ignoredKey(next);
             if (!same) show(next);
-        } catch (_) {}
+        } catch (error) { console.warn('Erro ao consultar alarmes globais:', error); }
     }
     document.getElementById('globalAlarmIgnore').addEventListener('click', () => {
         if (visibleAlarm) localStorage.setItem(ignoredKey(visibleAlarm), '1'); hide(); poll();
