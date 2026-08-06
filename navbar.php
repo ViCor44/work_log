@@ -450,6 +450,9 @@ document.querySelector("form").addEventListener("submit", function () {
     let visibleAlarm = null;
     let audioEnabled = sessionStorage.getItem('worklogAlarmAudio') === '1';
     let audioTimer = null;
+    let configCache = null;
+    let configLoadedAt = 0;
+    let polling = false;
     const ignoredKey = alarm => `worklogIgnoredAlarm:${alarm.tank_id}:${alarm.alarm_type}:${alarm.first_active_at}`;
 
     function beep() {
@@ -479,17 +482,76 @@ document.querySelector("form").addEventListener("submit", function () {
         if (Number(alarm.sound_enabled) === 1 && audioEnabled) startSound();
     }
     function hide() { backdrop.style.display = 'none'; document.body.style.overflow = ''; visibleAlarm = null; stopSound(); }
+    const firstSeenKey = (tankId, type) => `worklogAlarmFirstSeen:${tankId}:${type}`;
+    function rememberAlarm(config, type, label, currentValue = null) {
+        const key = firstSeenKey(config.id, type);
+        let firstSeen = Number(localStorage.getItem(key));
+        if (!Number.isFinite(firstSeen) || firstSeen <= 0) {
+            firstSeen = Date.now(); localStorage.setItem(key, String(firstSeen));
+        }
+        const delayMs = Math.max(0, Number(config.modal_delay_minutes) || 0) * 60000;
+        if (Date.now() - firstSeen < delayMs) return null;
+        return {tank_id:config.id, name:config.name, alarm_type:type, label,
+            first_active_at:new Date(firstSeen).toISOString(), sound_enabled:config.sound_enabled,
+            current_value:currentValue};
+    }
+    function clearInactive(config, activeTypes) {
+        ['controlador_interno','cloro_critico','ph_critico'].forEach(type => {
+            if (!activeTypes.includes(type)) localStorage.removeItem(firstSeenKey(config.id, type));
+        });
+    }
+    async function loadConfigs() {
+        if (configCache && Date.now() - configLoadedAt < 60000) return configCache;
+        const response = await fetch('/work_log/api/alarm_config.php', {cache:'no-store',credentials:'same-origin'});
+        if (!response.ok) throw new Error('Configuração HTTP ' + response.status);
+        const data = await response.json(); configCache = data.controllers || []; configLoadedAt = Date.now();
+        return configCache;
+    }
+    async function pollControllersDirectly() {
+        const configs = await loadConfigs();
+        const results = await Promise.all(configs.map(async config => {
+            if (Number(config.modal_enabled) !== 1) { clearInactive(config, []); return []; }
+            try {
+                const url = '/work_log/pools/get_controller_data.php?ip=' + encodeURIComponent(config.controller_ip);
+                const response = await fetch(url, {cache:'no-store',credentials:'same-origin'});
+                if (!response.ok) return [];
+                const data = await response.json(); if (data.error) return [];
+                const alarms = []; const activeTypes = [];
+                if (Number(data.alarme) === 0) {
+                    activeTypes.push('controlador_interno');
+                    const alarm = rememberAlarm(config,'controlador_interno','Alarme interno do controlador');
+                    if (alarm) alarms.push(alarm);
+                }
+                const chlorine = Number.parseFloat(data.freeChlorine);
+                if (Number.isFinite(chlorine) && chlorine >= Number(config.modal_chlorine_max)) {
+                    activeTypes.push('cloro_critico');
+                    const alarm = rememberAlarm(config,'cloro_critico','Cloro acima do limiar crítico',chlorine);
+                    if (alarm) alarms.push(alarm);
+                }
+                const ph = Number.parseFloat(data.pH);
+                if (Number.isFinite(ph) && ph >= Number(config.modal_ph_max)) {
+                    activeTypes.push('ph_critico');
+                    const alarm = rememberAlarm(config,'ph_critico','pH acima do limiar crítico',ph);
+                    if (alarm) alarms.push(alarm);
+                }
+                clearInactive(config, activeTypes); return alarms;
+            } catch (error) { console.warn('Controlador indisponível:', config.name, error); return []; }
+        }));
+        return results.flat();
+    }
     async function poll() {
+        if (polling) return; polling = true;
         try {
+            const directAlarms = await pollControllersDirectly();
             const response = await fetch('/work_log/api/active_alarms.php', {cache:'no-store', credentials:'same-origin'});
-            if (!response.ok) { console.warn('Monitor de alarmes indisponível:', response.status); return; }
-            const data = await response.json();
-            if (data.error) console.warn('Monitor de alarmes:', data.error);
-            const next = (data.alarms || []).find(a => localStorage.getItem(ignoredKey(a)) !== '1');
+            let storedAlarms = [];
+            if (response.ok) { const data = await response.json(); storedAlarms = data.alarms || []; }
+            const next = [...directAlarms, ...storedAlarms].find(a => localStorage.getItem(ignoredKey(a)) !== '1');
             if (!next) { if (visibleAlarm) hide(); return; }
             const same = visibleAlarm && ignoredKey(visibleAlarm) === ignoredKey(next);
             if (!same) show(next);
         } catch (error) { console.warn('Erro ao consultar alarmes globais:', error); }
+        finally { polling = false; }
     }
     document.getElementById('globalAlarmIgnore').addEventListener('click', () => {
         if (visibleAlarm) localStorage.setItem(ignoredKey(visibleAlarm), '1'); hide(); poll();
