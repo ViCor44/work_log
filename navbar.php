@@ -549,10 +549,7 @@ document.querySelector("form").addEventListener("submit", function () {
         if (polling) return; polling = true;
         try {
             const directAlarms = await pollControllersDirectly();
-            const response = await fetch('/work_log/api/active_alarms.php', {cache:'no-store', credentials:'same-origin'});
-            let storedAlarms = [];
-            if (response.ok) { const data = await response.json(); storedAlarms = data.alarms || []; }
-            const next = [...directAlarms, ...storedAlarms].find(a => localStorage.getItem(ignoredKey(a)) !== '1');
+            const next = directAlarms.find(a => localStorage.getItem(ignoredKey(a)) !== '1');
             if (!next) { if (visibleAlarm) hide(); return; }
             const same = visibleAlarm && ignoredKey(visibleAlarm) === ignoredKey(next);
             if (!same) { show(next); logAlarmAction('modal_shown', next); }

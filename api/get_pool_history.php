@@ -14,6 +14,13 @@ if (!isset($_GET['id']) || !is_numeric($_GET['id'])) {
 }
 $tank_id = $_GET['id'];
 
+// Instala uma única vez o índice composto necessário para evitar varrer toda a
+// tabela controller_history em cada abertura/atualização do gráfico.
+$indexCheck = $conn->query("SHOW INDEX FROM controller_history WHERE Key_name='idx_controller_history_tank_time'");
+if ($indexCheck && $indexCheck->num_rows === 0) {
+    @$conn->query("ALTER TABLE controller_history ADD INDEX idx_controller_history_tank_time (tank_id, log_datetime)");
+}
+
 // Define o intervalo de datas. Por defeito, é o dia de hoje.
 $start_date = isset($_GET['start_date']) ? $_GET['start_date'] : date('Y-m-d');
 $end_date = isset($_GET['end_date']) ? $_GET['end_date'] : date('Y-m-d');
@@ -41,6 +48,19 @@ $stmt_history->execute();
 $history = $stmt_history->get_result()->fetch_all(MYSQLI_ASSOC);
 $stmt_history->close();
 
+// Chart.js torna-se progressivamente lento com milhares de pontos. Mantém a
+// extensão temporal completa e reduz apenas a densidade visual da resposta.
+$max_points = 1500;
+$total_points = count($history);
+if ($total_points > $max_points) {
+    $sampled = [];
+    $step = ($total_points - 1) / ($max_points - 1);
+    for ($i = 0; $i < $max_points; $i++) {
+        $sampled[] = $history[(int)round($i * $step)];
+    }
+    $history = $sampled;
+}
+
 // Busca o último registo para os manómetros (gauges)
 $stmt_latest = $conn->prepare("
     SELECT * FROM controller_history WHERE tank_id = ? ORDER BY log_datetime DESC LIMIT 1
@@ -53,7 +73,9 @@ $stmt_latest->close();
 // Prepara a resposta em formato JSON
 $response = [
     'history' => $history,
-    'latest' => $latest_data
+    'latest' => $latest_data,
+    'total_points' => $total_points,
+    'returned_points' => count($history)
 ];
 
 echo json_encode($response);
