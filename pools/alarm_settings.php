@@ -3,9 +3,8 @@ require_once '../header.php';
 require_once '../api/alarm_config_lib.php';
 ensure_alarm_config_table($conn);
 
-$canEdit = ($_SESSION['user_type'] ?? '') !== 'user';
 $message = '';
-if ($_SERVER['REQUEST_METHOD'] === 'POST' && $canEdit) {
+if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $tankId = (int)($_POST['tank_id'] ?? 0);
     $cMin = (float)str_replace(',', '.', $_POST['chlorine_min'] ?? '1');
     $cMax = (float)str_replace(',', '.', $_POST['chlorine_max'] ?? '3');
@@ -38,7 +37,7 @@ $tanks = $conn->query("SELECT id,name FROM tanks WHERE has_controller=1 ORDER BY
     <div class="col-6"><label class="form-label">pH máximo</label><input class="form-control" type="number" step="0.01" min="0" max="14" name="ph_max" value="<?= htmlspecialchars($cfg['ph_max']) ?>" required></div>
     <div class="col-12"><label class="form-label">Mostrar modal após alarme ativo durante</label><div class="input-group"><input class="form-control" type="number" min="0" max="1440" name="modal_delay_minutes" value="<?= (int)$cfg['modal_delay_minutes'] ?>"><span class="input-group-text">minutos</span></div></div>
     <div class="col-12 d-flex gap-4"><div class="form-check"><input class="form-check-input" type="checkbox" name="modal_enabled" id="modal<?= (int)$tank['id'] ?>" <?= $cfg['modal_enabled']?'checked':'' ?>><label class="form-check-label" for="modal<?= (int)$tank['id'] ?>">Modal global</label></div><div class="form-check"><input class="form-check-input" type="checkbox" name="sound_enabled" id="sound<?= (int)$tank['id'] ?>" <?= $cfg['sound_enabled']?'checked':'' ?>><label class="form-check-label" for="sound<?= (int)$tank['id'] ?>">Aviso sonoro</label></div></div>
-   </div></div><?php if ($canEdit): ?><div class="card-footer text-end"><button class="btn btn-primary"><i class="fas fa-save me-1"></i>Guardar</button></div><?php endif; ?>
+   </div></div><div class="card-footer text-end"><button type="submit" class="btn btn-primary"><i class="fas fa-save me-1"></i>Guardar alterações</button></div>
   </form></div>
  <?php endforeach; ?>
  </div>
