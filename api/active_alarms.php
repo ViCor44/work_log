@@ -11,6 +11,62 @@ $conn->query("CREATE TABLE IF NOT EXISTS controller_alarm_state (
     last_cleared_at DATETIME NULL, PRIMARY KEY (tank_id, alarm_type)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
 
+// Consulta diretamente os controladores para que o modal não dependa do cron/worker.
+// Um lock e uma janela de 8 segundos evitam que várias páginas façam a mesma ronda.
+$pollStamp = sys_get_temp_dir() . DIRECTORY_SEPARATOR . 'worklog_global_alarm_poll.stamp';
+$pollLockPath = sys_get_temp_dir() . DIRECTORY_SEPARATOR . 'worklog_global_alarm_poll.lock';
+$pollLock = @fopen($pollLockPath, 'c');
+$shouldPoll = !is_file($pollStamp) || (time() - (int)@filemtime($pollStamp)) >= 8;
+if ($shouldPoll && $pollLock && @flock($pollLock, LOCK_EX | LOCK_NB)) {
+    // Verifica novamente depois de obter o lock: outra chamada pode ter terminado entretanto.
+    $shouldPoll = !is_file($pollStamp) || (time() - (int)@filemtime($pollStamp)) >= 8;
+    if ($shouldPoll) {
+        $controllers = $conn->query("SELECT id,name,controller_ip FROM tanks WHERE has_controller=1 AND controller_ip IS NOT NULL AND controller_ip<>''");
+        $multi = curl_multi_init();
+        $handles = [];
+        if ($controllers) {
+            while ($controller = $controllers->fetch_assoc()) {
+                $url = 'http://' . trim($controller['controller_ip']) . '/ajax_inputs';
+                $ch = curl_init($url);
+                curl_setopt_array($ch, [CURLOPT_RETURNTRANSFER=>true, CURLOPT_CONNECTTIMEOUT=>1, CURLOPT_TIMEOUT=>3, CURLOPT_NOSIGNAL=>1]);
+                curl_multi_add_handle($multi, $ch);
+                $handles[] = ['handle'=>$ch, 'controller'=>$controller];
+            }
+        }
+        do {
+            $status = curl_multi_exec($multi, $running);
+            if ($running) curl_multi_select($multi, 0.25);
+        } while ($running && $status === CURLM_OK);
+
+        foreach ($handles as $item) {
+            $ch = $item['handle'];
+            $body = curl_multi_getcontent($ch);
+            $http = (int)curl_getinfo($ch, CURLINFO_HTTP_CODE);
+            if ($body !== false && $http === 200) {
+                $payload = json_decode($body, true);
+                if (!is_array($payload) && str_contains(ltrim($body), '<?xml')) {
+                    try { $payload = json_decode(json_encode(new SimpleXMLElement($body)), true); } catch (Throwable $e) { $payload = null; }
+                }
+                if (is_array($payload)) {
+                    $tankId = (int)$item['controller']['id'];
+                    $payload['__alarm_config'] = get_alarm_config($conn, $tankId);
+                    foreach (extract_controller_alarms($payload) as $type => $active) {
+                        $previous = get_alarm_state($conn, $tankId, $type);
+                        $wasActive = $previous && (int)$previous['is_active'] === 1;
+                        upsert_alarm_state($conn, $tankId, $type, (bool)$active, false, $wasActive);
+                    }
+                }
+            }
+            curl_multi_remove_handle($multi, $ch);
+            curl_close($ch);
+        }
+        curl_multi_close($multi);
+        @touch($pollStamp);
+    }
+    @flock($pollLock, LOCK_UN);
+}
+if ($pollLock) fclose($pollLock);
+
 // Mantém os alarmes químicos atualizados mesmo quando o worker de SMS não está
 // em execução. A leitura mais recente do histórico é a fonte comum a todas as páginas.
 $latestSql = "SELECT h.tank_id,h.chlorine_value,h.ph_value

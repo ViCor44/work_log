@@ -332,10 +332,9 @@ function upsert_alarm_state(mysqli $conn, int $tankId, string $type, bool $activ
                  CASE WHEN ? = 1 THEN NOW() ELSE NULL END,
                  CASE WHEN ? = 0 THEN NOW() ELSE NULL END)
          ON DUPLICATE KEY UPDATE
-            is_active       = VALUES(is_active),
             last_seen_at    = NOW(),
             first_active_at = CASE
-                                 WHEN VALUES(is_active) = 1 AND is_active = 0 THEN NOW()
+                                 WHEN VALUES(is_active) = 1 AND (is_active = 0 OR first_active_at IS NULL) THEN NOW()
                                  WHEN VALUES(is_active) = 0 THEN NULL
                                  ELSE first_active_at
                               END,
@@ -343,7 +342,8 @@ function upsert_alarm_state(mysqli $conn, int $tankId, string $type, bool $activ
             last_cleared_at = CASE
                                  WHEN VALUES(is_active) = 0 AND is_active = 1 THEN NOW()
                                  ELSE last_cleared_at
-                              END"
+                              END,
+            is_active       = VALUES(is_active)"
     );
     if (!$stmt) { return; }
     $activeInt   = $active ? 1 : 0;
