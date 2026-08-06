@@ -173,6 +173,11 @@ $stmt->close();
                     </a>
                 </li>
                 <li class="nav-item">
+                    <a class="nav-link" href="/work_log/pools/alarm_settings.php" title="Configurar alarmes">
+                        <i class="fas fa-bell"></i>
+                    </a>
+                </li>
+                <li class="nav-item">
                     <a class="nav-link" href="#" data-bs-toggle="modal" data-bs-target="#editProfileModal">
                         Olá, <?= htmlspecialchars($_SESSION['user_name']); ?>
 					</a>
@@ -200,6 +205,23 @@ $stmt->close();
         </div>
     </div>
 </nav>
+
+<style>
+#globalAlarmBackdrop{position:fixed;inset:0;background:rgba(12,3,6,.82);backdrop-filter:blur(2px);z-index:10550;display:none;align-items:center;justify-content:center;padding:1rem}
+#globalAlarmBox{width:min(570px,100%);background:#1d1115;color:#f8e9ed;border:1px solid #ff3f4b;border-radius:16px;padding:20px;box-shadow:0 0 0 5px rgba(255,63,75,.10),0 24px 70px #000}
+.global-alarm-icon{width:44px;height:44px;border-radius:50%;background:#f5434c;display:grid;place-items:center;font-size:25px;font-weight:900;flex:0 0 auto}
+.global-alarm-detail{background:#29161b;border-radius:10px;padding:14px 16px;margin:16px 0;border-left:4px solid #f5434c}
+.global-alarm-actions{display:grid;grid-template-columns:1fr 1fr;gap:10px}.global-alarm-actions .btn{padding:12px;font-weight:700}
+@media(max-width:520px){.global-alarm-actions{grid-template-columns:1fr}}
+</style>
+<div id="globalAlarmBackdrop" role="dialog" aria-modal="true" aria-labelledby="globalAlarmTitle">
+ <div id="globalAlarmBox">
+  <div class="d-flex gap-3 align-items-center"><div class="global-alarm-icon">!</div><div><h2 id="globalAlarmTitle" class="h4 mb-1">Alarme ativo</h2><div id="globalAlarmSubtitle" class="text-danger-emphasis fw-semibold"></div></div></div>
+  <div class="global-alarm-detail"><div class="small text-white-50">Controlador</div><div id="globalAlarmController" class="fs-4 fw-bold"></div><div id="globalAlarmType" class="mt-2"></div><div id="globalAlarmSince" class="small text-white-50 mt-1"></div></div>
+  <div id="globalAlarmSoundNotice" class="alert alert-warning py-2 small mb-3" style="display:none">O som ainda não está ativo neste browser. <button id="globalAlarmEnableSound" class="btn btn-sm btn-warning ms-2">Ativar som agora</button></div>
+  <div class="global-alarm-actions"><button id="globalAlarmIgnore" class="btn btn-secondary">Ignorar / manter fechado</button><a id="globalAlarmOpen" class="btn btn-danger" href="/work_log/pools/dashboard.php">Abrir controlador</a></div>
+ </div>
+</div>
 
 <div id="voice-navigation-help" class="position-fixed bottom-0 end-0 m-3" style="z-index: 2000; width: min(24rem, calc(100vw - 2rem));">
     <div id="voice-command-panel" class="mb-2 p-3 rounded bg-dark text-white shadow d-none overflow-auto" style="max-height: min(70vh, 38rem);" aria-labelledby="voice-command-panel-title">
@@ -420,6 +442,61 @@ document.querySelector("form").addEventListener("submit", function () {
   const dataURL = canvas.toDataURL("image/png");
   document.getElementById("signature-data").value = dataURL;
 });
+</script>
+<script>
+(() => {
+    const backdrop = document.getElementById('globalAlarmBackdrop');
+    if (!backdrop) return;
+    let visibleAlarm = null;
+    let audioEnabled = sessionStorage.getItem('worklogAlarmAudio') === '1';
+    let audioTimer = null;
+    const ignoredKey = alarm => `worklogIgnoredAlarm:${alarm.tank_id}:${alarm.alarm_type}:${alarm.first_active_at}`;
+
+    function beep() {
+        if (!audioEnabled || !visibleAlarm || Number(visibleAlarm.sound_enabled) !== 1) return;
+        try {
+            const Ctx = window.AudioContext || window.webkitAudioContext;
+            const ctx = new Ctx(); const osc = ctx.createOscillator(); const gain = ctx.createGain();
+            osc.frequency.value = 880; gain.gain.value = .10; osc.connect(gain); gain.connect(ctx.destination);
+            osc.start(); osc.stop(ctx.currentTime + .35); osc.onended = () => ctx.close();
+        } catch (_) {}
+    }
+    function stopSound() { if (audioTimer) clearInterval(audioTimer); audioTimer = null; }
+    function startSound() { stopSound(); beep(); audioTimer = setInterval(beep, 5000); }
+    function show(alarm) {
+        visibleAlarm = alarm;
+        document.getElementById('globalAlarmSubtitle').textContent = 'Requer a sua atenção';
+        document.getElementById('globalAlarmController').textContent = alarm.name;
+        document.getElementById('globalAlarmType').textContent = alarm.label;
+        const since = new Date(String(alarm.first_active_at).replace(' ', 'T'));
+        document.getElementById('globalAlarmSince').textContent = 'Ativo desde ' + since.toLocaleString('pt-PT');
+        document.getElementById('globalAlarmOpen').href = '/work_log/pools/view_pool_details.php?id=' + encodeURIComponent(alarm.tank_id);
+        document.getElementById('globalAlarmSoundNotice').style.display = Number(alarm.sound_enabled) === 1 && !audioEnabled ? 'block' : 'none';
+        backdrop.style.display = 'flex'; document.body.style.overflow = 'hidden';
+        if (Number(alarm.sound_enabled) === 1 && audioEnabled) startSound();
+    }
+    function hide() { backdrop.style.display = 'none'; document.body.style.overflow = ''; visibleAlarm = null; stopSound(); }
+    async function poll() {
+        try {
+            const response = await fetch('/work_log/api/active_alarms.php', {cache:'no-store', credentials:'same-origin'});
+            if (!response.ok) return;
+            const data = await response.json();
+            const next = (data.alarms || []).find(a => localStorage.getItem(ignoredKey(a)) !== '1');
+            if (!next) { if (visibleAlarm) hide(); return; }
+            const same = visibleAlarm && ignoredKey(visibleAlarm) === ignoredKey(next);
+            if (!same) show(next);
+        } catch (_) {}
+    }
+    document.getElementById('globalAlarmIgnore').addEventListener('click', () => {
+        if (visibleAlarm) localStorage.setItem(ignoredKey(visibleAlarm), '1'); hide(); poll();
+    });
+    document.getElementById('globalAlarmEnableSound').addEventListener('click', () => {
+        audioEnabled = true; sessionStorage.setItem('worklogAlarmAudio','1');
+        document.getElementById('globalAlarmSoundNotice').style.display = 'none'; startSound();
+    });
+    document.getElementById('globalAlarmOpen').addEventListener('click', stopSound);
+    poll(); setInterval(poll, 10000);
+})();
 </script>
 
 <script>

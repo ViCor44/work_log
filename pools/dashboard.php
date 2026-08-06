@@ -1,5 +1,6 @@
 <?php
 require_once '../header.php';
+require_once '../api/alarm_config_lib.php';
 
 $localeSet = setlocale(LC_TIME, 'pt_PT.utf8', 'pt_PT.UTF-8', 'Portuguese_Portugal.1252');
 if ($localeSet === false) {
@@ -18,6 +19,10 @@ function fetch_all_safe($conn, $sql) {
 
 // Busca todas as piscinas que têm um controlador
 $pools = fetch_all_safe($conn, "SELECT id, name, controller_ip FROM tanks WHERE type = 'piscina' AND has_controller = 1 ORDER BY name ASC");
+$alarmConfigs = [];
+foreach ($pools as $pool) {
+    $alarmConfigs[(int)$pool['id']] = get_alarm_config($conn, (int)$pool['id']);
+}
 
 // Busca todas as Centrais de Medida
 $power_meters = fetch_all_safe($conn, "SELECT id, local, ip_address FROM centrais_de_medida ORDER BY local ASC");
@@ -1090,11 +1095,14 @@ document.addEventListener('DOMContentLoaded', function() {
         el['_state_' + key] = next;
     }
 
-    function getValueClass(type, value) {
+    const alarmConfigs = <?= json_encode($alarmConfigs, JSON_UNESCAPED_UNICODE) ?>;
+
+    function getValueClass(type, value, poolId) {
         const numValue = parseFloat(String(value).replace(',', '.'));
         if (isNaN(numValue)) return '';
-        if (type === 'ph') return (numValue < 7.0 || numValue > 7.8) ? 'text-danger' : 'text-success';
-        if (type === 'cloro') return (numValue < 1.0 || numValue > 3.0) ? 'text-danger' : 'text-success';
+        const cfg = alarmConfigs[poolId] || {ph_min:7, ph_max:7.8, chlorine_min:1, chlorine_max:3};
+        if (type === 'ph') return (numValue < Number(cfg.ph_min) || numValue > Number(cfg.ph_max)) ? 'text-danger' : 'text-success';
+        if (type === 'cloro') return (numValue < Number(cfg.chlorine_min) || numValue > Number(cfg.chlorine_max)) ? 'text-danger' : 'text-success';
         return 'text-light';
     }
 
@@ -1199,10 +1207,10 @@ if (alarmContentEl && alarmContentEl.style.display !== 'none') alarmContentEl.st
             const tempEl  = document.getElementById(`temp-${poolId}`);
 
             setHtmlIfChanged(cloroEl, cloroText);
-            setClassIfChanged(cloroEl, `font-monospace fw-bold fs-5 ${getValueClass('cloro', cloroValue)}`);
+            setClassIfChanged(cloroEl, `font-monospace fw-bold fs-5 ${getValueClass('cloro', cloroValue, poolId)}`);
 
             setHtmlIfChanged(phEl, phText);
-            setClassIfChanged(phEl, `font-monospace fw-bold fs-5 ${getValueClass('ph', phValue)}`);
+            setClassIfChanged(phEl, `font-monospace fw-bold fs-5 ${getValueClass('ph', phValue, poolId)}`);
 
             setHtmlIfChanged(tempEl, tempText);
 
@@ -1213,8 +1221,8 @@ if (alarmContentEl && alarmContentEl.style.display !== 'none') alarmContentEl.st
 
             // Decide o estado visual
             const temAlarmeQuimico =
-    getValueClass('cloro', cloroValue) === 'text-danger' ||
-    getValueClass('ph', phValue) === 'text-danger';
+    getValueClass('cloro', cloroValue, poolId) === 'text-danger' ||
+    getValueClass('ph', phValue, poolId) === 'text-danger';
 
 const alarmeControlador = (data.alarme == 0); // alarme interno
 

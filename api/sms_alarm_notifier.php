@@ -69,13 +69,15 @@ function extract_controller_alarms(array $data): array
     // Valores químicos fora dos limites (envia em ambas as transições).
     $cloro = sms_float_or_null($data['freeChlorine'] ?? null);
     if ($cloro !== null) {
-        $alarms['cloro_baixo'] = $cloro < (defined('LIMIT_CLORO_MIN') ? LIMIT_CLORO_MIN : 1.0);
-        $alarms['cloro_alto']  = $cloro > (defined('LIMIT_CLORO_MAX') ? LIMIT_CLORO_MAX : 3.0);
+        $cfg = isset($data['__alarm_config']) && is_array($data['__alarm_config']) ? $data['__alarm_config'] : [];
+        $alarms['cloro_baixo'] = $cloro < (float)($cfg['chlorine_min'] ?? (defined('LIMIT_CLORO_MIN') ? LIMIT_CLORO_MIN : 1.0));
+        $alarms['cloro_alto']  = $cloro > (float)($cfg['chlorine_max'] ?? (defined('LIMIT_CLORO_MAX') ? LIMIT_CLORO_MAX : 3.0));
     }
     $ph = sms_float_or_null($data['pH'] ?? null);
     if ($ph !== null) {
-        $alarms['ph_baixo'] = $ph < (defined('LIMIT_PH_MIN') ? LIMIT_PH_MIN : 7.0);
-        $alarms['ph_alto']  = $ph > (defined('LIMIT_PH_MAX') ? LIMIT_PH_MAX : 7.8);
+        $cfg = isset($data['__alarm_config']) && is_array($data['__alarm_config']) ? $data['__alarm_config'] : [];
+        $alarms['ph_baixo'] = $ph < (float)($cfg['ph_min'] ?? (defined('LIMIT_PH_MIN') ? LIMIT_PH_MIN : 7.0));
+        $alarms['ph_alto']  = $ph > (float)($cfg['ph_max'] ?? (defined('LIMIT_PH_MAX') ? LIMIT_PH_MAX : 7.8));
     }
 
     return $alarms;
@@ -378,6 +380,8 @@ function process_controller_alarms(mysqli $conn, array $pool, array $data): void
     $tankId   = (int)$pool['id'];
     $tankName = isset($pool['name']) ? (string)$pool['name'] : ('tanque_' . $tankId);
 
+    require_once __DIR__ . '/alarm_config_lib.php';
+    $data['__alarm_config'] = get_alarm_config($conn, $tankId);
     $current = extract_controller_alarms($data);
     if (empty($current)) {
         // Não encontrou nenhum campo de alarme reconhecido. Registar as chaves
@@ -406,10 +410,11 @@ function process_controller_alarms(mysqli $conn, array $pool, array $data): void
             $ph      = sms_float_or_null($data['pH'] ?? null);
             $hCloro  = defined('LIMIT_CLORO_HYST') ? (float)LIMIT_CLORO_HYST : 0.0;
             $hPh     = defined('LIMIT_PH_HYST')    ? (float)LIMIT_PH_HYST    : 0.0;
-            $lCMin   = defined('LIMIT_CLORO_MIN')  ? (float)LIMIT_CLORO_MIN  : 1.0;
-            $lCMax   = defined('LIMIT_CLORO_MAX')  ? (float)LIMIT_CLORO_MAX  : 3.0;
-            $lPhMin  = defined('LIMIT_PH_MIN')     ? (float)LIMIT_PH_MIN     : 7.0;
-            $lPhMax  = defined('LIMIT_PH_MAX')     ? (float)LIMIT_PH_MAX     : 7.8;
+            $alarmCfg = $data['__alarm_config'] ?? [];
+            $lCMin   = (float)($alarmCfg['chlorine_min'] ?? (defined('LIMIT_CLORO_MIN') ? LIMIT_CLORO_MIN : 1.0));
+            $lCMax   = (float)($alarmCfg['chlorine_max'] ?? (defined('LIMIT_CLORO_MAX') ? LIMIT_CLORO_MAX : 3.0));
+            $lPhMin  = (float)($alarmCfg['ph_min'] ?? (defined('LIMIT_PH_MIN') ? LIMIT_PH_MIN : 7.0));
+            $lPhMax  = (float)($alarmCfg['ph_max'] ?? (defined('LIMIT_PH_MAX') ? LIMIT_PH_MAX : 7.8));
 
             if ($type === 'cloro_alto' && $cloro !== null && $cloro > ($lCMax - $hCloro)) {
                 $active = true;

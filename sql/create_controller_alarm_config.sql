@@ -1,0 +1,13 @@
+CREATE TABLE IF NOT EXISTS controller_alarm_config (
+    tank_id INT NOT NULL,
+    chlorine_min DECIMAL(6,2) NOT NULL DEFAULT 1.00,
+    chlorine_max DECIMAL(6,2) NOT NULL DEFAULT 3.00,
+    ph_min DECIMAL(5,2) NOT NULL DEFAULT 7.00,
+    ph_max DECIMAL(5,2) NOT NULL DEFAULT 7.80,
+    modal_delay_minutes INT NOT NULL DEFAULT 5,
+    modal_enabled TINYINT(1) NOT NULL DEFAULT 1,
+    sound_enabled TINYINT(1) NOT NULL DEFAULT 1,
+    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    PRIMARY KEY (tank_id),
+    CONSTRAINT fk_alarm_config_tank FOREIGN KEY (tank_id) REFERENCES tanks(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
