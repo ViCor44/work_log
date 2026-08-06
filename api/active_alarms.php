@@ -2,6 +2,7 @@
 require_once '../core.php';
 require_once 'alarm_config_lib.php';
 require_once 'sms_alarm_notifier.php';
+require_once 'alarm_log_lib.php';
 header('Content-Type: application/json; charset=utf-8');
 if (!isset($_SESSION['user_id'])) { http_response_code(401); echo json_encode(['error'=>'Não autorizado']); exit; }
 ensure_alarm_config_table($conn);
@@ -53,6 +54,14 @@ if ($shouldPoll && $pollLock && @flock($pollLock, LOCK_EX | LOCK_NB)) {
                     foreach (extract_controller_alarms($payload) as $type => $active) {
                         $previous = get_alarm_state($conn, $tankId, $type);
                         $wasActive = $previous && (int)$previous['is_active'] === 1;
+                        if ((bool)$active !== $wasActive) {
+                            $value = str_starts_with($type, 'cloro_') && is_numeric($payload['freeChlorine'] ?? null)
+                                ? (float)$payload['freeChlorine']
+                                : (str_starts_with($type, 'ph_') && is_numeric($payload['pH'] ?? null) ? (float)$payload['pH'] : null);
+                            log_alarm_event($conn, $tankId, null, $type, $active ? 'alarm_activated' : 'alarm_cleared',
+                                $value, $active ? date('Y-m-d H:i:s') : ($previous['first_active_at'] ?? null),
+                                ['controller'=>$item['controller']['name'], 'source'=>'direct_monitor', 'config'=>$payload['__alarm_config']]);
+                        }
                         upsert_alarm_state($conn, $tankId, $type, (bool)$active, false, $wasActive);
                     }
                 }
@@ -93,6 +102,12 @@ if ($latestResult) {
         foreach ($states as $type => $active) {
             $previous = get_alarm_state($conn, $tankId, $type);
             $wasActive = $previous && (int)$previous['is_active'] === 1;
+            if ((bool)$active !== $wasActive) {
+                $value = str_starts_with($type, 'cloro_') ? $chlorine : $ph;
+                log_alarm_event($conn, $tankId, null, $type, $active ? 'alarm_activated' : 'alarm_cleared',
+                    $value, $active ? date('Y-m-d H:i:s') : ($previous['first_active_at'] ?? null),
+                    ['source'=>'controller_history', 'config'=>$cfg]);
+            }
             upsert_alarm_state($conn, $tankId, $type, (bool)$active, false, $wasActive);
         }
     }

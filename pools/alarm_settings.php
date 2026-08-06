@@ -1,6 +1,7 @@
 <?php
 require_once '../header.php';
 require_once '../api/alarm_config_lib.php';
+require_once '../api/alarm_log_lib.php';
 ensure_alarm_config_table($conn);
 
 $message = '';
@@ -19,13 +20,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $stmt = $conn->prepare("INSERT INTO controller_alarm_config (tank_id,chlorine_min,chlorine_max,ph_min,ph_max,modal_chlorine_max,modal_ph_max,modal_delay_minutes,modal_enabled,sound_enabled) VALUES (?,?,?,?,?,?,?,?,?,?) ON DUPLICATE KEY UPDATE chlorine_min=VALUES(chlorine_min),chlorine_max=VALUES(chlorine_max),ph_min=VALUES(ph_min),ph_max=VALUES(ph_max),modal_chlorine_max=VALUES(modal_chlorine_max),modal_ph_max=VALUES(modal_ph_max),modal_delay_minutes=VALUES(modal_delay_minutes),modal_enabled=VALUES(modal_enabled),sound_enabled=VALUES(sound_enabled)");
         $stmt->bind_param('idddddiiii', $tankId,$cMin,$cMax,$pMin,$pMax,$modalCMax,$modalPhMax,$delay,$modal,$sound);
         $stmt->execute(); $stmt->close();
+        log_alarm_event($conn, $tankId, (int)$_SESSION['user_id'], 'configuracao', 'config_updated', null, null,
+            ['chlorine_min'=>$cMin,'chlorine_max'=>$cMax,'ph_min'=>$pMin,'ph_max'=>$pMax,
+             'modal_chlorine_max'=>$modalCMax,'modal_ph_max'=>$modalPhMax,'modal_delay_minutes'=>$delay,
+             'modal_enabled'=>$modal,'sound_enabled'=>$sound]);
         $message = 'Configuração guardada.';
     } else $message = 'Os mínimos têm de ser inferiores aos máximos e os limiares do modal não podem ser inferiores aos limites normais.';
 }
 $tanks = $conn->query("SELECT id,name FROM tanks WHERE has_controller=1 ORDER BY name")->fetch_all(MYSQLI_ASSOC);
 ?>
 <div class="container py-4">
- <div class="d-flex justify-content-between align-items-start mb-4"><div><h1 class="h3 mb-1">Configuração de alarmes</h1><p class="text-muted mb-0">Limites e comportamento do aviso global por controlador.</p></div><a href="dashboard.php" class="btn btn-outline-secondary">Voltar ao dashboard</a></div>
+ <div class="d-flex justify-content-between align-items-start mb-4"><div><h1 class="h3 mb-1">Configuração de alarmes</h1><p class="text-muted mb-0">Limites e comportamento do aviso global por controlador.</p></div><div class="d-flex gap-2"><a href="alarm_history.php" class="btn btn-outline-primary"><i class="fas fa-history me-1"></i>Histórico</a><a href="dashboard.php" class="btn btn-outline-secondary">Voltar ao dashboard</a></div></div>
  <?php if ($message): ?><div class="alert <?= str_contains($message,'guardada')?'alert-success':'alert-danger' ?>"><?= htmlspecialchars($message) ?></div><?php endif; ?>
  <div class="row g-4">
  <?php if (!$tanks): ?><div class="col-12"><div class="alert alert-info">Não existem controladores configurados.</div></div><?php endif; ?>

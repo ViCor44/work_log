@@ -482,6 +482,12 @@ document.querySelector("form").addEventListener("submit", function () {
         if (Number(alarm.sound_enabled) === 1 && audioEnabled) startSound();
     }
     function hide() { backdrop.style.display = 'none'; document.body.style.overflow = ''; visibleAlarm = null; stopSound(); }
+    function logAlarmAction(eventType, alarm) {
+        if (!alarm) return;
+        fetch('/work_log/api/log_alarm_event.php', {method:'POST',credentials:'same-origin',
+            headers:{'Content-Type':'application/json'},keepalive:true,
+            body:JSON.stringify({...alarm,event_type:eventType,page:location.pathname})}).catch(()=>{});
+    }
     const firstSeenKey = (tankId, type) => `worklogAlarmFirstSeen:${tankId}:${type}`;
     function rememberAlarm(config, type, label, currentValue = null) {
         const key = firstSeenKey(config.id, type);
@@ -549,18 +555,18 @@ document.querySelector("form").addEventListener("submit", function () {
             const next = [...directAlarms, ...storedAlarms].find(a => localStorage.getItem(ignoredKey(a)) !== '1');
             if (!next) { if (visibleAlarm) hide(); return; }
             const same = visibleAlarm && ignoredKey(visibleAlarm) === ignoredKey(next);
-            if (!same) show(next);
+            if (!same) { show(next); logAlarmAction('modal_shown', next); }
         } catch (error) { console.warn('Erro ao consultar alarmes globais:', error); }
         finally { polling = false; }
     }
     document.getElementById('globalAlarmIgnore').addEventListener('click', () => {
-        if (visibleAlarm) localStorage.setItem(ignoredKey(visibleAlarm), '1'); hide(); poll();
+        if (visibleAlarm) { localStorage.setItem(ignoredKey(visibleAlarm), '1'); logAlarmAction('modal_ignored', visibleAlarm); } hide(); poll();
     });
     document.getElementById('globalAlarmEnableSound').addEventListener('click', () => {
         audioEnabled = true; sessionStorage.setItem('worklogAlarmAudio','1');
         document.getElementById('globalAlarmSoundNotice').style.display = 'none'; startSound();
     });
-    document.getElementById('globalAlarmOpen').addEventListener('click', stopSound);
+    document.getElementById('globalAlarmOpen').addEventListener('click', () => { logAlarmAction('modal_opened', visibleAlarm); stopSound(); });
     poll(); setInterval(poll, 10000);
 })();
 </script>
