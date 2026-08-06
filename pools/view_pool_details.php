@@ -18,7 +18,7 @@ $stmt->close();
 $isViewer = isset($_SESSION['user_type']) && $_SESSION['user_type'] === 'viewer';
 ?>
 <script src="/work_log/js/Chart.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns@3.0.0/dist/chartjs-adapter-date-fns.bundle.min.js"></script>
+<script src="/work_log/js/chartjs-native-date-adapter.js"></script>
 <script src="/work_log/js/chartjs-gauge.min.js"></script>
 <script src="/work_log/js/hammer.min.js"></script>
 <script src="/work_log/js/chartjs-plugin-zoom.min.js"></script>
@@ -1059,9 +1059,14 @@ document.addEventListener('DOMContentLoaded', function() {
                 : [];
 
             // 2. Buscar notas deste tanque
-            const notesResp = await fetch(`${apiBasePath}/get_controller_notes.php?tank_id=${tankId}`);
-            const notesData = await readApiResponse(notesResp);
-            cloroNotes = notesData.notes || [];
+            try {
+                const notesResp = await fetch(`${apiBasePath}/get_controller_notes.php?tank_id=${tankId}`);
+                const notesData = await readApiResponse(notesResp);
+                cloroNotes = notesData.notes || [];
+            } catch (notesError) {
+                console.warn('Não foi possível carregar as notas do gráfico:', notesError);
+                cloroNotes = [];
+            }
 
             // 3. Destruir gráficos antigos
             if (phHistoryChart) phHistoryChart.destroy();
