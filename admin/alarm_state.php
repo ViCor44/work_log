@@ -32,17 +32,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $stmt->close();
 
         // Construir payload falso — simula XML já convertido
+        $alarmCfg = get_alarm_config($conn, $tankId);
         $fakeData = ['alarms' => []];
         if ($type === 'controlador_interno') {
             $fakeData['alarme'] = 0; // 0 = alarme ativo
         } elseif ($type === 'cloro_baixo') {
             $fakeData['freeChlorine'] = 0.50;
-        } elseif ($type === 'cloro_alto') {
-            $fakeData['freeChlorine'] = 4.00;
+        } elseif ($type === 'cloro_critico') {
+            $fakeData['freeChlorine'] = (float)$alarmCfg['modal_chlorine_max'] + 0.10;
         } elseif ($type === 'ph_baixo') {
             $fakeData['pH'] = 6.50;
-        } elseif ($type === 'ph_alto') {
-            $fakeData['pH'] = 8.50;
+        } elseif ($type === 'ph_critico') {
+            $fakeData['pH'] = (float)$alarmCfg['modal_ph_max'] + 0.10;
         } else {
             $fakeData['alarms'][$type] = '1';
         }
@@ -101,17 +102,8 @@ if ($res) { $tanks = $res->fetch_all(MYSQLI_ASSOC); }
 
 $alarmTypes = [
     'controlador_interno' => 'Alarme interno do controlador',
-    'cloro_baixo'         => 'Cloro baixo',
-    'cloro_alto'          => 'Cloro alto',
-    'ph_baixo'            => 'pH baixo',
-    'ph_alto'             => 'pH alto',
-    'power_failure'       => 'Pane de corrente',
-    'pneumatic_low'       => 'Pressão pneumática baixa',
-    'pin_high'            => 'Pressão entrada filtro alta',
-    'pout_high'           => 'Pressão saída filtro alta',
-    'delta_p_high'        => 'Pressão diferencial alta',
-    'pump1_fault'         => 'Falha Bomba 1',
-    'pump2_fault'         => 'Falha Bomba 2',
+    'cloro_critico'       => 'Cloro acima do limiar crítico',
+    'ph_critico'          => 'pH acima do limiar crítico',
 ];
 
 // --- Destinatários atuais ---
@@ -183,7 +175,7 @@ $recipients = get_sms_recipients($conn);
                     <button class="btn btn-warning btn-sm" type="submit">
                         <i class="fas fa-bell me-1"></i>Simular
                     </button>
-                    <small class="text-muted d-block">Vai limpar o estado prévio para garantir edge OK→ALARME e envia SMS aos destinatários.</small>
+                    <small class="text-muted d-block">Vai limpar o estado prévio e simular um caso de modal; o SMS respeita o atraso configurado.</small>
                 </div>
             </form>
         </div>

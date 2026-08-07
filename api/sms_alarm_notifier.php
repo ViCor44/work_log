@@ -80,6 +80,16 @@ function extract_controller_alarms(array $data): array
         $alarms['ph_alto']  = $ph > (float)($cfg['ph_max'] ?? (defined('LIMIT_PH_MAX') ? LIMIT_PH_MAX : 7.8));
     }
 
+    // Condições críticas usadas pelo modal global. Tipos separados fazem
+    // o atraso começar apenas quando o valor cruza o limiar do próprio modal.
+    $cfg = isset($data['__alarm_config']) && is_array($data['__alarm_config']) ? $data['__alarm_config'] : [];
+    if ($cloro !== null) {
+        $alarms['cloro_critico'] = $cloro >= (float)($cfg['modal_chlorine_max'] ?? 4.0);
+    }
+    if ($ph !== null) {
+        $alarms['ph_critico'] = $ph >= (float)($cfg['modal_ph_max'] ?? 8.2);
+    }
+
     return $alarms;
 }
 
@@ -101,6 +111,8 @@ function alarm_label(string $type): string
         'cloro_alto'          => 'Cloro alto',
         'ph_baixo'            => 'pH baixo',
         'ph_alto'             => 'pH alto',
+        'cloro_critico'       => 'Cloro acima do limiar crítico',
+        'ph_critico'          => 'pH acima do limiar crítico',
         'lora_offline'        => 'LoRa offline (sem sinal)',
         'equipment_off'       => 'Equipamento desligado',
         'perlite_change_due'  => 'Substituir perlite (falta 1 dia)',
@@ -113,7 +125,7 @@ function alarm_label(string $type): string
  */
 function sms_alarm_group(string $type): string
 {
-    if (in_array($type, ['cloro_baixo', 'cloro_alto', 'ph_baixo', 'ph_alto'], true)) {
+    if (in_array($type, ['cloro_baixo', 'cloro_alto', 'ph_baixo', 'ph_alto', 'cloro_critico', 'ph_critico'], true)) {
         return 'chemical';
     }
     if ($type === 'lora_offline') {
@@ -213,6 +225,15 @@ function user_alarm_min_minutes(array $user, string $type): int
     if ($v < 0) { $v = 0; }
     if ($v > 1440) { $v = 1440; }
     return $v;
+}
+
+/** Apenas estes alarmes podem originar o modal global e, por isso, SMS. */
+function alarm_can_show_modal(array $config, string $type): bool
+{
+    if ((int)($config['modal_enabled'] ?? 1) !== 1) {
+        return false;
+    }
+    return in_array($type, ['controlador_interno', 'cloro_critico', 'ph_critico'], true);
 }
 
 /**
@@ -382,6 +403,7 @@ function process_controller_alarms(mysqli $conn, array $pool, array $data): void
 
     require_once __DIR__ . '/alarm_config_lib.php';
     $data['__alarm_config'] = get_alarm_config($conn, $tankId);
+    $alarmConfig = $data['__alarm_config'];
     $current = extract_controller_alarms($data);
     if (empty($current)) {
         // Não encontrou nenhum campo de alarme reconhecido. Registar as chaves
@@ -462,7 +484,9 @@ function process_controller_alarms(mysqli $conn, array $pool, array $data): void
         $sentOk = false;
         // Passa a considerar também a primeira detecção ($active && !$wasActive):
         // utilizadores com min_minutes = 0 devem receber já.
-        if ($active || (!$active && $wasActive)) {
+        // O SMS acompanha estritamente o modal: tipos que nunca aparecem no
+        // modal, ou tanques com o modal desativado, não geram SMS.
+        if (alarm_can_show_modal($alarmConfig, $type) && ($active || (!$active && $wasActive))) {
             if ($recipients === null) {
                 $recipients = get_sms_recipients($conn);
                 $client     = new TeltonikaSmsClient();
@@ -479,7 +503,8 @@ function process_controller_alarms(mysqli $conn, array $pool, array $data): void
                         if ($effectiveFirstActive === null) { continue; }
                         $ageSec = time() - strtotime((string)$effectiveFirstActive);
                         $ageMin = $ageSec / 60;
-                        $minForUser = user_alarm_min_minutes($r, $type);
+                        $modalDelay = max(0, (int)($alarmConfig['modal_delay_minutes'] ?? 5));
+                        $minForUser = max($modalDelay, user_alarm_min_minutes($r, $type));
                         if ($ageMin < $minForUser) {
                             continue;
                         }
@@ -500,7 +525,7 @@ function process_controller_alarms(mysqli $conn, array $pool, array $data): void
                         $respTxt  = $res['ok'] ? (is_string($res['response']) ? $res['response'] : json_encode($res['response']))
                                                : ($res['error'] ?? '');
                         log_sms($conn, $to, $msg, $status, $respTxt, $tankId, $type);
-                        sms_alarm_log("SMS to={$to} tipo={$type} event=ALARME min_user={$minForUser} status={$status} resp=" . substr($respTxt, 0, 200));
+                        sms_alarm_log("SMS to={$to} tipo={$type} event=ALARME min_modal={$modalDelay} min_effective={$minForUser} status={$status} resp=" . substr($respTxt, 0, 200));
                         if ($res['ok']) {
                             $sentOk = true;
                             $shouldSendAny = true;
@@ -572,10 +597,10 @@ function build_alarm_message(string $tankName, string $type, string $event = 'AL
     // Contexto numérico para alarmes químicos
     $ctx = '';
     if ($event === 'ALARME') {
-        if (in_array($type, ['cloro_baixo', 'cloro_alto'], true)) {
+        if (in_array($type, ['cloro_baixo', 'cloro_alto', 'cloro_critico'], true)) {
             $v = sms_float_or_null($data['freeChlorine'] ?? null);
             if ($v !== null) { $ctx = ' (' . number_format($v, 2, '.', '') . ')'; }
-        } elseif (in_array($type, ['ph_baixo', 'ph_alto'], true)) {
+        } elseif (in_array($type, ['ph_baixo', 'ph_alto', 'ph_critico'], true)) {
             $v = sms_float_or_null($data['pH'] ?? null);
             if ($v !== null) { $ctx = ' (' . number_format($v, 2, '.', '') . ')'; }
         }
