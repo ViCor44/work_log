@@ -4,22 +4,25 @@ require_once 'header.php';
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $name = $_POST['name'];
-    $dev_eui = $_POST['dev_eui'];
+    $dev_eui = strtolower(preg_replace('/[^0-9a-f]/i', '', (string)($_POST['dev_eui'] ?? '')));
     $device_type = in_array($_POST['device_type'] ?? '', ['osmosis', 'generator'], true)
         ? $_POST['device_type']
         : 'osmosis';
 
-    $stmt = $conn->prepare("INSERT INTO lorawan_devices (name, dev_eui, device_type) VALUES (?, ?, ?)");
-    $stmt->bind_param("sss", $name, $dev_eui, $device_type);
-    
-    if ($stmt->execute()) {
-        $_SESSION['success_message'] = "Equipamento LoRaWAN criado com sucesso!";
-        
-        exit;
+    if (strlen($dev_eui) !== 16) {
+        $error_message = 'O Device EUI deve conter exatamente 16 caracteres hexadecimais.';
     } else {
-        $error_message = "Erro ao criar o equipamento: " . $stmt->error;
+        $stmt = $conn->prepare("INSERT INTO lorawan_devices (name, dev_eui, device_type) VALUES (?, ?, ?)");
+        $stmt->bind_param("sss", $name, $dev_eui, $device_type);
+
+        if ($stmt->execute()) {
+            $_SESSION['success_message'] = "Equipamento LoRaWAN criado com sucesso!";
+            exit;
+        } else {
+            $error_message = "Erro ao criar o equipamento: " . $stmt->error;
+        }
+        $stmt->close();
     }
-    $stmt->close();
 }
 ?>
 

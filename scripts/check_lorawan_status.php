@@ -12,8 +12,9 @@ if ($__lock_fh === false || !flock($__lock_fh, LOCK_EX | LOCK_NB)) {
 }
 
 // Define o tempo limite em minutos. Se um dispositivo não enviar dados
-// por mais de 15 minutos, será considerado offline.
-$timeout_minutes = 10;
+// O heartbeat dos monitores de gerador é de 15 minutos; deixa margem para
+// jitter LoRaWAN e atrasos do cron antes de considerar o dispositivo offline.
+$timeout_minutes = 20;
 $time_limit = date('Y-m-d H:i:s', strtotime("-$timeout_minutes minutes"));
 
 // Query que marca como 'Off' todos os dispositivos cujo 'last_seen' é mais antigo que o tempo limite

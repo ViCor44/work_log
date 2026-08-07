@@ -11,7 +11,12 @@ if (!$data || !isset($data['deviceInfo']['devEui'])) {
     exit;
 }
 
-$dev_eui = $data['deviceInfo']['devEui'];
+$dev_eui = strtolower(preg_replace('/[^0-9a-f]/i', '', (string)$data['deviceInfo']['devEui']));
+if (strlen($dev_eui) !== 16) {
+    http_response_code(400);
+    echo "DevEUI inválido";
+    exit;
+}
 $rssi = isset($data['rxInfo'][0]['rssi']) ? $data['rxInfo'][0]['rssi'] : null;
 $snr = isset($data['rxInfo'][0]['snr']) ? $data['rxInfo'][0]['snr'] : null;
 $now = date("Y-m-d H:i:s");
@@ -56,10 +61,26 @@ $stmt = $conn->prepare("
         last_seen = ?, 
         last_rssi = ?, 
         last_snr = ?
-    WHERE dev_eui = ?
+    WHERE LOWER(REPLACE(REPLACE(REPLACE(TRIM(dev_eui), ':', ''), '-', ''), ' ', '')) = ?
 ");
 $stmt->bind_param("ssssids", $equipment_status, $device_type, $fault_status, $now, $rssi, $snr, $dev_eui);
 $stmt->execute();
+
+if ($stmt->affected_rows === 0) {
+    $check = $conn->prepare("SELECT id FROM lorawan_devices WHERE LOWER(REPLACE(REPLACE(REPLACE(TRIM(dev_eui), ':', ''), '-', ''), ' ', '')) = ? LIMIT 1");
+    $check->bind_param('s', $dev_eui);
+    $check->execute();
+    $device_exists = $check->get_result()->num_rows > 0;
+    $check->close();
+
+    if (!$device_exists) {
+        $stmt->close();
+        error_log("LORAWAN_UPLINK_DEVICE_NOT_FOUND dev_eui={$dev_eui}");
+        http_response_code(404);
+        echo "Dispositivo LoRaWAN não encontrado: {$dev_eui}";
+        exit;
+    }
+}
 $stmt->close();
 
 // ======================================================
