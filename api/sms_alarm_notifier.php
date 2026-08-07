@@ -145,16 +145,13 @@ function sms_alarm_group(string $type): string
  */
 function get_sms_recipients(mysqli $conn): array
 {
-    $defaultMin = defined('SMS_ALARM_MIN_MINUTES') ? (int)SMS_ALARM_MIN_MINUTES : 17;
-
     $sqlNew = "SELECT id, first_name, last_name, phone,
                       receive_sms_alarms,
                       COALESCE(receive_sms_controller, receive_sms_alarms) AS receive_sms_controller,
                       COALESCE(receive_sms_chemical, receive_sms_alarms) AS receive_sms_chemical,
                       COALESCE(receive_sms_lora_offline, receive_sms_alarms) AS receive_sms_lora_offline,
                       COALESCE(receive_sms_equipment_off, receive_sms_alarms) AS receive_sms_equipment_off,
-                      COALESCE(receive_sms_perlite, receive_sms_alarms) AS receive_sms_perlite,
-                      COALESCE(sms_alarm_min_minutes, {$defaultMin}) AS sms_alarm_min_minutes
+                      COALESCE(receive_sms_perlite, receive_sms_alarms) AS receive_sms_perlite
                FROM users
                WHERE receive_sms_alarms = 1
                  AND phone IS NOT NULL AND phone <> ''";
@@ -170,8 +167,7 @@ function get_sms_recipients(mysqli $conn): array
                       receive_sms_alarms AS receive_sms_chemical,
                       receive_sms_alarms AS receive_sms_lora_offline,
                       receive_sms_alarms AS receive_sms_equipment_off,
-                      receive_sms_alarms AS receive_sms_perlite,
-                      {$defaultMin} AS sms_alarm_min_minutes
+                      receive_sms_alarms AS receive_sms_perlite
                FROM users
                WHERE receive_sms_alarms = 1
                  AND phone IS NOT NULL AND phone <> ''";
@@ -208,23 +204,6 @@ function user_wants_alarm(array $user, string $type): bool
         return !empty($user['receive_sms_perlite']);
     }
     return true;
-}
-
-/**
- * Minutos mínimos de alarme para envio (por utilizador).
- * Aplicado a alarmes de controlador e químicos.
- */
-function user_alarm_min_minutes(array $user, string $type): int
-{
-    $group = sms_alarm_group($type);
-    if (!in_array($group, ['controller', 'chemical'], true)) {
-        return 0;
-    }
-
-    $v = isset($user['sms_alarm_min_minutes']) ? (int)$user['sms_alarm_min_minutes'] : 0;
-    if ($v < 0) { $v = 0; }
-    if ($v > 1440) { $v = 1440; }
-    return $v;
 }
 
 /** Apenas estes alarmes podem originar o modal global e, por isso, SMS. */
@@ -482,8 +461,8 @@ function process_controller_alarms(mysqli $conn, array $pool, array $data): void
             . " -> {$decision}");
 
         $sentOk = false;
-        // Passa a considerar também a primeira detecção ($active && !$wasActive):
-        // utilizadores com min_minutes = 0 devem receber já.
+        // Passa a considerar também a primeira deteção, respeitando o
+        // atraso configurado para o modal deste controlador.
         // O SMS acompanha estritamente o modal: tipos que nunca aparecem no
         // modal, ou tanques com o modal desativado, não geram SMS.
         if (alarm_can_show_modal($alarmConfig, $type) && ($active || (!$active && $wasActive))) {
@@ -504,8 +483,7 @@ function process_controller_alarms(mysqli $conn, array $pool, array $data): void
                         $ageSec = time() - strtotime((string)$effectiveFirstActive);
                         $ageMin = $ageSec / 60;
                         $modalDelay = max(0, (int)($alarmConfig['modal_delay_minutes'] ?? 5));
-                        $minForUser = max($modalDelay, user_alarm_min_minutes($r, $type));
-                        if ($ageMin < $minForUser) {
+                        if ($ageMin < $modalDelay) {
                             continue;
                         }
                         // Dedup: usa effectiveFirstActive para cobrir também a primeira
@@ -525,7 +503,7 @@ function process_controller_alarms(mysqli $conn, array $pool, array $data): void
                         $respTxt  = $res['ok'] ? (is_string($res['response']) ? $res['response'] : json_encode($res['response']))
                                                : ($res['error'] ?? '');
                         log_sms($conn, $to, $msg, $status, $respTxt, $tankId, $type);
-                        sms_alarm_log("SMS to={$to} tipo={$type} event=ALARME min_modal={$modalDelay} min_effective={$minForUser} status={$status} resp=" . substr($respTxt, 0, 200));
+                        sms_alarm_log("SMS to={$to} tipo={$type} event=ALARME min_modal={$modalDelay} status={$status} resp=" . substr($respTxt, 0, 200));
                         if ($res['ok']) {
                             $sentOk = true;
                             $shouldSendAny = true;

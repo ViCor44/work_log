@@ -10,7 +10,6 @@ if (isset($conn) && $conn instanceof mysqli) {
     @$conn->query("ALTER TABLE users ADD COLUMN IF NOT EXISTS receive_sms_lora_offline TINYINT(1) NOT NULL DEFAULT 1");
     @$conn->query("ALTER TABLE users ADD COLUMN IF NOT EXISTS receive_sms_equipment_off TINYINT(1) NOT NULL DEFAULT 1");
     @$conn->query("ALTER TABLE users ADD COLUMN IF NOT EXISTS receive_sms_perlite TINYINT(1) NOT NULL DEFAULT 1");
-    @$conn->query("ALTER TABLE users ADD COLUMN IF NOT EXISTS sms_alarm_min_minutes INT NOT NULL DEFAULT 17");
 }
 
 // Verifica se o formulário foi enviado
@@ -81,27 +80,22 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['update_sms_prefs'])) {
     $receive_sms_lora_offline  = isset($_POST['receive_sms_lora_offline']) ? 1 : 0;
     $receive_sms_equipment_off = isset($_POST['receive_sms_equipment_off']) ? 1 : 0;
     $receive_sms_perlite       = isset($_POST['receive_sms_perlite']) ? 1 : 0;
-    $sms_alarm_min_minutes     = isset($_POST['sms_alarm_min_minutes']) ? (int)$_POST['sms_alarm_min_minutes'] : 17;
-    if ($sms_alarm_min_minutes < 0)    { $sms_alarm_min_minutes = 0; }
-    if ($sms_alarm_min_minutes > 1440) { $sms_alarm_min_minutes = 1440; }
-
     $stmt = $conn->prepare("UPDATE users
         SET receive_sms_alarms = ?, receive_sms_controller = ?, receive_sms_chemical = ?,
             receive_sms_lora_offline = ?, receive_sms_equipment_off = ?,
-            receive_sms_perlite = ?, sms_alarm_min_minutes = ?
+            receive_sms_perlite = ?
         WHERE id = ?");
     if (!$stmt) {
         die("Erro na consulta: " . $conn->error);
     }
     $stmt->bind_param(
-        "iiiiiiii",
+        "iiiiiii",
         $receive_sms_alarms,
         $receive_sms_controller,
         $receive_sms_chemical,
         $receive_sms_lora_offline,
         $receive_sms_equipment_off,
         $receive_sms_perlite,
-        $sms_alarm_min_minutes,
         $user_id
     );
     if ($stmt->execute()) {
@@ -124,8 +118,7 @@ $stmt = $conn->prepare("SELECT first_name, last_name, email, phone, username, us
                                COALESCE(receive_sms_chemical, receive_sms_alarms) AS receive_sms_chemical,
                                COALESCE(receive_sms_lora_offline, receive_sms_alarms) AS receive_sms_lora_offline,
                                COALESCE(receive_sms_equipment_off, receive_sms_alarms) AS receive_sms_equipment_off,
-                               COALESCE(receive_sms_perlite, receive_sms_alarms) AS receive_sms_perlite,
-                               COALESCE(sms_alarm_min_minutes, 17) AS sms_alarm_min_minutes
+                               COALESCE(receive_sms_perlite, receive_sms_alarms) AS receive_sms_perlite
                         FROM users WHERE id = ?");
 if (!$stmt) {
     die("Erro na consulta: " . $conn->error);
@@ -146,8 +139,7 @@ $stmt->bind_result(
     $receive_sms_chemical_e,
     $receive_sms_lora_offline_e,
     $receive_sms_equipment_off_e,
-    $receive_sms_perlite_e,
-    $sms_alarm_min_minutes_e
+    $receive_sms_perlite_e
 );
 $stmt->fetch();
 $stmt->close();
@@ -365,11 +357,6 @@ $stmt->close();
                             <div class="form-check mb-3">
                                 <input class="form-check-input" type="checkbox" id="np_receive_sms_perlite" name="receive_sms_perlite" value="1" <?= !empty($receive_sms_perlite_e) ? 'checked' : ''; ?>>
                                 <label class="form-check-label" for="np_receive_sms_perlite">Substituir perlite (filtros)</label>
-                            </div>
-                            <div class="mb-2">
-                                <label for="np_sms_alarm_min_minutes" class="form-label">Minutos mínimos em alarme (controlador/químicos)</label>
-                                <input type="number" class="form-control" id="np_sms_alarm_min_minutes" name="sms_alarm_min_minutes" min="0" max="1440" value="<?= htmlspecialchars((string)$sms_alarm_min_minutes_e); ?>">
-                                <small class="text-muted">0 = envio imediato quando o alarme entra.</small>
                             </div>
                             <button type="submit" name="update_sms_prefs" class="btn btn-outline-primary btn-sm">Guardar preferências SMS</button>
                         </div>
