@@ -134,12 +134,12 @@ $stmt->bind_result(
     $user_type,
     $security_question,
     $security_answer,
-    $receive_sms_alarms_e,
-    $receive_sms_controller_e,
-    $receive_sms_chemical_e,
-    $receive_sms_lora_offline_e,
-    $receive_sms_equipment_off_e,
-    $receive_sms_perlite_e
+    $navbar_receive_sms_alarms,
+    $navbar_receive_sms_controller,
+    $navbar_receive_sms_chemical,
+    $navbar_receive_sms_lora_offline,
+    $navbar_receive_sms_equipment_off,
+    $navbar_receive_sms_perlite
 );
 $stmt->fetch();
 $stmt->close();
@@ -335,27 +335,27 @@ $stmt->close();
                         <div class="card-header">Preferências SMS</div>
                         <div class="card-body">
                             <div class="form-check mb-2">
-                                <input class="form-check-input" type="checkbox" id="np_receive_sms_alarms" name="receive_sms_alarms" value="1" <?= !empty($receive_sms_alarms_e) ? 'checked' : ''; ?>>
+                                <input class="form-check-input" type="checkbox" id="np_receive_sms_alarms" name="receive_sms_alarms" value="1" <?= !empty($navbar_receive_sms_alarms) ? 'checked' : ''; ?>>
                                 <label class="form-check-label" for="np_receive_sms_alarms">Ativar receção de SMS</label>
                             </div>
                             <div class="form-check mb-2">
-                                <input class="form-check-input" type="checkbox" id="np_receive_sms_controller" name="receive_sms_controller" value="1" <?= !empty($receive_sms_controller_e) ? 'checked' : ''; ?>>
+                                <input class="form-check-input" type="checkbox" id="np_receive_sms_controller" name="receive_sms_controller" value="1" <?= !empty($navbar_receive_sms_controller) ? 'checked' : ''; ?>>
                                 <label class="form-check-label" for="np_receive_sms_controller">Alarmes de controlador</label>
                             </div>
                             <div class="form-check mb-2">
-                                <input class="form-check-input" type="checkbox" id="np_receive_sms_chemical" name="receive_sms_chemical" value="1" <?= !empty($receive_sms_chemical_e) ? 'checked' : ''; ?>>
+                                <input class="form-check-input" type="checkbox" id="np_receive_sms_chemical" name="receive_sms_chemical" value="1" <?= !empty($navbar_receive_sms_chemical) ? 'checked' : ''; ?>>
                                 <label class="form-check-label" for="np_receive_sms_chemical">Alarmes químicos (cloro / pH)</label>
                             </div>
                             <div class="form-check mb-2">
-                                <input class="form-check-input" type="checkbox" id="np_receive_sms_lora_offline" name="receive_sms_lora_offline" value="1" <?= !empty($receive_sms_lora_offline_e) ? 'checked' : ''; ?>>
+                                <input class="form-check-input" type="checkbox" id="np_receive_sms_lora_offline" name="receive_sms_lora_offline" value="1" <?= !empty($navbar_receive_sms_lora_offline) ? 'checked' : ''; ?>>
                                 <label class="form-check-label" for="np_receive_sms_lora_offline">LoRa offline</label>
                             </div>
                             <div class="form-check mb-3">
-                                <input class="form-check-input" type="checkbox" id="np_receive_sms_equipment_off" name="receive_sms_equipment_off" value="1" <?= !empty($receive_sms_equipment_off_e) ? 'checked' : ''; ?>>
+                                <input class="form-check-input" type="checkbox" id="np_receive_sms_equipment_off" name="receive_sms_equipment_off" value="1" <?= !empty($navbar_receive_sms_equipment_off) ? 'checked' : ''; ?>>
                                 <label class="form-check-label" for="np_receive_sms_equipment_off">Equipamento OFF (LoRa)</label>
                             </div>
                             <div class="form-check mb-3">
-                                <input class="form-check-input" type="checkbox" id="np_receive_sms_perlite" name="receive_sms_perlite" value="1" <?= !empty($receive_sms_perlite_e) ? 'checked' : ''; ?>>
+                                <input class="form-check-input" type="checkbox" id="np_receive_sms_perlite" name="receive_sms_perlite" value="1" <?= !empty($navbar_receive_sms_perlite) ? 'checked' : ''; ?>>
                                 <label class="form-check-label" for="np_receive_sms_perlite">Substituir perlite (filtros)</label>
                             </div>
                             <button type="submit" name="update_sms_prefs" class="btn btn-outline-primary btn-sm">Guardar preferências SMS</button>
