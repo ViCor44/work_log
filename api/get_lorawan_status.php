@@ -10,7 +10,8 @@ if (!isset($_SESSION['user_id'])) {
 
 // ALTERAÇÃO: A query agora busca também a coluna 'equipment_status'
 $result = $conn->query("
-    SELECT name, status, equipment_status, last_seen, last_rssi, last_snr 
+    SELECT id, name, device_type, status, equipment_status, fault_status,
+           last_seen, last_rssi, last_snr
     FROM lorawan_devices 
     ORDER BY name ASC
 ");

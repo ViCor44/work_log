@@ -5,9 +5,12 @@ require_once 'header.php';
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $name = $_POST['name'];
     $dev_eui = $_POST['dev_eui'];
+    $device_type = in_array($_POST['device_type'] ?? '', ['osmosis', 'generator'], true)
+        ? $_POST['device_type']
+        : 'osmosis';
 
-    $stmt = $conn->prepare("INSERT INTO lorawan_devices (name, dev_eui) VALUES (?, ?)");
-    $stmt->bind_param("ss", $name, $dev_eui);
+    $stmt = $conn->prepare("INSERT INTO lorawan_devices (name, dev_eui, device_type) VALUES (?, ?, ?)");
+    $stmt->bind_param("sss", $name, $dev_eui, $device_type);
     
     if ($stmt->execute()) {
         $_SESSION['success_message'] = "Equipamento LoRaWAN criado com sucesso!";
@@ -33,6 +36,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 <div class="mb-3">
                     <label for="name" class="form-label">Nome do Equipamento</label>
                     <input type="text" class="form-control" id="name" name="name" placeholder="Ex: OSMOSE_1" required>
+                </div>
+                <div class="mb-3">
+                    <label for="device_type" class="form-label">Tipo de Equipamento</label>
+                    <select class="form-select" id="device_type" name="device_type" required>
+                        <option value="osmosis">Osmose</option>
+                        <option value="generator">Gerador</option>
+                    </select>
                 </div>
                 <div class="mb-3">
                     <label for="dev_eui" class="form-label">Device EUI (16 caracteres)</label>

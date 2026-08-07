@@ -1265,6 +1265,12 @@ setTextIfChanged(statusEl, statusText);
     }
 function createLoraCard(device) {
 
+    const escapeHtml = value => String(value ?? '').replace(/[&<>'"]/g, char => ({
+        '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#039;', '"': '&quot;'
+    })[char]);
+
+    const isGenerator = device.device_type === 'generator';
+
     const isOnline = device.status === 'On';
 
     let equipmentStatus = device.equipment_status || 'Unknown';
@@ -1274,6 +1280,7 @@ function createLoraCard(device) {
     if (device.status !== 'On') {
         equipmentStatus = 'Unknown';
     }
+    const faultStatus = isOnline ? (device.fault_status || 'Unknown') : 'Unknown';
 
     // Badge depende APENAS da ligação à rede
     const badgeClass = isOnline ? 'success' : 'danger';
@@ -1291,23 +1298,41 @@ function createLoraCard(device) {
 
     const borderClass =
     !isOnline ? 'danger' :
-    equipmentStatus === 'Off' ? 'danger' :
+    isGenerator && faultStatus === 'Fault' ? 'danger' :
+    !isGenerator && equipmentStatus === 'Off' ? 'danger' :
     'success';
+
+    const generatorRows = `
+        <li class="list-group-item d-flex justify-content-between align-items-center">
+            <span class="text-white-50"><i class="bi bi-power me-2"></i>Gerador</span>
+            <span class="font-monospace fw-bold fs-5 text-${equipmentStatus === 'On' ? 'success' : equipmentStatus === 'Off' ? 'secondary' : 'secondary'}">
+                ${equipmentStatus === 'On' ? 'LIGADO' : equipmentStatus === 'Off' ? 'DESLIGADO' : 'DESCONHECIDO'}
+            </span>
+        </li>
+        <li class="list-group-item d-flex justify-content-between align-items-center">
+            <span class="text-white-50"><i class="bi bi-exclamation-triangle me-2"></i>Avaria</span>
+            <span class="badge fs-6 bg-${faultStatus === 'Fault' ? 'danger' : faultStatus === 'Ok' ? 'success' : 'secondary'}">
+                ${faultStatus === 'Fault' ? 'AVARIA' : faultStatus === 'Ok' ? 'SEM AVARIA' : 'DESCONHECIDO'}
+            </span>
+        </li>`;
+
+    const osmosisRows = `
+        <li class="list-group-item d-flex justify-content-between align-items-center">
+            <span class="text-white-50">Estado Equipamento</span>
+            <span class="font-monospace fw-bold fs-5 text-${equipmentClass}">${equipmentStatus}</span>
+        </li>`;
 
     return `
         <a href="view_lora_details.php?id=${device.id}" class="text-decoration-none">
             <div class="card scada-card h-100 border-${borderClass} shadow-sm" data-type="lora">
                 <div class="card-header d-flex justify-content-between align-items-center">
-                    <h5 class="card-title mb-0 fw-bold">${device.name}</h5>
+                    <h5 class="card-title mb-0 fw-bold">
+                        ${isGenerator ? '<i class="bi bi-lightning-charge-fill text-warning me-2"></i>' : ''}${escapeHtml(device.name)}
+                    </h5>
                     <span class="badge bg-${badgeClass}">LoRa ${badgeText}</span>
                 </div>
                 <ul class="list-group list-group-flush">
-                    <li class="list-group-item d-flex justify-content-between align-items-center">
-                        <span class="text-white-50">Estado Equipamento</span>
-                        <span class="font-monospace fw-bold fs-5 text-${equipmentClass}">
-                            ${equipmentStatus}
-                        </span>
-                    </li>
+                    ${isGenerator ? generatorRows : osmosisRows}
                     <li class="list-group-item d-flex justify-content-between align-items-center">
                         <span class="text-white-50">Última Vez Visto</span>
                         <span class="font-monospace" style="font-size: 1rem;">${lastSeen}</span>

@@ -20,17 +20,27 @@ $now = date("Y-m-d H:i:s");
 // == NOVA LÓGICA PARA DESCODIFICAR E GUARDAR O PAYLOAD ==
 // ======================================================
 $equipment_status = 'Unknown'; // Valor por defeito
+$device_type = null;
+$fault_status = null;
 
 if (isset($data['data'])) {
     // 1. O ChirpStack envia o payload codificado em base64
     $payload_base64 = $data['data'];
     // 2. Descodificamos de base64 para obter os bytes (ex: '01' ou '00')
-    $payload_hex = bin2hex(base64_decode($payload_base64));
+    $payload = base64_decode($payload_base64, true);
+    $payload_hex = $payload === false ? '' : bin2hex($payload);
 
     // 3. Interpretamos o payload
-    if ($payload_hex === '01') {
+    if (strlen($payload_hex) === 4) {
+        // Monitor de gerador (porta 2): byte 0 = ON/OFF, byte 1 = avaria.
+        $device_type = 'generator';
+        $equipment_status = hexdec(substr($payload_hex, 0, 2)) === 1 ? 'On' : 'Off';
+        $fault_status = hexdec(substr($payload_hex, 2, 2)) === 1 ? 'Fault' : 'Ok';
+    } elseif ($payload_hex === '01') {
+        $device_type = 'osmosis';
         $equipment_status = 'On';
     } elseif ($payload_hex === '00') {
+        $device_type = 'osmosis';
         $equipment_status = 'Off';
     }
 }
@@ -40,13 +50,15 @@ $stmt = $conn->prepare("
     UPDATE lorawan_devices 
     SET 
         status = 'On', 
-        equipment_status = ?, 
+        equipment_status = ?,
+        device_type = COALESCE(?, device_type),
+        fault_status = ?,
         last_seen = ?, 
         last_rssi = ?, 
         last_snr = ?
     WHERE dev_eui = ?
 ");
-$stmt->bind_param("ssids", $equipment_status, $now, $rssi, $snr, $dev_eui);
+$stmt->bind_param("ssssids", $equipment_status, $device_type, $fault_status, $now, $rssi, $snr, $dev_eui);
 $stmt->execute();
 $stmt->close();
 
