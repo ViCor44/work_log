@@ -708,10 +708,21 @@ function process_lora_alarms(mysqli $conn): void
                 }
                 $msg = build_alarm_message($devName, $type, $event);
                 if (!empty($recipients)) {
+                    $handledNumbers = [];
                     foreach ($recipients as $r) {
                         $to = trim((string)$r['phone']);
                         if ($to === '') { continue; }
                         if (!user_wants_alarm($r, $type)) { continue; }
+                        // Um número pode estar associado a mais de um utilizador
+                        // ou escrito como +351... / 00351.... Envia apenas uma vez.
+                        $numberKey = preg_replace('/\D+/', '', $to);
+                        if (strpos($numberKey, '00') === 0) {
+                            $numberKey = substr($numberKey, 2);
+                        }
+                        if ($numberKey === '' || isset($handledNumbers[$numberKey])) {
+                            continue;
+                        }
+                        $handledNumbers[$numberKey] = true;
                         // Defesa: se este mesmo SMS foi enviado h\u00e1 poucos segundos
                         // (ex.: cron concorrente antes do flock), n\u00e3o repete.
                         if (was_recently_sent($conn, $to, $stateKey, $type, 30)) {
