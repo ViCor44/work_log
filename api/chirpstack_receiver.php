@@ -102,7 +102,7 @@ try {
     // webhooks simultâneos podem ler o mesmo estado anterior e enviar a mesma
     // recuperação antes de qualquer deles persistir o novo estado.
     $smsLock = @fopen(sys_get_temp_dir() . DIRECTORY_SEPARATOR . 'worklog_check_lorawan.lock', 'c');
-    if ($smsLock !== false && flock($smsLock, LOCK_EX | LOCK_NB)) {
+    if ($smsLock !== false && flock($smsLock, LOCK_EX)) {
         try {
             require_once __DIR__ . '/sms_alarm_notifier.php';
             process_lora_alarms($conn);
@@ -112,7 +112,7 @@ try {
         }
     } elseif ($smsLock !== false) {
         fclose($smsLock);
-        error_log('SMS_LORA_UPLINK_SKIPPED alarm processor already running');
+        error_log('SMS_LORA_UPLINK_LOCK_FAILED unable to serialize alarm processor');
     }
 } catch (Throwable $smsE) {
     // A receção da telemetria não deve falhar caso o modem/serviço SMS esteja
