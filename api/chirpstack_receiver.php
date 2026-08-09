@@ -58,6 +58,13 @@ if (isset($data['data'])) {
     );
 }
 
+// Serializa todo o ciclo "guardar uplink -> avaliar transição -> enviar SMS".
+// O lock tem de ser obtido ANTES do UPDATE; caso contrário, um segundo uplink
+// pode alterar o estado exibido no card enquanto o primeiro ainda persiste o
+// estado do alarme, fazendo desaparecer a transição de recuperação.
+$smsLock = @fopen(sys_get_temp_dir() . DIRECTORY_SEPARATOR . 'worklog_check_lorawan.lock', 'c');
+$smsLockHeld = $smsLock !== false && flock($smsLock, LOCK_EX);
+
 // Prepara a query para atualizar o estado do dispositivo E o estado do equipamento
 $stmt = $conn->prepare("
     UPDATE lorawan_devices 
@@ -98,26 +105,23 @@ $stmt->close();
 // o único responsável: um OFF/Fault curto poderia regressar a On/Ok entre
 // duas execuções e nunca originar SMS.
 try {
-    // Usa o mesmo lock do worker periódico. Sem esta serialização, vários
-    // webhooks simultâneos podem ler o mesmo estado anterior e enviar a mesma
-    // recuperação antes de qualquer deles persistir o novo estado.
-    $smsLock = @fopen(sys_get_temp_dir() . DIRECTORY_SEPARATOR . 'worklog_check_lorawan.lock', 'c');
-    if ($smsLock !== false && flock($smsLock, LOCK_EX)) {
-        try {
-            require_once __DIR__ . '/sms_alarm_notifier.php';
-            process_lora_alarms($conn);
-        } finally {
-            flock($smsLock, LOCK_UN);
-            fclose($smsLock);
-        }
-    } elseif ($smsLock !== false) {
-        fclose($smsLock);
+    if ($smsLockHeld) {
+        require_once __DIR__ . '/sms_alarm_notifier.php';
+        process_lora_alarms($conn);
+    } else {
         error_log('SMS_LORA_UPLINK_LOCK_FAILED unable to serialize alarm processor');
     }
 } catch (Throwable $smsE) {
     // A receção da telemetria não deve falhar caso o modem/serviço SMS esteja
     // indisponível; a falha fica registada para diagnóstico.
     error_log('SMS_LORA_UPLINK_ALARM_ERR ' . $smsE->getMessage());
+} finally {
+    if ($smsLockHeld) {
+        flock($smsLock, LOCK_UN);
+    }
+    if ($smsLock !== false) {
+        fclose($smsLock);
+    }
 }
 
 http_response_code(200);

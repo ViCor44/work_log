@@ -288,9 +288,17 @@ function log_sms(mysqli $conn, string $to, string $msg, string $status, ?string 
  * destinatário para o mesmo tank_id/alarm_type nos últimos $windowSec segundos.
  * Usada como defesa em profundidade contra execuções concorrentes do worker.
  */
-function was_recently_sent(mysqli $conn, string $to, ?int $tankId, ?string $alarmType, int $windowSec = 30): bool
+function was_recently_sent(
+    mysqli $conn,
+    string $to,
+    ?int $tankId,
+    ?string $alarmType,
+    int $windowSec = 30,
+    ?string $event = null
+): bool
 {
     if ($tankId === null || $alarmType === null) { return false; }
+    $prefix = $event === null ? '%' : '[' . $event . ']%';
     $stmt = $conn->prepare(
         "SELECT 1 FROM sms_log
           WHERE to_number = ?
@@ -298,10 +306,11 @@ function was_recently_sent(mysqli $conn, string $to, ?int $tankId, ?string $alar
             AND alarm_type = ?
             AND status = 'sent'
             AND ts >= DATE_SUB(NOW(), INTERVAL ? SECOND)
+            AND message LIKE ?
           LIMIT 1"
     );
     if (!$stmt) { return false; }
-    $stmt->bind_param('sisi', $to, $tankId, $alarmType, $windowSec);
+    $stmt->bind_param('sisis', $to, $tankId, $alarmType, $windowSec, $prefix);
     $stmt->execute();
     $res = $stmt->get_result();
     $ok = $res ? (bool)$res->fetch_row() : false;
@@ -506,7 +515,7 @@ function process_controller_alarms(mysqli $conn, array $pool, array $data): void
                             continue;
                         }
                         // Defesa concorrente: não repete o mesmo SMS em 30s.
-                        if (was_recently_sent($conn, $to, $tankId, $type, 30)) {
+                        if (was_recently_sent($conn, $to, $tankId, $type, 30, 'ALARME')) {
                             sms_alarm_log("SMS to={$to} tipo={$type} SKIP_DUP_30s");
                             continue;
                         }
@@ -530,7 +539,7 @@ function process_controller_alarms(mysqli $conn, array $pool, array $data): void
                         if (was_event_sent_to_user_in_window($conn, $to, $tankId, $type, 'OK', $firstActiveAt)) {
                             continue;
                         }
-                        if (was_recently_sent($conn, $to, $tankId, $type, 30)) {
+                        if (was_recently_sent($conn, $to, $tankId, $type, 30, 'OK')) {
                             sms_alarm_log("SMS to={$to} tipo={$type} event=OK SKIP_DUP_30s");
                             continue;
                         }
@@ -725,7 +734,7 @@ function process_lora_alarms(mysqli $conn): void
                         $handledNumbers[$numberKey] = true;
                         // Defesa: se este mesmo SMS foi enviado h\u00e1 poucos segundos
                         // (ex.: cron concorrente antes do flock), n\u00e3o repete.
-                        if (was_recently_sent($conn, $to, $stateKey, $type, 30)) {
+                        if (was_recently_sent($conn, $to, $stateKey, $type, 30, $event)) {
                             sms_alarm_log("SMS lora to={$to} tipo={$type} SKIP_DUP_30s");
                             continue;
                         }
@@ -805,7 +814,7 @@ function process_filter_perlite_alarm(mysqli $conn, int $filterId, string $filte
                 if (!user_wants_alarm($r, $type)) { continue; }
                 // Defesa concorrente / on-view: várias abas / recargas podem
                 // disparar em segundos — não repetir o mesmo SMS em 30s.
-                if (was_recently_sent($conn, $to, $stateKey, $type, 30)) {
+                if (was_recently_sent($conn, $to, $stateKey, $type, 30, $event)) {
                     sms_alarm_log("SMS perlite to={$to} filtro={$filterName} SKIP_DUP_30s");
                     continue;
                 }
