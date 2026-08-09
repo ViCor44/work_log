@@ -2,8 +2,10 @@
 require_once '../db.php';
 date_default_timezone_set('Europe/Lisbon');
 $input = file_get_contents("php://input");
-file_put_contents("../tmp/chirpstack_debug.log", date("Y-m-d H:i:s") . " - " . $input . "\n", FILE_APPEND);
-$json_data = file_get_contents('php://input');
+$debugDir = dirname(__DIR__) . '/tmp';
+if (!is_dir($debugDir)) { @mkdir($debugDir, 0775, true); }
+file_put_contents($debugDir . '/chirpstack_debug.log', date("Y-m-d H:i:s") . " - " . $input . "\n", FILE_APPEND | LOCK_EX);
+$json_data = $input;
 $data = json_decode($json_data, true);
 
 if (!$data || !isset($data['deviceInfo']['devEui'])) {
@@ -48,6 +50,12 @@ if (isset($data['data'])) {
         $device_type = 'osmosis';
         $equipment_status = 'Off';
     }
+
+    file_put_contents(
+        $debugDir . '/chirpstack_debug.log',
+        date("Y-m-d H:i:s") . " - decoded dev_eui={$dev_eui} payload={$payload_hex} equipment={$equipment_status} fault=" . ($fault_status ?? 'null') . "\n",
+        FILE_APPEND | LOCK_EX
+    );
 }
 
 // Prepara a query para atualizar o estado do dispositivo E o estado do equipamento

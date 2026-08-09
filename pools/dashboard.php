@@ -1299,14 +1299,15 @@ function createLoraCard(device) {
     const borderClass =
     !isOnline ? 'danger' :
     isGenerator && faultStatus === 'Fault' ? 'danger' :
+    isGenerator && equipmentStatus === 'On' ? 'warning' :
     !isGenerator && equipmentStatus === 'Off' ? 'danger' :
     'success';
 
     const generatorRows = `
         <li class="list-group-item d-flex justify-content-between align-items-center">
             <span class="text-white-50"><i class="bi bi-power me-2"></i>Gerador</span>
-            <span class="font-monospace fw-bold fs-5 text-${equipmentStatus === 'On' ? 'success' : equipmentStatus === 'Off' ? 'secondary' : 'secondary'}">
-                ${equipmentStatus === 'On' ? 'LIGADO' : equipmentStatus === 'Off' ? 'DESLIGADO' : 'DESCONHECIDO'}
+            <span class="font-monospace fw-bold fs-5 text-${equipmentStatus === 'On' ? 'warning' : equipmentStatus === 'Off' ? 'success' : 'secondary'}">
+                ${equipmentStatus === 'On' ? 'A TRABALHAR — WARNING' : equipmentStatus === 'Off' ? 'PARADO — OK' : 'DESCONHECIDO'}
             </span>
         </li>
         <li class="list-group-item d-flex justify-content-between align-items-center">
@@ -1629,7 +1630,9 @@ function createLoraCard(device) {
     async function updateLoraDashboard() {
         const loraContainer = document.getElementById('dashboard-container-lora');
         try {
-            const response = await fetch('../api/get_lorawan_status.php');
+            const response = await fetch(`../api/get_lorawan_status.php?_=${Date.now()}`, {
+                cache: 'no-store'
+            });
             const devices = await response.json();
             if (devices.error) throw new Error(devices.error);
 
