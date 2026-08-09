@@ -115,6 +115,7 @@ function alarm_label(string $type): string
         'ph_critico'          => 'pH acima do limiar crítico',
         'lora_offline'        => 'LoRa offline (sem sinal)',
         'equipment_off'       => 'Equipamento desligado',
+        'generator_fault'     => 'Avaria no gerador',
         'perlite_change_due'  => 'Substituir perlite (falta 1 dia)',
     ];
     return $map[$type] ?? $type;
@@ -134,6 +135,9 @@ function sms_alarm_group(string $type): string
     if ($type === 'equipment_off') {
         return 'equipment_off';
     }
+    if ($type === 'generator_fault') {
+        return 'generator_fault';
+    }
     if ($type === 'perlite_change_due') {
         return 'perlite';
     }
@@ -145,12 +149,17 @@ function sms_alarm_group(string $type): string
  */
 function get_sms_recipients(mysqli $conn): array
 {
+    // Migração idempotente para instalações existentes; garante que o worker
+    // pode respeitar a preferência mesmo antes de alguém abrir a gestão de utilizadores.
+    @$conn->query("ALTER TABLE users ADD COLUMN IF NOT EXISTS receive_sms_generator_fault TINYINT(1) NOT NULL DEFAULT 1");
+
     $sqlNew = "SELECT id, first_name, last_name, phone,
                       receive_sms_alarms,
                       COALESCE(receive_sms_controller, receive_sms_alarms) AS receive_sms_controller,
                       COALESCE(receive_sms_chemical, receive_sms_alarms) AS receive_sms_chemical,
                       COALESCE(receive_sms_lora_offline, receive_sms_alarms) AS receive_sms_lora_offline,
                       COALESCE(receive_sms_equipment_off, receive_sms_alarms) AS receive_sms_equipment_off,
+                      COALESCE(receive_sms_generator_fault, receive_sms_alarms) AS receive_sms_generator_fault,
                       COALESCE(receive_sms_perlite, receive_sms_alarms) AS receive_sms_perlite
                FROM users
                WHERE receive_sms_alarms = 1
@@ -167,6 +176,7 @@ function get_sms_recipients(mysqli $conn): array
                       receive_sms_alarms AS receive_sms_chemical,
                       receive_sms_alarms AS receive_sms_lora_offline,
                       receive_sms_alarms AS receive_sms_equipment_off,
+                      receive_sms_alarms AS receive_sms_generator_fault,
                       receive_sms_alarms AS receive_sms_perlite
                FROM users
                WHERE receive_sms_alarms = 1
@@ -199,6 +209,9 @@ function user_wants_alarm(array $user, string $type): bool
     }
     if ($group === 'equipment_off') {
         return !empty($user['receive_sms_equipment_off']);
+    }
+    if ($group === 'generator_fault') {
+        return !empty($user['receive_sms_generator_fault']);
     }
     if ($group === 'perlite') {
         return !empty($user['receive_sms_perlite']);
@@ -560,6 +573,7 @@ function build_alarm_message(string $tankName, string $type, string $event = 'AL
     // acrescentar " normalizado" à etiqueta de ALARME).
     $okLabels = [
         'equipment_off'      => 'Equipamento em funcionamento',
+        'generator_fault'    => 'Gerador sem avaria',
         'lora_offline'       => 'LoRa online',
         'perlite_change_due' => 'Perlite substituida',
     ];
@@ -609,9 +623,10 @@ function build_alarm_message(string $tankName, string $type, string $event = 'AL
  * Processa alarmes dos dispositivos LoRaWAN (osmoses, etc.).
  *
  * Estado guardado em controller_alarm_state usando tank_id = -device_id
- * (negativo para distinguir de tanques). Dois tipos de alarme por dispositivo:
+ * (negativo para distinguir de tanques). Tipos de alarme por dispositivo:
  *   - lora_offline:  status != 'On'    (link LoRa perdido / timeout)
  *   - equipment_off: equipment_status == 'Off' (equipamento desligado)
+ *   - generator_fault: fault_status == 'Fault' (apenas geradores)
  *
  * Envia SMS em ambas as transições (entrada em alarme e recuperação).
  * Chamado no fim de scripts/check_lorawan_status.php.
@@ -622,7 +637,7 @@ function process_lora_alarms(mysqli $conn): void
         return;
     }
 
-    $res = $conn->query("SELECT id, name, status, equipment_status FROM lorawan_devices");
+    $res = $conn->query("SELECT id, name, status, equipment_status, device_type, fault_status FROM lorawan_devices");
     if (!$res) { return; }
     $devices = $res->fetch_all(MYSQLI_ASSOC);
     if (empty($devices)) { return; }
@@ -641,11 +656,21 @@ function process_lora_alarms(mysqli $conn): void
         $equipmentOff  = !$loraOffline
                          && isset($dev['equipment_status'])
                          && $dev['equipment_status'] === 'Off';
+        // Uma avaria só é fiável com o monitor LoRa online e aplica-se apenas
+        // aos dispositivos explicitamente classificados como geradores.
+        $generatorFault = !$loraOffline
+                          && ($dev['device_type'] ?? '') === 'generator'
+                          && ($dev['fault_status'] ?? '') === 'Fault';
 
         $checks = [
             'lora_offline'  => $loraOffline,
             'equipment_off' => $equipmentOff,
         ];
+        // Durante uma falha de comunicação não sabemos se a avaria recuperou;
+        // preserva o estado anterior até chegar nova telemetria válida.
+        if (!$loraOffline && ($dev['device_type'] ?? '') === 'generator') {
+            $checks['generator_fault'] = $generatorFault;
+        }
 
         sms_alarm_log("lora={$devName} id={$devId} status={$dev['status']} equip={$dev['equipment_status']}");
 

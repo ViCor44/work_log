@@ -9,6 +9,7 @@ if (isset($conn) && $conn instanceof mysqli) {
     @$conn->query("ALTER TABLE users ADD COLUMN IF NOT EXISTS receive_sms_chemical TINYINT(1) NOT NULL DEFAULT 1");
     @$conn->query("ALTER TABLE users ADD COLUMN IF NOT EXISTS receive_sms_lora_offline TINYINT(1) NOT NULL DEFAULT 1");
     @$conn->query("ALTER TABLE users ADD COLUMN IF NOT EXISTS receive_sms_equipment_off TINYINT(1) NOT NULL DEFAULT 1");
+    @$conn->query("ALTER TABLE users ADD COLUMN IF NOT EXISTS receive_sms_generator_fault TINYINT(1) NOT NULL DEFAULT 1");
     @$conn->query("ALTER TABLE users ADD COLUMN IF NOT EXISTS receive_sms_perlite TINYINT(1) NOT NULL DEFAULT 1");
 }
 
@@ -79,22 +80,24 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['update_sms_prefs'])) {
     $receive_sms_chemical      = isset($_POST['receive_sms_chemical']) ? 1 : 0;
     $receive_sms_lora_offline  = isset($_POST['receive_sms_lora_offline']) ? 1 : 0;
     $receive_sms_equipment_off = isset($_POST['receive_sms_equipment_off']) ? 1 : 0;
+    $receive_sms_generator_fault = isset($_POST['receive_sms_generator_fault']) ? 1 : 0;
     $receive_sms_perlite       = isset($_POST['receive_sms_perlite']) ? 1 : 0;
     $stmt = $conn->prepare("UPDATE users
         SET receive_sms_alarms = ?, receive_sms_controller = ?, receive_sms_chemical = ?,
-            receive_sms_lora_offline = ?, receive_sms_equipment_off = ?,
+            receive_sms_lora_offline = ?, receive_sms_equipment_off = ?, receive_sms_generator_fault = ?,
             receive_sms_perlite = ?
         WHERE id = ?");
     if (!$stmt) {
         die("Erro na consulta: " . $conn->error);
     }
     $stmt->bind_param(
-        "iiiiiii",
+        "iiiiiiii",
         $receive_sms_alarms,
         $receive_sms_controller,
         $receive_sms_chemical,
         $receive_sms_lora_offline,
         $receive_sms_equipment_off,
+        $receive_sms_generator_fault,
         $receive_sms_perlite,
         $user_id
     );
@@ -118,6 +121,7 @@ $stmt = $conn->prepare("SELECT first_name, last_name, email, phone, username, us
                                COALESCE(receive_sms_chemical, receive_sms_alarms) AS receive_sms_chemical,
                                COALESCE(receive_sms_lora_offline, receive_sms_alarms) AS receive_sms_lora_offline,
                                COALESCE(receive_sms_equipment_off, receive_sms_alarms) AS receive_sms_equipment_off,
+                               COALESCE(receive_sms_generator_fault, receive_sms_alarms) AS receive_sms_generator_fault,
                                COALESCE(receive_sms_perlite, receive_sms_alarms) AS receive_sms_perlite
                         FROM users WHERE id = ?");
 if (!$stmt) {
@@ -139,6 +143,7 @@ $stmt->bind_result(
     $navbar_receive_sms_chemical,
     $navbar_receive_sms_lora_offline,
     $navbar_receive_sms_equipment_off,
+    $navbar_receive_sms_generator_fault,
     $navbar_receive_sms_perlite
 );
 $stmt->fetch();
@@ -353,6 +358,10 @@ $stmt->close();
                             <div class="form-check mb-3">
                                 <input class="form-check-input" type="checkbox" id="np_receive_sms_equipment_off" name="receive_sms_equipment_off" value="1" <?= !empty($navbar_receive_sms_equipment_off) ? 'checked' : ''; ?>>
                                 <label class="form-check-label" for="np_receive_sms_equipment_off">Equipamento OFF (LoRa)</label>
+                            </div>
+                            <div class="form-check mb-3">
+                                <input class="form-check-input" type="checkbox" id="np_receive_sms_generator_fault" name="receive_sms_generator_fault" value="1" <?= !empty($navbar_receive_sms_generator_fault) ? 'checked' : ''; ?>>
+                                <label class="form-check-label" for="np_receive_sms_generator_fault">Avaria do gerador (LoRa)</label>
                             </div>
                             <div class="form-check mb-3">
                                 <input class="form-check-input" type="checkbox" id="np_receive_sms_perlite" name="receive_sms_perlite" value="1" <?= !empty($navbar_receive_sms_perlite) ? 'checked' : ''; ?>>
