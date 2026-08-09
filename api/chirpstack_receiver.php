@@ -85,6 +85,19 @@ $stmt->close();
 
 // ======================================================
 
+// Avalia imediatamente as transições de alarme/SMS depois de persistir o
+// uplink. O worker periódico continua a tratar timeouts LoRa, mas não pode ser
+// o único responsável: um OFF/Fault curto poderia regressar a On/Ok entre
+// duas execuções e nunca originar SMS.
+try {
+    require_once __DIR__ . '/sms_alarm_notifier.php';
+    process_lora_alarms($conn);
+} catch (Throwable $smsE) {
+    // A receção da telemetria não deve falhar caso o modem/serviço SMS esteja
+    // indisponível; a falha fica registada para diagnóstico.
+    error_log('SMS_LORA_UPLINK_ALARM_ERR ' . $smsE->getMessage());
+}
+
 http_response_code(200);
 echo "OK";
 ?>

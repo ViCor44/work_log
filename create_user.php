@@ -181,7 +181,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
                 </div>
                 <div class="form-check mb-3">
                     <input class="form-check-input" type="checkbox" id="receive_sms_generator_fault" name="receive_sms_generator_fault" value="1" checked>
-                    <label class="form-check-label" for="receive_sms_generator_fault">Avaria do gerador (LoRa)</label>
+                    <label class="form-check-label" for="receive_sms_generator_fault">Estado e avaria do gerador (LoRa)</label>
                 </div>
                 <div class="form-check mb-3">
                     <input class="form-check-input" type="checkbox" id="receive_sms_perlite" name="receive_sms_perlite" value="1" checked>

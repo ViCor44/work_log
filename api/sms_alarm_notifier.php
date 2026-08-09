@@ -116,6 +116,7 @@ function alarm_label(string $type): string
         'lora_offline'        => 'LoRa offline (sem sinal)',
         'equipment_off'       => 'Equipamento desligado',
         'generator_fault'     => 'Avaria no gerador',
+        'generator_running'   => 'Gerador a trabalhar',
         'perlite_change_due'  => 'Substituir perlite (falta 1 dia)',
     ];
     return $map[$type] ?? $type;
@@ -135,7 +136,7 @@ function sms_alarm_group(string $type): string
     if ($type === 'equipment_off') {
         return 'equipment_off';
     }
-    if ($type === 'generator_fault') {
+    if (in_array($type, ['generator_fault', 'generator_running'], true)) {
         return 'generator_fault';
     }
     if ($type === 'perlite_change_due') {
@@ -564,7 +565,7 @@ function process_controller_alarms(mysqli $conn, array $pool, array $data): void
 
 /**
  * Constrói a mensagem de SMS (curta, sem acentos, dentro de 160 chars).
- * $event = 'ALARME' | 'OK' (recuperação)
+ * $event = 'ALARME' | 'WARNING' | 'OK' (recuperação)
  * $data  = payload do controlador (opcional — usado para meter valor atual em alarmes químicos)
  */
 function build_alarm_message(string $tankName, string $type, string $event = 'ALARME', array $data = []): string
@@ -574,6 +575,7 @@ function build_alarm_message(string $tankName, string $type, string $event = 'AL
     $okLabels = [
         'equipment_off'      => 'Equipamento em funcionamento',
         'generator_fault'    => 'Gerador sem avaria',
+        'generator_running'  => 'Gerador parado',
         'lora_offline'       => 'LoRa online',
         'perlite_change_due' => 'Perlite substituida',
     ];
@@ -598,7 +600,7 @@ function build_alarm_message(string $tankName, string $type, string $event = 'AL
         }
     }
 
-    $prefix = $event === 'OK' ? '[OK]' : '[ALARME]';
+    $prefix = $event === 'OK' ? '[OK]' : ($event === 'WARNING' ? '[WARNING]' : '[ALARME]');
     $suffix = $useSuffix ? ' normalizado' : '';
 
     $strip = [
@@ -627,6 +629,7 @@ function build_alarm_message(string $tankName, string $type, string $event = 'AL
  *   - lora_offline:  status != 'On'    (link LoRa perdido / timeout)
  *   - equipment_off: equipment_status == 'Off' (equipamento desligado)
  *   - generator_fault: fault_status == 'Fault' (apenas geradores)
+ *   - generator_running: equipment_status == 'On' (gerador a trabalhar = warning)
  *
  * Envia SMS em ambas as transições (entrada em alarme e recuperação).
  * Chamado no fim de scripts/check_lorawan_status.php.
@@ -653,14 +656,19 @@ function process_lora_alarms(mysqli $conn): void
         // Só considera equipment_off se o LoRa estiver online e o valor for 'Off'.
         // Se o LoRa estiver offline, ignoramos equipment_off (não sabemos o real).
         $loraOffline   = ($dev['status'] !== 'On');
+        $isGenerator   = ($dev['device_type'] ?? '') === 'generator';
         $equipmentOff  = !$loraOffline
+                         && !$isGenerator
                          && isset($dev['equipment_status'])
                          && $dev['equipment_status'] === 'Off';
         // Uma avaria só é fiável com o monitor LoRa online e aplica-se apenas
         // aos dispositivos explicitamente classificados como geradores.
         $generatorFault = !$loraOffline
-                          && ($dev['device_type'] ?? '') === 'generator'
+                          && $isGenerator
                           && ($dev['fault_status'] ?? '') === 'Fault';
+        $generatorRunning = !$loraOffline
+                            && $isGenerator
+                            && ($dev['equipment_status'] ?? '') === 'On';
 
         $checks = [
             'lora_offline'  => $loraOffline,
@@ -668,8 +676,9 @@ function process_lora_alarms(mysqli $conn): void
         ];
         // Durante uma falha de comunicação não sabemos se a avaria recuperou;
         // preserva o estado anterior até chegar nova telemetria válida.
-        if (!$loraOffline && ($dev['device_type'] ?? '') === 'generator') {
+        if (!$loraOffline && $isGenerator) {
             $checks['generator_fault'] = $generatorFault;
+            $checks['generator_running'] = $generatorRunning;
         }
 
         sms_alarm_log("lora={$devName} id={$devId} status={$dev['status']} equip={$dev['equipment_status']}");
@@ -680,7 +689,10 @@ function process_lora_alarms(mysqli $conn): void
 
             $shouldSend = false;
             $event      = null;
-            if ($active && !$wasActive)      { $shouldSend = true; $event = 'ALARME'; }
+            if ($active && !$wasActive)      {
+                $shouldSend = true;
+                $event = $type === 'generator_running' ? 'WARNING' : 'ALARME';
+            }
             elseif (!$active && $wasActive)  { $shouldSend = true; $event = 'OK'; }
 
             $decision = $shouldSend ? ('SEND(' . $event . ')') : 'NO_CHANGE';
