@@ -1,5 +1,6 @@
 <?php
-session_start();
+require_once __DIR__ . '/session_bootstrap.php';
+start_worklog_session();
 include 'db.php'; // Inclui a conexão com o banco de dados
 require_once('PHPMailer/PHPMailerAutoload.php');
 
