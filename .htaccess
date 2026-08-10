@@ -1,0 +1,8 @@
+<IfModule mod_php.c>
+    # Mantém as sessões do WorkLog numa pasta própria, gravável pelo Apache.
+    php_value session.save_handler files
+    php_value session.save_path "C:/xampp/htdocs/work_log/tmp/sessions"
+</IfModule>
+
+# Os ficheiros de sessão e outros dados temporários nunca podem ser públicos.
+RedirectMatch 404 ^/work_log/tmp(?:/|$)
