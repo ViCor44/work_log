@@ -791,6 +791,34 @@ document.addEventListener('DOMContentLoaded', function() {
     let _historyAutoRefreshPaused = false;
     let cloroHistoryValues = [];
     let cloroManualTargetSetpoint = null;
+    let gaugeAlarmConfig = { chlorine_min: 1, chlorine_max: 3, ph_min: 7, ph_max: 7.8 };
+    let gaugeAlarmConfigLoadedAt = 0;
+
+    async function refreshGaugeAlarmConfig(force) {
+        const now = Date.now();
+        if (!force && now - gaugeAlarmConfigLoadedAt < 30000) return gaugeAlarmConfig;
+
+        const response = await fetch(`${apiBasePath}/alarm_config.php`, {
+            cache: 'no-store',
+            credentials: 'same-origin'
+        });
+        if (!response.ok) throw new Error(`Erro HTTP ${response.status} ao obter os limites dos alarmes`);
+
+        const payload = await response.json();
+        const config = Array.isArray(payload.controllers)
+            ? payload.controllers.find(item => Number(item.id) === Number(tankId))
+            : null;
+        if (config) {
+            gaugeAlarmConfig = {
+                chlorine_min: Number(config.chlorine_min),
+                chlorine_max: Number(config.chlorine_max),
+                ph_min: Number(config.ph_min),
+                ph_max: Number(config.ph_max)
+            };
+        }
+        gaugeAlarmConfigLoadedAt = now;
+        return gaugeAlarmConfig;
+    }
 
     function formatNumberOrNA(value, decimals = 2) {
         const n = parseFloat(value);
@@ -799,8 +827,9 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 
     // Função para criar um manómetro (gauge)
-    function createGauge(ctx, label, min, max, lim_min, lim_max, value) {
-		const displayValue = Math.min(value, max);
+    function createGauge(ctx, label, min, max, alarmMin, alarmMax, value) {
+		const numericValue = Number(value);
+		const displayValue = Number.isFinite(numericValue) ? Math.max(min, Math.min(numericValue, max)) : min;
         return new Chart(ctx, {
             type: 'gauge',
             data: {
@@ -808,8 +837,8 @@ document.addEventListener('DOMContentLoaded', function() {
                     value: displayValue,
                     minValue: min,
 					maxValue: max,
-                    data: [min + lim_min, lim_max, max],
-                    backgroundColor: ['#dc3545', '#198754', '#dc3545'], // Verde, Amarelo, Vermelho
+                    data: [alarmMin, alarmMax, max],
+                    backgroundColor: ['#dc3545', '#198754', '#dc3545'],
                 }]
             },
             options: {
@@ -823,11 +852,22 @@ document.addEventListener('DOMContentLoaded', function() {
                 fontSize: 20, 
                 color: 'white',
                 formatter: function(val) {
-                    return parseFloat(value).toFixed(2);
+                    return Number.isFinite(numericValue) ? numericValue.toFixed(label === 'Temp' ? 1 : 2) : 'N/A';
                 }
             }
         }
         });
+    }
+
+    function updateGauge(gauge, value, min, max, alarmMin, alarmMax, decimals) {
+        const numericValue = Number(value);
+        const dataset = gauge.data.datasets[0];
+        dataset.minValue = min;
+        dataset.maxValue = max;
+        dataset.data = [alarmMin, alarmMax, max];
+        dataset.value = Number.isFinite(numericValue) ? Math.max(min, Math.min(numericValue, max)) : min;
+        gauge.options.valueLabel.formatter = () => Number.isFinite(numericValue) ? numericValue.toFixed(decimals) : 'N/A';
+        gauge.update();
     }
 
     // Função para criar o gráfico de histórico
@@ -895,9 +935,14 @@ document.addEventListener('DOMContentLoaded', function() {
 	async function updateGauges() {
 	    if (!controllerIp) return; // Does nothing if the tank has no IP
 	    try {
+	        const configPromise = refreshGaugeAlarmConfig(false).catch(error => {
+	            console.warn('Não foi possível atualizar os limites dos gauges:', error);
+	            return gaugeAlarmConfig;
+	        });
 	        const response = await fetch(`get_controller_data.php?ip=${controllerIp}`);
 	        const data = await response.json();
 	        if (data.error) throw new Error(data.error);
+	        const alarmConfig = await configPromise;
 	        lastControllerData = data;
 	        // The keys here ('ph', 'cloro_livre', 'temperatura', 'ph_setpoint',
 	        // 'estado', and 'disturbio') must exactly match your XML/JSON file from the controller.
@@ -923,11 +968,9 @@ document.addEventListener('DOMContentLoaded', function() {
             }
 	        
 	        if (!phGauge) {
-	            phGauge = createGauge(document.getElementById('phGauge').getContext('2d'), 'pH', 6, 9, 1, 7.8, phValue);
+	            phGauge = createGauge(document.getElementById('phGauge').getContext('2d'), 'pH', 6, 9, alarmConfig.ph_min, alarmConfig.ph_max, phValue);
 	        } else {
-				phGauge.data.datasets[0].value = phValue;
-                phGauge.options.valueLabel.formatter = () => parseFloat(phValue).toFixed(2);
-                phGauge.update();
+				updateGauge(phGauge, phValue, 6, 9, alarmConfig.ph_min, alarmConfig.ph_max, 2);
 	        }
 	        document.getElementById('ph-details').innerHTML = `
 	            <div class="detail-row"><span>Setpoint:</span> <strong>${phSetpoint || 'N/A'}</strong></div>
@@ -953,11 +996,9 @@ document.addEventListener('DOMContentLoaded', function() {
 
 	        
 	        if (!cloroGauge) {
-	            cloroGauge = createGauge(document.getElementById('cloroGauge').getContext('2d'), 'Cloro', 0, 5, 1, 3, cloroValue);
+	            cloroGauge = createGauge(document.getElementById('cloroGauge').getContext('2d'), 'Cloro', 0, 5, alarmConfig.chlorine_min, alarmConfig.chlorine_max, cloroValue);
 	        } else {
-				cloroGauge.data.datasets[0].value = cloroValue;
-                cloroGauge.options.valueLabel.formatter = () => parseFloat(cloroValue).toFixed(2);
-                cloroGauge.update();
+				updateGauge(cloroGauge, cloroValue, 0, 5, alarmConfig.chlorine_min, alarmConfig.chlorine_max, 2);
 	        }
 	        // This will be updated with PID data from the database by the fetchHistory function
 	        document.getElementById('cloro-details').innerHTML = `
