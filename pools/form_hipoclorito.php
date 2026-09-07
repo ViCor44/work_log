@@ -104,7 +104,7 @@ $tanks = $processed_tanks;
                             <label class="form-label">Nível Atual (Litros)</label>
                             <input type="number" step="0.01" class="form-control reading-input" 
                                    name="hipo[<?= $tank['id'] ?>]"
-                                   value="<?= $tank['existing_level'] ? number_format($tank['existing_level'], 2, ',', '.') : '' ?>"
+                                   value="<?= $tank['existing_level'] !== null ? htmlspecialchars(rtrim(rtrim(number_format((float)$tank['existing_level'], 2, '.', ''), '0'), '.')) : '' ?>"
                                    data-tank-id="<?= $tank['id'] ?>"
                                    data-previous-reading="<?= $tank['previous_reading'] ?>"
                                    data-second-reading="<?= $tank['second_reading'] ?>">
