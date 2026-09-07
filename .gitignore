@@ -11,3 +11,5 @@ uploads/
 printscreen/
 config.local.php
 sessions/modem_token.json
+signatures/*.png
+!signatures/.gitkeep
