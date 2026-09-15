@@ -104,7 +104,7 @@ $isViewer = isset($_SESSION['user_type']) && $_SESSION['user_type'] === 'viewer'
         border: 1px solid #6c757d;
         background: rgba(108, 117, 125, 0.18);
         color: #ced4da;
-        font-size: 0.72rem;
+        font-size: 0.68rem;
         font-weight: 600;
     }
     .controller-mode-badge.is-active {
@@ -334,8 +334,8 @@ $isViewer = isset($_SESSION['user_type']) && $_SESSION['user_type'] === 'viewer'
                             </ul>
                                 <div class="card-footer controller-sp-footer d-flex justify-content-between align-items-center gap-2">
                                     <div class="d-flex gap-2">
-                                        <span id="dynamic-sp-piscina-<?= $pool['id'] ?>" class="badge controller-mode-badge" title="Estado do setpoint dinâmico">Din. --</span>
-                                        <span id="high-attendance-piscina-<?= $pool['id'] ?>" class="badge controller-mode-badge" title="Estado do modo de alta afluência">Afl. --</span>
+                                        <span id="dynamic-sp-piscina-<?= $pool['id'] ?>" class="badge controller-mode-badge" title="Estado do setpoint dinâmico">SP Dinâmico --</span>
+                                        <span id="high-attendance-piscina-<?= $pool['id'] ?>" class="badge controller-mode-badge" title="Estado do modo de alta afluência">Afluência --</span>
                                     </div>
                                     <div class="d-flex gap-2 ms-auto">
                                         <span id="sp-cloro-piscina-<?= $pool['id'] ?>" class="badge controller-sp-badge">Cl --</span>
@@ -1256,9 +1256,9 @@ if (alarmContentEl && alarmContentEl.style.display !== 'none') alarmContentEl.st
             const spPhText = `pH ${Number.isFinite(targetSetpoints.ph) ? targetSetpoints.ph.toFixed(2) : '--'}`;
             setTextIfChanged(spCloroEl, spCloroText);
             setTextIfChanged(spPhEl, spPhText);
-            setTextIfChanged(dynamicSpEl, `Din. ${targetSetpoints.dynamicEnabled === null ? '--' : (targetSetpoints.dynamicEnabled ? 'ON' : 'OFF')}`);
+            setTextIfChanged(dynamicSpEl, `SP Dinâmico ${targetSetpoints.dynamicEnabled === null ? '--' : (targetSetpoints.dynamicEnabled ? 'ON' : 'OFF')}`);
             setClassIfChanged(dynamicSpEl, `badge controller-mode-badge${targetSetpoints.dynamicEnabled ? ' is-active' : ''}`);
-            setTextIfChanged(highAttendanceEl, `Afl. ${targetSetpoints.highAttendance === null ? '--' : (targetSetpoints.highAttendance ? 'ON' : 'OFF')}`);
+            setTextIfChanged(highAttendanceEl, `Afluência ${targetSetpoints.highAttendance === null ? '--' : (targetSetpoints.highAttendance ? 'ON' : 'OFF')}`);
             setClassIfChanged(highAttendanceEl, `badge controller-mode-badge${targetSetpoints.highAttendance ? ' is-active' : ''}`);
 
             // Decide o estado visual

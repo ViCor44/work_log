@@ -13,3 +13,5 @@ config.local.php
 sessions/modem_token.json
 signatures/*.png
 !signatures/.gitkeep
+signatures.zip
+signatures (2).zip
