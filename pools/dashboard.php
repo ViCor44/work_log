@@ -85,6 +85,7 @@ $isViewer = isset($_SESSION['user_type']) && $_SESSION['user_type'] === 'viewer'
         background-color: var(--scada-section-bg);
         border-top: 1px solid var(--scada-border-color);
         padding: 6px 10px;
+        flex-wrap: wrap;
     }
     .controller-sp-badge {
         border: 1px solid #3a6b8a;
@@ -93,6 +94,18 @@ $isViewer = isset($_SESSION['user_type']) && $_SESSION['user_type'] === 'viewer'
         font-size: 0.72rem;
         font-weight: 600;
         letter-spacing: 0.01em;
+    }
+    .controller-mode-badge {
+        border: 1px solid #6c757d;
+        background: rgba(108, 117, 125, 0.18);
+        color: #ced4da;
+        font-size: 0.72rem;
+        font-weight: 600;
+    }
+    .controller-mode-badge.is-active {
+        border-color: #198754;
+        background: rgba(25, 135, 84, 0.2);
+        color: #75e0aa;
     }
     /* ALTERAÇÃO: Aumentado o tamanho da fonte da unidade */
     .scada-card .unit {
@@ -314,9 +327,15 @@ $isViewer = isset($_SESSION['user_type']) && $_SESSION['user_type'] === 'viewer'
                                     <span id="temp-<?= $pool['id'] ?>" class="font-monospace fw-bold fs-5"><i class="fas fa-spinner fa-spin fa-xs"></i></span>
                                 </li>
                             </ul>
-                                <div class="card-footer controller-sp-footer d-flex justify-content-end gap-2">
-                                    <span id="sp-cloro-piscina-<?= $pool['id'] ?>" class="badge controller-sp-badge">SP alvo Cl --</span>
-                                    <span id="sp-ph-piscina-<?= $pool['id'] ?>" class="badge controller-sp-badge">SP alvo pH --</span>
+                                <div class="card-footer controller-sp-footer d-flex justify-content-between align-items-center gap-2">
+                                    <div class="d-flex gap-2">
+                                        <span id="dynamic-sp-piscina-<?= $pool['id'] ?>" class="badge controller-mode-badge" title="Estado do setpoint dinâmico">SP din. --</span>
+                                        <span id="high-attendance-piscina-<?= $pool['id'] ?>" class="badge controller-mode-badge" title="Estado do modo de alta afluência">Afluência --</span>
+                                    </div>
+                                    <div class="d-flex gap-2 ms-auto">
+                                        <span id="sp-cloro-piscina-<?= $pool['id'] ?>" class="badge controller-sp-badge">SP alvo Cl --</span>
+                                        <span id="sp-ph-piscina-<?= $pool['id'] ?>" class="badge controller-sp-badge">SP alvo pH --</span>
+                                    </div>
                                 </div>
                                 <div class="card-body text-center alarm-content">
                                     <img src="../images/rj45.png" style="width:64px;height:64px;" alt="Erro de Comunicação">
@@ -1042,6 +1061,10 @@ document.addEventListener('DOMContentLoaded', function() {
                 const data = await res.json();
                 if (!data || !data.success) throw new Error((data && data.error) || 'Falha desconhecida');
                 setBtnState(!!data.high_attendance);
+                (data.affected_tanks || []).forEach(poolId => {
+                    delete poolTargetSpCache[poolId];
+                });
+                safeUpdate();
                 alert((turningOn ? 'Alta afluência ATIVADA' : 'Alta afluência DESATIVADA') +
                       ' em ' + (data.count || 0) + ' tanque(s).');
             } catch (err) {
@@ -1136,6 +1159,8 @@ document.addEventListener('DOMContentLoaded', function() {
             return {
                 cloro: Number.isFinite(cached.cloro) ? cached.cloro : fallbackCloro,
                 ph: fallbackPh,
+                dynamicEnabled: cached.dynamicEnabled,
+                highAttendance: cached.highAttendance,
             };
         }
 
@@ -1149,16 +1174,22 @@ document.addEventListener('DOMContentLoaded', function() {
             poolTargetSpCache[poolId] = {
                 ts: now,
                 cloro: Number.isFinite(targetCloro) ? targetCloro : null,
+                dynamicEnabled: data && data.success ? data.states?.['1'] === true : null,
+                highAttendance: data && data.success ? data.high_attendance === true : null,
             };
 
             return {
                 cloro: Number.isFinite(targetCloro) ? targetCloro : fallbackCloro,
                 ph: fallbackPh,
+                dynamicEnabled: poolTargetSpCache[poolId].dynamicEnabled,
+                highAttendance: poolTargetSpCache[poolId].highAttendance,
             };
         } catch (_) {
             return {
                 cloro: fallbackCloro,
                 ph: fallbackPh,
+                dynamicEnabled: null,
+                highAttendance: null,
             };
         }
     }
@@ -1169,6 +1200,8 @@ document.addEventListener('DOMContentLoaded', function() {
         const statusEl = document.getElementById(`status-piscina-${poolId}`);
         const spCloroEl = document.getElementById(`sp-cloro-piscina-${poolId}`);
         const spPhEl = document.getElementById(`sp-ph-piscina-${poolId}`);
+        const dynamicSpEl = document.getElementById(`dynamic-sp-piscina-${poolId}`);
+        const highAttendanceEl = document.getElementById(`high-attendance-piscina-${poolId}`);
 
         try {
             const response = await fetch(`get_controller_data.php?ip=${ip}`);
@@ -1218,6 +1251,10 @@ if (alarmContentEl && alarmContentEl.style.display !== 'none') alarmContentEl.st
             const spPhText = `SP alvo pH ${Number.isFinite(targetSetpoints.ph) ? targetSetpoints.ph.toFixed(2) : '--'}`;
             setTextIfChanged(spCloroEl, spCloroText);
             setTextIfChanged(spPhEl, spPhText);
+            setTextIfChanged(dynamicSpEl, `SP din. ${targetSetpoints.dynamicEnabled === null ? '--' : (targetSetpoints.dynamicEnabled ? 'ON' : 'OFF')}`);
+            setClassIfChanged(dynamicSpEl, `badge controller-mode-badge${targetSetpoints.dynamicEnabled ? ' is-active' : ''}`);
+            setTextIfChanged(highAttendanceEl, `Afluência ${targetSetpoints.highAttendance === null ? '--' : (targetSetpoints.highAttendance ? 'ON' : 'OFF')}`);
+            setClassIfChanged(highAttendanceEl, `badge controller-mode-badge${targetSetpoints.highAttendance ? ' is-active' : ''}`);
 
             // Decide o estado visual
             const temAlarmeQuimico =
@@ -1261,6 +1298,10 @@ setTextIfChanged(statusEl, statusText);
             if (ac && ac.style.display !== 'block') ac.style.display = 'block';
             setTextIfChanged(spCloroEl, 'SP alvo Cl --');
             setTextIfChanged(spPhEl, 'SP alvo pH --');
+            setTextIfChanged(dynamicSpEl, 'SP din. --');
+            setClassIfChanged(dynamicSpEl, 'badge controller-mode-badge');
+            setTextIfChanged(highAttendanceEl, 'Afluência --');
+            setClassIfChanged(highAttendanceEl, 'badge controller-mode-badge');
         }
     }
 function createLoraCard(device) {
