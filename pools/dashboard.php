@@ -85,7 +85,12 @@ $isViewer = isset($_SESSION['user_type']) && $_SESSION['user_type'] === 'viewer'
         background-color: var(--scada-section-bg);
         border-top: 1px solid var(--scada-border-color);
         padding: 6px 10px;
-        flex-wrap: wrap;
+        flex-wrap: nowrap;
+        gap: 4px !important;
+    }
+    .controller-sp-footer > .d-flex {
+        gap: 4px !important;
+        white-space: nowrap;
     }
     .controller-sp-badge {
         border: 1px solid #3a6b8a;
@@ -329,12 +334,12 @@ $isViewer = isset($_SESSION['user_type']) && $_SESSION['user_type'] === 'viewer'
                             </ul>
                                 <div class="card-footer controller-sp-footer d-flex justify-content-between align-items-center gap-2">
                                     <div class="d-flex gap-2">
-                                        <span id="dynamic-sp-piscina-<?= $pool['id'] ?>" class="badge controller-mode-badge" title="Estado do setpoint dinâmico">SP din. --</span>
-                                        <span id="high-attendance-piscina-<?= $pool['id'] ?>" class="badge controller-mode-badge" title="Estado do modo de alta afluência">Afluência --</span>
+                                        <span id="dynamic-sp-piscina-<?= $pool['id'] ?>" class="badge controller-mode-badge" title="Estado do setpoint dinâmico">Din. --</span>
+                                        <span id="high-attendance-piscina-<?= $pool['id'] ?>" class="badge controller-mode-badge" title="Estado do modo de alta afluência">Afl. --</span>
                                     </div>
                                     <div class="d-flex gap-2 ms-auto">
-                                        <span id="sp-cloro-piscina-<?= $pool['id'] ?>" class="badge controller-sp-badge">SP alvo Cl --</span>
-                                        <span id="sp-ph-piscina-<?= $pool['id'] ?>" class="badge controller-sp-badge">SP alvo pH --</span>
+                                        <span id="sp-cloro-piscina-<?= $pool['id'] ?>" class="badge controller-sp-badge">Cl --</span>
+                                        <span id="sp-ph-piscina-<?= $pool['id'] ?>" class="badge controller-sp-badge">pH --</span>
                                     </div>
                                 </div>
                                 <div class="card-body text-center alarm-content">
@@ -1247,13 +1252,13 @@ if (alarmContentEl && alarmContentEl.style.display !== 'none') alarmContentEl.st
 
             setHtmlIfChanged(tempEl, tempText);
 
-            const spCloroText = `SP alvo Cl ${Number.isFinite(targetSetpoints.cloro) ? targetSetpoints.cloro.toFixed(2) : '--'}`;
-            const spPhText = `SP alvo pH ${Number.isFinite(targetSetpoints.ph) ? targetSetpoints.ph.toFixed(2) : '--'}`;
+            const spCloroText = `Cl ${Number.isFinite(targetSetpoints.cloro) ? targetSetpoints.cloro.toFixed(2) : '--'}`;
+            const spPhText = `pH ${Number.isFinite(targetSetpoints.ph) ? targetSetpoints.ph.toFixed(2) : '--'}`;
             setTextIfChanged(spCloroEl, spCloroText);
             setTextIfChanged(spPhEl, spPhText);
-            setTextIfChanged(dynamicSpEl, `SP din. ${targetSetpoints.dynamicEnabled === null ? '--' : (targetSetpoints.dynamicEnabled ? 'ON' : 'OFF')}`);
+            setTextIfChanged(dynamicSpEl, `Din. ${targetSetpoints.dynamicEnabled === null ? '--' : (targetSetpoints.dynamicEnabled ? 'ON' : 'OFF')}`);
             setClassIfChanged(dynamicSpEl, `badge controller-mode-badge${targetSetpoints.dynamicEnabled ? ' is-active' : ''}`);
-            setTextIfChanged(highAttendanceEl, `Afluência ${targetSetpoints.highAttendance === null ? '--' : (targetSetpoints.highAttendance ? 'ON' : 'OFF')}`);
+            setTextIfChanged(highAttendanceEl, `Afl. ${targetSetpoints.highAttendance === null ? '--' : (targetSetpoints.highAttendance ? 'ON' : 'OFF')}`);
             setClassIfChanged(highAttendanceEl, `badge controller-mode-badge${targetSetpoints.highAttendance ? ' is-active' : ''}`);
 
             // Decide o estado visual
