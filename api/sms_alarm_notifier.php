@@ -768,6 +768,32 @@ function filter_perlite_state_key(int $filterId): int
 }
 
 /**
+ * Reserva o processamento de um alarme entre pedidos PHP concorrentes.
+ * GET_LOCK pertence à ligação MySQL e é libertado automaticamente se ela fechar.
+ */
+function acquire_alarm_processing_lock(mysqli $conn, int $stateKey, string $type): ?string
+{
+    $lockName = 'worklog_alarm:' . $stateKey . ':' . $type;
+    $stmt = $conn->prepare('SELECT GET_LOCK(?, 0) AS acquired');
+    if (!$stmt) { return null; }
+    $stmt->bind_param('s', $lockName);
+    $stmt->execute();
+    $res = $stmt->get_result();
+    $row = $res ? $res->fetch_assoc() : null;
+    $stmt->close();
+    return isset($row['acquired']) && (int)$row['acquired'] === 1 ? $lockName : null;
+}
+
+function release_alarm_processing_lock(mysqli $conn, string $lockName): void
+{
+    $stmt = $conn->prepare('SELECT RELEASE_LOCK(?)');
+    if (!$stmt) { return; }
+    $stmt->bind_param('s', $lockName);
+    $stmt->execute();
+    $stmt->close();
+}
+
+/**
  * Processa o alarme "falta 1 dia para trocar perlite" de um filtro específico.
  * Chamado a partir de pools/get_filter_modbus_data.php após a leitura Modbus.
  *
@@ -776,6 +802,27 @@ function filter_perlite_state_key(int $filterId): int
  *   - OK    : remaining_time  > FILTER_PERLITE_ALERT_DAYS após ter estado ativo
  */
 function process_filter_perlite_alarm(mysqli $conn, int $filterId, string $filterName, $remainingDays): void
+{
+    if (!defined('SMS_ENABLED') || !SMS_ENABLED) {
+        return;
+    }
+
+    $stateKey = filter_perlite_state_key($filterId);
+    $lockName = acquire_alarm_processing_lock($conn, $stateKey, 'perlite_change_due');
+    if ($lockName === null) {
+        sms_alarm_log("filtro={$filterName} id={$filterId} SKIP_CONCURRENT");
+        return;
+    }
+
+    try {
+        process_filter_perlite_alarm_locked($conn, $filterId, $filterName, $remainingDays);
+    } finally {
+        release_alarm_processing_lock($conn, $lockName);
+    }
+}
+
+/** Processa a transição depois de o filtro ficar reservado por esta ligação. */
+function process_filter_perlite_alarm_locked(mysqli $conn, int $filterId, string $filterName, $remainingDays): void
 {
     if (!defined('SMS_ENABLED') || !SMS_ENABLED) {
         return;

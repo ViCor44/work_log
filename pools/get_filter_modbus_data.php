@@ -650,7 +650,7 @@ if ($perliteTrackingSupported && $charging_cycles !== null) {
 
 // Avalia alarme de troca de perlite (SMS quando faltar 1 dia ou menos).
 // A chamada é on-view (executada em cada leitura AJAX do dashboard) e
-// interna­mente só envia SMS na transição, com dedup de 30s.
+// internamente só envia SMS na transição, com lock por filtro e dedup de 30s.
 if ($remaining_time !== null) {
     require_once dirname(__DIR__) . '/api/sms_alarm_notifier.php';
     try {
