@@ -549,6 +549,13 @@ function isPerliteReplacementDue(data) {
     return Number.isFinite(remaining) && remaining <= 0;
 }
 
+function getPerliteBadgeClass(remainingDays) {
+    if (!Number.isFinite(remainingDays)) return 'bg-secondary';
+    if (remainingDays <= 1) return 'bg-danger';
+    if (remainingDays < 5) return 'bg-warning text-dark';
+    return 'bg-success';
+}
+
 function getPerliteExceededDays(data) {
     const remaining = data && data.remaining_time != null ? parseFloat(data.remaining_time) : null;
     if (!Number.isFinite(remaining) || remaining >= 0) return null;
@@ -1570,7 +1577,7 @@ function createLoraCard(device) {
                     setClassIfChanged(perliteDaysEl, 'badge bg-danger perlite-days-badge');
                     setTextIfChanged(perliteDaysEl, exceededDays < .05 ? 'Trocar hoje' : `Atrasada ${exceededDays.toFixed(1)} d`);
                 } else {
-                    const badgeClass = remainingDays <= 1 ? 'bg-danger' : (remainingDays < 5 ? 'bg-warning text-dark' : 'bg-success');
+                    const badgeClass = getPerliteBadgeClass(remainingDays);
                     setClassIfChanged(perliteDaysEl, `badge ${badgeClass} perlite-days-badge`);
                     setTextIfChanged(perliteDaysEl, `Faltam ${remainingDays.toFixed(1)} d`);
                 }
@@ -1593,8 +1600,8 @@ function createLoraCard(device) {
                     txt = 'Trocar perlite';
                     ttl = `Limite ultrapassado em ${exceededText} dias`;
                 } else if (Number.isFinite(remainingDays)) {
-                    cls = 'badge bg-success ms-2';
-                    txt = 'Perlite OK';
+                    cls = `badge ${getPerliteBadgeClass(remainingDays)} ms-2`;
+                    txt = remainingDays <= 1 ? 'Trocar perlite' : (remainingDays < 5 ? 'Perlite atenção' : 'Perlite OK');
                     ttl = `Faltam ${remainingDays.toFixed(1)} dias para a troca`;
                 } else {
                     cls = 'badge bg-secondary ms-2';
