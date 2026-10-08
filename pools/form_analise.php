@@ -8,6 +8,35 @@ $periodo = ($current_hour < 13) ? 'manha' : 'tarde';
 // Busca apenas os tanques que precisam de análises
 $stmt = $conn->query("SELECT id, name FROM tanks WHERE requires_analysis = 1 ORDER BY name");
 $tanks = $stmt->fetch_all(MYSQLI_ASSOC);
+
+$morning_analyses = [];
+if ($periodo === 'tarde') {
+    $today = date('Y-m-d');
+    $stmt = $conn->prepare("
+        SELECT id, tank_id, ph_level, chlorine_level, temperature, conductivity, dissolved_solids
+        FROM analyses
+        WHERE DATE(analysis_datetime) = ? AND period = 'manha'
+        ORDER BY analysis_datetime DESC, id DESC
+    ");
+    $stmt->bind_param("s", $today);
+    $stmt->execute();
+    $morning_results = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
+    $stmt->close();
+
+    foreach ($morning_results as $analysis) {
+        if (!isset($morning_analyses[$analysis['tank_id']])) {
+            $morning_analyses[$analysis['tank_id']] = $analysis;
+        }
+    }
+}
+
+function format_morning_reference($analysis, $field, $decimals = 2) {
+    if ($analysis === null || !isset($analysis[$field]) || $analysis[$field] === '') {
+        return 'Sem valor da manhã';
+    }
+
+    return number_format((float) $analysis[$field], $decimals, ',', '.');
+}
 ?>
 
 <style>
@@ -36,6 +65,12 @@ $tanks = $stmt->fetch_all(MYSQLI_ASSOC);
         border: 1px solid #ccc;
         color: #333;
     }
+    .morning-reference {
+        display: block;
+        margin-top: 0.2rem;
+        color: #fff;
+        font-size: 0.8rem;
+    }
     .form-actions {
         background-color: #f8f9fa;
         padding: 1rem;
@@ -60,6 +95,7 @@ $tanks = $stmt->fetch_all(MYSQLI_ASSOC);
 
         <div class="row">
             <?php foreach($tanks as $tank): ?>
+                <?php $morning_analysis = $morning_analyses[$tank['id']] ?? null; ?>
                 <div class="col-xl-2 col-lg-3 col-md-4 col-sm-6 mb-4">
                     <div class="tank-card-form">
                         <h5><?= htmlspecialchars($tank['name']) ?></h5>
@@ -67,10 +103,16 @@ $tanks = $stmt->fetch_all(MYSQLI_ASSOC);
                         <div class="mb-2">
                             <label class="form-label">pH</label>
                             <input type="number" step="0.01" class="form-control" name="ph_level[<?= $tank['id'] ?>]">
+                            <?php if ($periodo === 'tarde'): ?>
+                                <small class="morning-reference">Manhã: <?= htmlspecialchars(format_morning_reference($morning_analysis, 'ph_level')) ?></small>
+                            <?php endif; ?>
                         </div>
                         <div class="mb-2">
                             <label class="form-label">Cloro (ppm)</label>
                             <input type="number" step="0.01" class="form-control" name="chlorine_level[<?= $tank['id'] ?>]">
+                            <?php if ($periodo === 'tarde'): ?>
+                                <small class="morning-reference">Manhã: <?= htmlspecialchars(format_morning_reference($morning_analysis, 'chlorine_level')) ?></small>
+                            <?php endif; ?>
                         </div>
                         <?php if ($periodo === 'manha'): ?>
                         <div class="mb-2">
@@ -81,15 +123,24 @@ $tanks = $stmt->fetch_all(MYSQLI_ASSOC);
                         <div class="mb-2">
                             <label class="form-label">Temp. (°C)</label>
                             <input type="number" step="0.1" class="form-control" name="temperature[<?= $tank['id'] ?>]">
+                            <?php if ($periodo === 'tarde'): ?>
+                                <small class="morning-reference">Manhã: <?= htmlspecialchars(format_morning_reference($morning_analysis, 'temperature', 1)) ?></small>
+                            <?php endif; ?>
                         </div>
                         
                         <div class="mb-2">
                             <label class="form-label">Condutividade (mS/cm)</label>
                             <input type="number" step="0.01" class="form-control" name="conductivity[<?= $tank['id'] ?>]">
+                            <?php if ($periodo === 'tarde'): ?>
+                                <small class="morning-reference">Manhã: <?= htmlspecialchars(format_morning_reference($morning_analysis, 'conductivity')) ?></small>
+                            <?php endif; ?>
                         </div>
                         <div class="mb-2">
                             <label class="form-label">Sólidos Dissolv. (mg/l)</label>
                             <input type="number" step="0.01" class="form-control" name="dissolved_solids[<?= $tank['id'] ?>]">
+                            <?php if ($periodo === 'tarde'): ?>
+                                <small class="morning-reference">Manhã: <?= htmlspecialchars(format_morning_reference($morning_analysis, 'dissolved_solids')) ?></small>
+                            <?php endif; ?>
                         </div>
                         </div>
                 </div>
