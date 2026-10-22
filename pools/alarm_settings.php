@@ -4,9 +4,13 @@ require_once '../api/alarm_config_lib.php';
 require_once '../api/alarm_log_lib.php';
 ensure_alarm_config_table($conn);
 
+$tanks = $conn->query("SELECT id,name FROM tanks WHERE has_controller=1 ORDER BY name")->fetch_all(MYSQLI_ASSOC);
 $message = '';
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    $tankId = (int)($_POST['tank_id'] ?? 0);
+    $applyToAll = ($_POST['config_action'] ?? '') === 'all';
+    $targetTankIds = $applyToAll
+        ? array_map('intval', array_column($tanks, 'id'))
+        : [(int)($_POST['tank_id'] ?? 0)];
     $cMin = (float)str_replace(',', '.', $_POST['chlorine_min'] ?? '1');
     $cMax = (float)str_replace(',', '.', $_POST['chlorine_max'] ?? '3');
     $pMin = (float)str_replace(',', '.', $_POST['ph_min'] ?? '7');
@@ -14,28 +18,68 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $modalCMax = (float)str_replace(',', '.', $_POST['modal_chlorine_max'] ?? '4');
     $modalPhMax = (float)str_replace(',', '.', $_POST['modal_ph_max'] ?? '8.2');
     $delay = max(0, min(1440, (int)($_POST['modal_delay_minutes'] ?? 5)));
-    if ($tankId > 0 && $cMin < $cMax && $pMin < $pMax && $modalCMax >= $cMax && $modalPhMax >= $pMax) {
+    if ($targetTankIds && min($targetTankIds) > 0 && $cMin < $cMax && $pMin < $pMax && $modalCMax >= $cMax && $modalPhMax >= $pMax) {
         $modal = isset($_POST['modal_enabled']) ? 1 : 0;
         $sound = isset($_POST['sound_enabled']) ? 1 : 0;
         $stmt = $conn->prepare("INSERT INTO controller_alarm_config (tank_id,chlorine_min,chlorine_max,ph_min,ph_max,modal_chlorine_max,modal_ph_max,modal_delay_minutes,modal_enabled,sound_enabled) VALUES (?,?,?,?,?,?,?,?,?,?) ON DUPLICATE KEY UPDATE chlorine_min=VALUES(chlorine_min),chlorine_max=VALUES(chlorine_max),ph_min=VALUES(ph_min),ph_max=VALUES(ph_max),modal_chlorine_max=VALUES(modal_chlorine_max),modal_ph_max=VALUES(modal_ph_max),modal_delay_minutes=VALUES(modal_delay_minutes),modal_enabled=VALUES(modal_enabled),sound_enabled=VALUES(sound_enabled)");
-        $stmt->bind_param('idddddiiii', $tankId,$cMin,$cMax,$pMin,$pMax,$modalCMax,$modalPhMax,$delay,$modal,$sound);
-        $stmt->execute(); $stmt->close();
-        log_alarm_event($conn, $tankId, (int)$_SESSION['user_id'], 'configuracao', 'config_updated', null, null,
-            ['chlorine_min'=>$cMin,'chlorine_max'=>$cMax,'ph_min'=>$pMin,'ph_max'=>$pMax,
-             'modal_chlorine_max'=>$modalCMax,'modal_ph_max'=>$modalPhMax,'modal_delay_minutes'=>$delay,
-             'modal_enabled'=>$modal,'sound_enabled'=>$sound]);
-        $message = 'Configuração guardada.';
+        if (!$stmt) {
+            error_log('Failed to prepare alarm configuration update: ' . $conn->error);
+            $message = 'Não foi possível preparar a gravação da configuração.';
+        } else {
+            $conn->begin_transaction();
+            $saved = true;
+            foreach ($targetTankIds as $tankId) {
+                $stmt->bind_param('iddddddiii', $tankId,$cMin,$cMax,$pMin,$pMax,$modalCMax,$modalPhMax,$delay,$modal,$sound);
+                if (!$stmt->execute()) {
+                    error_log('Failed to save alarm configuration for tank ' . $tankId . ': ' . $stmt->error);
+                    $saved = false;
+                    break;
+                }
+            }
+            $stmt->close();
+            if ($saved && $conn->commit()) {
+                foreach ($targetTankIds as $tankId) {
+                    log_alarm_event($conn, $tankId, (int)$_SESSION['user_id'], 'configuracao', 'config_updated', null, null,
+                        ['chlorine_min'=>$cMin,'chlorine_max'=>$cMax,'ph_min'=>$pMin,'ph_max'=>$pMax,
+                         'modal_chlorine_max'=>$modalCMax,'modal_ph_max'=>$modalPhMax,'modal_delay_minutes'=>$delay,
+                         'modal_enabled'=>$modal,'sound_enabled'=>$sound]);
+                }
+                $message = $applyToAll
+                    ? 'Configuração aplicada a todos os ' . count($targetTankIds) . ' controladores.'
+                    : 'Configuração guardada.';
+            } else {
+                $conn->rollback();
+                $message = 'Não foi possível guardar a configuração. Nenhum controlador foi alterado.';
+            }
+        }
     } else $message = 'Os mínimos têm de ser inferiores aos máximos e os limiares do modal não podem ser inferiores aos limites normais.';
 }
-$tanks = $conn->query("SELECT id,name FROM tanks WHERE has_controller=1 ORDER BY name")->fetch_all(MYSQLI_ASSOC);
+$bulkConfig = $tanks ? get_alarm_config($conn, (int)$tanks[0]['id']) : default_alarm_config();
 ?>
 <div class="container py-4">
  <div class="d-flex justify-content-between align-items-start mb-4"><div><h1 class="h3 mb-1">Configuração de alarmes</h1><p class="text-muted mb-0">Limites e comportamento do aviso global por controlador.</p></div><div class="d-flex gap-2"><a href="alarm_history.php" class="btn btn-outline-primary"><i class="fas fa-history me-1"></i>Histórico</a><a href="dashboard.php" class="btn btn-outline-secondary">Voltar ao dashboard</a></div></div>
- <?php if ($message): ?><div class="alert <?= str_contains($message,'guardada')?'alert-success':'alert-danger' ?>"><?= htmlspecialchars($message) ?></div><?php endif; ?>
+ <?php if ($message): ?><div class="alert <?= str_contains($message,'guardada') || str_contains($message,'aplicada')?'alert-success':'alert-danger' ?>"><?= htmlspecialchars($message) ?></div><?php endif; ?>
  <div class="row g-4">
  <?php if (!$tanks): ?><div class="col-12"><div class="alert alert-info">Não existem controladores configurados.</div></div><?php endif; ?>
+ <?php if ($tanks): ?>
+  <div class="col-12"><form method="post" class="card border-primary shadow-sm" onsubmit="return confirm('Esta ação vai substituir a configuração individual de todos os controladores. Continuar?');">
+   <input type="hidden" name="config_action" value="all">
+   <div class="card-header bg-primary text-white"><strong><i class="fas fa-clone me-2"></i>Aplicar configuração a todos os controladores</strong></div>
+   <div class="card-body"><p class="text-muted">Os campos começam com os valores do primeiro controlador da lista. Ao guardar, todos os controladores receberão esta configuração, substituindo os valores individuais existentes.</p><div class="row g-3">
+    <div class="col-6 col-lg-3"><label class="form-label">Cloro mínimo (mg/L)</label><input class="form-control" type="number" step="0.01" min="0" name="chlorine_min" value="<?= htmlspecialchars($bulkConfig['chlorine_min']) ?>" required></div>
+    <div class="col-6 col-lg-3"><label class="form-label">Cloro máximo (mg/L)</label><input class="form-control" type="number" step="0.01" min="0" name="chlorine_max" value="<?= htmlspecialchars($bulkConfig['chlorine_max']) ?>" required></div>
+    <div class="col-6 col-lg-3"><label class="form-label">pH mínimo</label><input class="form-control" type="number" step="0.01" min="0" max="14" name="ph_min" value="<?= htmlspecialchars($bulkConfig['ph_min']) ?>" required></div>
+    <div class="col-6 col-lg-3"><label class="form-label">pH máximo</label><input class="form-control" type="number" step="0.01" min="0" max="14" name="ph_max" value="<?= htmlspecialchars($bulkConfig['ph_max']) ?>" required></div>
+    <div class="col-12"><hr class="my-1"><div class="fw-semibold">Limiares críticos do modal</div></div>
+    <div class="col-6 col-lg-3"><label class="form-label">Cloro máximo para modal (mg/L)</label><input class="form-control" type="number" step="0.01" min="0" name="modal_chlorine_max" value="<?= htmlspecialchars($bulkConfig['modal_chlorine_max']) ?>" required></div>
+    <div class="col-6 col-lg-3"><label class="form-label">pH máximo para modal</label><input class="form-control" type="number" step="0.01" min="0" max="14" name="modal_ph_max" value="<?= htmlspecialchars($bulkConfig['modal_ph_max']) ?>" required></div>
+    <div class="col-12 col-lg-6"><label class="form-label">Mostrar modal após alarme ativo durante</label><div class="input-group"><input class="form-control" type="number" min="0" max="1440" name="modal_delay_minutes" value="<?= (int)$bulkConfig['modal_delay_minutes'] ?>"><span class="input-group-text">minutos</span></div></div>
+    <div class="col-12 d-flex gap-4"><div class="form-check"><input class="form-check-input" type="checkbox" name="modal_enabled" id="modal-all" <?= $bulkConfig['modal_enabled']?'checked':'' ?>><label class="form-check-label" for="modal-all">Modal global</label></div><div class="form-check"><input class="form-check-input" type="checkbox" name="sound_enabled" id="sound-all" <?= $bulkConfig['sound_enabled']?'checked':'' ?>><label class="form-check-label" for="sound-all">Aviso sonoro</label></div></div>
+   </div></div><div class="card-footer text-end"><button type="submit" class="btn btn-primary"><i class="fas fa-clone me-1"></i>Aplicar a todos</button></div>
+  </form></div>
+ <?php endif; ?>
  <?php foreach ($tanks as $tank): $cfg=get_alarm_config($conn,(int)$tank['id']); ?>
-  <div class="col-12 col-xl-6"><form method="post" class="card shadow-sm h-100"><input type="hidden" name="tank_id" value="<?= (int)$tank['id'] ?>">
+  <div class="col-12 col-xl-6"><form method="post" class="card shadow-sm h-100"><input type="hidden" name="config_action" value="single"><input type="hidden" name="tank_id" value="<?= (int)$tank['id'] ?>">
    <div class="card-header"><strong><i class="fas fa-swimming-pool me-2"></i><?= htmlspecialchars($tank['name']) ?></strong></div>
    <div class="card-body"><div class="row g-3">
     <div class="col-6"><label class="form-label">Cloro mínimo (mg/L)</label><input class="form-control" type="number" step="0.01" min="0" name="chlorine_min" value="<?= htmlspecialchars($cfg['chlorine_min']) ?>" required></div>
