@@ -1,5 +1,5 @@
 <?php
-require_once '../header.php';
+require_once '../core.php';
 require_once '../api/alarm_config_lib.php';
 
 $localeSet = setlocale(LC_TIME, 'pt_PT.utf8', 'pt_PT.UTF-8', 'Portuguese_Portugal.1252');
@@ -37,9 +37,12 @@ $filters = fetch_all_safe(
 
 $isViewer = isset($_SESSION['user_type']) && $_SESSION['user_type'] === 'viewer';
 if (!$isViewer && empty($_SESSION['relay_csrf_token'])) {
+    session_start();
     $_SESSION['relay_csrf_token'] = bin2hex(random_bytes(32));
+    session_write_close();
 }
 $relayCsrfToken = $isViewer ? '' : $_SESSION['relay_csrf_token'];
+require_once '../header.php';
 ?>
 
 <style>

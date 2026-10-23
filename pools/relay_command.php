@@ -105,7 +105,21 @@ $description = sprintf(
 if ($curlError !== '') {
     $description .= ' | curl_error=' . $curlError;
 }
-log_action($conn, $userId, $command === 'on' ? 'DOSING_BLOCK' : 'DOSING_BLOCK_RESET', $description);
+try {
+    $logged = log_action($conn, $userId, $command === 'on' ? 'DOSING_BLOCK' : 'DOSING_BLOCK_RESET', $description);
+} catch (mysqli_sql_exception $error) {
+    error_log('Failed to save dosing command log: ' . $error->getMessage());
+    $logged = false;
+}
+
+if (!$logged) {
+    relay_command_error(
+        500,
+        $success
+            ? 'O controlador aceitou o comando, mas não foi possível gravar o log. Não repita o comando apenas para registar o log. Contacte o administrador.'
+            : 'O comando ao controlador falhou e não foi possível gravar o log. Contacte o administrador.'
+    );
+}
 
 if (!$success) {
     http_response_code(502);
