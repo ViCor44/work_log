@@ -365,7 +365,6 @@ require_once '../header.php';
                                             <i class="fas fa-undo me-1"></i>Reset
                                         </button>
                                     </div>
-                                    <small class="relay-command-status text-secondary" aria-live="polite" hidden></small>
                                 </div>
                             <?php endif; ?>
                         </div>
@@ -856,13 +855,8 @@ document.addEventListener('DOMContentLoaded', function() {
             }
 
             const controls = button.closest('.relay-controls');
-            const status = controls.querySelector('.relay-command-status');
             const buttons = controls.querySelectorAll('.relay-command-button');
             buttons.forEach(control => { control.disabled = true; });
-            status.textContent = 'A enviar comando...';
-            status.hidden = false;
-            status.classList.remove('text-danger', 'text-success');
-            status.classList.add('text-secondary');
 
             try {
                 const response = await fetch('relay_command.php', {
@@ -880,13 +874,12 @@ document.addEventListener('DOMContentLoaded', function() {
                     throw new Error(result.error || `Erro HTTP ${response.status}`);
                 }
 
-                status.textContent = result.message;
-                status.classList.remove('text-secondary', 'text-danger');
-                status.classList.add('text-success');
+                document.getElementById('relayErrorModalLabel').textContent = 'Comando de dosagem aceite';
+                document.getElementById('relayErrorMessage').textContent = `${poolName}: ${result.message}`;
+                bootstrap.Modal.getOrCreateInstance(document.getElementById('relayErrorModal')).show();
             } catch (error) {
                 console.error('Falha ao comandar o relé:', error);
-                status.textContent = '';
-                status.hidden = true;
+                document.getElementById('relayErrorModalLabel').textContent = 'Erro no comando de dosagem';
                 document.getElementById('relayErrorMessage').textContent = `${poolName}: ${error.message}`;
                 bootstrap.Modal.getOrCreateInstance(document.getElementById('relayErrorModal')).show();
             } finally {
