@@ -94,6 +94,18 @@ function reset_dosing_block(mysqli $conn, int $tankId): void
     $stmt->close();
 }
 
+function latch_manual_dosing_block(mysqli $conn, int $tankId, int $userId): void
+{
+    $reason = json_encode(['manual_user_id' => $userId]);
+    $stmt = $conn->prepare('INSERT INTO controller_dosing_block (tank_id,pending,blocked,reason)
+        VALUES (?,1,1,?) ON DUPLICATE KEY UPDATE pending=1,blocked=1,reason=VALUES(reason)');
+    $stmt->bind_param('is', $tankId, $reason);
+    if (!$stmt->execute()) {
+        throw new RuntimeException('Não foi possível guardar o bloqueio manual.');
+    }
+    $stmt->close();
+}
+
 function process_dosing_block(mysqli $conn, array $pool, array $data): bool
 {
     $tankId = (int)$pool['id'];
@@ -103,7 +115,7 @@ function process_dosing_block(mysqli $conn, array $pool, array $data): bool
         $config = dosing_block_config($rows, $tankId);
         $state = $rows[$tankId] ?? [];
         if (!empty($state['blocked'])) {
-            if (dosing_valid_reading($data['digitalIn'] ?? null, 1.0) === 1.0) {
+            if (empty($state['pending']) && dosing_valid_reading($data['relayBlocked'] ?? null, 1.0) === 1.0) {
                 return true;
             }
             // Reassert a latched block if the Arduino restarted or feedback was lost.

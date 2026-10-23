@@ -80,6 +80,9 @@ try {
     relay_command_error(503, 'Não foi possível preparar o comando. Tente novamente.');
 }
 try {
+    if ($command === 'on') {
+        latch_manual_dosing_block($conn, $tankId, (int)$_SESSION['user_id']);
+    }
     $curl = curl_init($endpoint);
     if ($curl === false) {
         throw new RuntimeException('Não foi possível iniciar o pedido ao controlador.');

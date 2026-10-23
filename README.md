@@ -78,6 +78,17 @@ desativar a configuracao nao remove bloqueios existentes nem tentativas pendente
 O setpoint dinamico nao e aplicado enquanto existir bloqueio automatico,
 bloqueio indicado por `digitalIn=1`, ou uma falha na avaliacao da protecao.
 
+Os bloqueios manuais tambem ficam retidos na base de dados antes do envio e sao
+reaplicados pelo worker se o controlador perder o estado. Apenas um Reset
+confirmado limpa essa retencao. O dashboard consulta o estado retido mesmo quando
+os dados do controlador sao servidos de cache.
+Os sketches `PFBrinca_modbus_relay` e `PFLaguna_modbus_relay` guardam o estado
+do rele no endereco 0 da EEPROM e restauram-no no arranque. E necessario carregar
+o firmware atualizado nos Arduinos. O XML inclui `relayBlocked` sem alterar
+`digitalIn`. Durante uma falha de alimentacao ou os instantes anteriores ao
+`setup`, o software nao consegue garantir a manutencao fisica do rele; essa
+garantia exige um interbloqueio eletrico adequado.
+
 1. Faça login com o administrador padrão:
   - Usuário: admin
   - Senha: admin

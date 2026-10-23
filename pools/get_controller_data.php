@@ -1,5 +1,6 @@
 <?php
 require_once '../core.php';
+require_once '../api/dosing_block_lib.php';
 
 header('Content-Type: application/json; charset=utf-8');
 
@@ -14,6 +15,36 @@ if (!isset($_GET['ip'])) {
 }
 
 $ip = $_GET['ip'];
+
+function controller_response_with_dosing_state(mysqli $conn, string $ip, string $json): string
+{
+    $data = json_decode($json, true);
+    if (!is_array($data)) {
+        throw new RuntimeException('Resposta do controlador inválida.');
+    }
+    ensure_dosing_block_table($conn);
+    $stmt = $conn->prepare('SELECT COALESCE(MAX(d.blocked OR d.pending),0) AS latched
+        FROM tanks t LEFT JOIN controller_dosing_block d ON d.tank_id=t.id WHERE t.controller_ip=?');
+    $stmt->bind_param('s', $ip);
+    if (!$stmt->execute()) {
+        throw new RuntimeException('Não foi possível consultar o bloqueio de dosagem.');
+    }
+    $row = $stmt->get_result()->fetch_assoc();
+    $stmt->close();
+    $data['dosingBlockLatched'] = (int)$row['latched'];
+    return json_encode($data);
+}
+
+function send_controller_response(mysqli $conn, string $ip, string $json): void
+{
+    try {
+        echo controller_response_with_dosing_state($conn, $ip, $json);
+    } catch (mysqli_sql_exception | RuntimeException $error) {
+        error_log('Controller dosing status error: ' . $error->getMessage());
+        http_response_code(500);
+        echo json_encode(['error' => 'Não foi possível consultar o estado de bloqueio de dosagem.']);
+    }
+}
 
 // ------------------------------------------------------------------
 // Camada de cache + lock para evitar colisões com o ciclo do dispositivo
@@ -32,7 +63,7 @@ $lock_max_age     = 10; // segundos — age máxima de um lock antes de ser cons
 
 // 1. Cache fresco → responde imediatamente, sem tocar no controlador
 if (file_exists($cache_file) && (time() - filemtime($cache_file)) < $cache_ttl) {
-    readfile($cache_file);
+    send_controller_response($conn, $ip, file_get_contents($cache_file));
     exit;
 }
 
@@ -48,7 +79,7 @@ if (!flock($lock_fp, LOCK_EX | LOCK_NB)) {
     fclose($lock_fp);
     // Serve cache antigo apenas se for suficientemente recente (evita dados obsoletos em falha real)
     if (file_exists($cache_file) && (time() - filemtime($cache_file)) < $cache_fallback) {
-        readfile($cache_file);
+        send_controller_response($conn, $ip, file_get_contents($cache_file));
     } else {
         echo json_encode(['error' => 'Timeout ou erro ao contactar controlador: '.$ip]);
     }
@@ -59,7 +90,7 @@ if (!flock($lock_fp, LOCK_EX | LOCK_NB)) {
 if (file_exists($cache_file) && (time() - filemtime($cache_file)) < $cache_ttl) {
     flock($lock_fp, LOCK_UN);
     fclose($lock_fp);
-    readfile($cache_file);
+    send_controller_response($conn, $ip, file_get_contents($cache_file));
     exit;
 }
 // ------------------------------------------------------------------
@@ -167,4 +198,4 @@ file_put_contents($cache_file, $json_output);
 flock($lock_fp, LOCK_UN);
 fclose($lock_fp);
 
-echo $json_output;
+send_controller_response($conn, $ip, $json_output);

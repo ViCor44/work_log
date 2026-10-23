@@ -2,6 +2,7 @@
 #include <Ethernet.h>
 #include <SPI.h>
 #include <avr/pgmspace.h>
+#include <EEPROM.h>
 
 #define MAX485_RE_NEG 3
 #define MAX485_DE 2
@@ -9,6 +10,15 @@
 #define RELAY_PIN 23
 #define RELAY_ON HIGH
 #define RELAY_OFF LOW
+const int RELAY_STATE_ADDRESS = 0;
+const byte RELAY_BLOCKED_MARKER = 0xA5;
+bool relayBlocked = false;
+
+void setRelayBlocked(bool blocked) {
+  EEPROM.update(RELAY_STATE_ADDRESS, blocked ? RELAY_BLOCKED_MARKER : 0);
+  relayBlocked = blocked;
+  digitalWrite(RELAY_PIN, blocked ? RELAY_ON : RELAY_OFF);
+}
 
 unsigned long lastREAD = 0;
 #define READ 10000
@@ -79,6 +89,7 @@ void RelayResponse(EthernetClient client, const char* message) {
 void XML_response(EthernetClient client)
 {
   String xml_parameters = "<?xml version = \"1.0\" ?><inputs><poolName>Laguna</poolName><freeChlorine>" + String(freeChlorine, 2) + "</freeChlorine><pH>" + String(pH, 2) + "</pH><temperature>" + String(temperature, 1) + "</temperature><digitalIn>" + String(digitalIn, 2) + "</digitalIn><alarme>" + String(alarm) + "</alarme><C1Value>" + String(C1Value, 2) + "</C1Value><C1Process>" + String(C1Process, 2) + "</C1Process><C1Disturbance>" + String(C1Disturbance, 2) + "</C1Disturbance><C1SetPoint>" + String(C1SetPoint, 2) + "</C1SetPoint><C2Value>" + String(C2Value, 2) + "</C2Value><C2Process>" + String(C2Process, 2) + "</C2Process><C2Disturbance>" + String(C2Disturbance, 2) + "</C2Disturbance><C2SetPoint>" + String(C2SetPoint, 2) + "</C2SetPoint><analog4>" + String(analog_val4) + "</analog4><analog5>" + String(analog_val5) + "</analog5><analog6>" + String(analog_val6) + "</analog6><analog7>" + String(analog_val7) + "</analog7></inputs>";
+  xml_parameters.replace("</inputs>", String("<relayBlocked>") + (relayBlocked ? "1" : "0") + "</relayBlocked></inputs>");
   client.print(xml_parameters);
 }
 
@@ -153,11 +164,11 @@ void Connection() {
 
         if (!isPost) {
           if (strstr(clientline, "GET /relay/on ")) {
-            digitalWrite(RELAY_PIN, RELAY_ON);
+            setRelayBlocked(true);
             RelayResponse(client, "Rele ligado");
             break;
           } else if (strstr(clientline, "GET /relay/off ")) {
-            digitalWrite(RELAY_PIN, RELAY_OFF);
+            setRelayBlocked(false);
             RelayResponse(client, "Rele desligado");
             break;
           } else if (strstr(clientline, "ajax_inputs")) {
@@ -289,7 +300,8 @@ void setup() {
   digitalWrite(MAX485_RE_NEG, 0);
   digitalWrite(MAX485_DE, 0);
 
-  digitalWrite(RELAY_PIN, RELAY_OFF);
+  relayBlocked = EEPROM.read(RELAY_STATE_ADDRESS) == RELAY_BLOCKED_MARKER;
+  digitalWrite(RELAY_PIN, relayBlocked ? RELAY_ON : RELAY_OFF);
   pinMode(RELAY_PIN, OUTPUT);
 
   Serial.begin(38400, SERIAL_8O1);

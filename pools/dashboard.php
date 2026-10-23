@@ -1361,7 +1361,8 @@ if (alarmContentEl && alarmContentEl.style.display !== 'none') alarmContentEl.st
     getValueClass('ph', phValue, poolId) === 'text-danger';
 
 const alarmeControlador = (data.alarme == 0); // alarme interno
-const dosagemBloqueada = Number(data.digitalIn) === 1;
+const dosagemBloqueada = Number(data.digitalIn) === 1
+    || Number(data.relayBlocked) === 1 || Number(data.dosingBlockLatched) === 1;
 
 let nextState, statusText, cardClasses, badgeClass;
 if (dosagemBloqueada) {

@@ -730,6 +730,7 @@ foreach ($pools_with_controllers as $pool) {
                 $dosingBlocked = true;
                 try {
                     $dosingBlocked = process_dosing_block($conn, $pool, $data)
+                        || (isset($data['relayBlocked']) && is_numeric($data['relayBlocked']) && (float)$data['relayBlocked'] === 1.0)
                         || (isset($data['digitalIn']) && is_numeric($data['digitalIn']) && (float)$data['digitalIn'] === 1.0);
                 } catch (mysqli_sql_exception | RuntimeException $dosingError) {
                     file_log("DOSING_BLOCK_ERR tanque={$pool['name']} id={$tank_id} erro=" . $dosingError->getMessage());
