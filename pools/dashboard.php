@@ -355,7 +355,7 @@ $relayCsrfToken = $isViewer ? '' : $_SESSION['relay_csrf_token'];
                             <?php if (!$isViewer): ?>
                                 <div class="relay-controls p-2">
                                     <div class="d-flex flex-wrap gap-2">
-                                        <button type="button" class="btn btn-sm btn-success relay-command-button" data-tank-id="<?= (int)$pool['id'] ?>" data-command="on" data-csrf-token="<?= htmlspecialchars($relayCsrfToken, ENT_QUOTES, 'UTF-8') ?>" data-pool-name="<?= htmlspecialchars($pool['name'], ENT_QUOTES, 'UTF-8') ?>">
+                                        <button type="button" class="btn btn-sm btn-danger relay-command-button" data-tank-id="<?= (int)$pool['id'] ?>" data-command="on" data-csrf-token="<?= htmlspecialchars($relayCsrfToken, ENT_QUOTES, 'UTF-8') ?>" data-pool-name="<?= htmlspecialchars($pool['name'], ENT_QUOTES, 'UTF-8') ?>">
                                             <i class="fas fa-power-off me-1"></i>Bloquear Dosagem
                                         </button>
                                         <button type="button" class="btn btn-sm btn-outline-warning relay-command-button" data-tank-id="<?= (int)$pool['id'] ?>" data-command="off" data-csrf-token="<?= htmlspecialchars($relayCsrfToken, ENT_QUOTES, 'UTF-8') ?>" data-pool-name="<?= htmlspecialchars($pool['name'], ENT_QUOTES, 'UTF-8') ?>">
