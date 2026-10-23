@@ -1,12 +1,81 @@
 <?php
-require_once '../header.php';
+require_once '../core.php';
 require_once '../api/alarm_config_lib.php';
 require_once '../api/alarm_log_lib.php';
+require_once '../api/dosing_block_lib.php';
+if (!isset($_SESSION['user_id'])) {
+    header('Location: ../login.php');
+    exit;
+}
+if (empty($_SESSION['dosing_config_csrf'])) {
+    session_start();
+    $_SESSION['dosing_config_csrf'] = bin2hex(random_bytes(32));
+    session_write_close();
+}
+require_once '../header.php';
 ensure_alarm_config_table($conn);
+ensure_dosing_block_table($conn);
 
 $tanks = $conn->query("SELECT id,name FROM tanks WHERE has_controller=1 ORDER BY name")->fetch_all(MYSQLI_ASSOC);
 $message = '';
-if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['config_action'] ?? '') === 'dosing') {
+    $target = filter_var($_POST['tank_id'] ?? null, FILTER_VALIDATE_INT);
+    $mode = $_POST['mode'] ?? '';
+    $chlorineDelta = str_replace(',', '.', trim($_POST['chlorine_delta'] ?? ''));
+    $phDelta = str_replace(',', '.', trim($_POST['ph_delta'] ?? ''));
+    $validThresholds = is_numeric($chlorineDelta) && is_numeric($phDelta)
+        && is_finite((float)$chlorineDelta) && is_finite((float)$phDelta)
+        && (float)$chlorineDelta > 0 && (float)$phDelta > 0 && (float)$phDelta <= 14;
+    if (!is_string($_POST['csrf_token'] ?? null)
+        || !hash_equals($_SESSION['dosing_config_csrf'], $_POST['csrf_token'])) {
+        $message = 'Token inválido. Atualize a página.';
+    } elseif ($target === false || $target === null || ($target !== 0 && !in_array($target, array_map('intval', array_column($tanks, 'id')), true))
+        || !in_array($mode, $target === 0 ? ['off', 'on'] : ['inherit', 'off', 'on'], true)
+        || ($mode === 'on' && !$validThresholds)) {
+        $message = 'Configuração inválida. Para ativar, indique variações positivas de cloro e pH (pH até 14).';
+    } else {
+        $locked = [];
+        try {
+            $ids = $target === 0 ? array_map('intval', array_column($tanks, 'id')) : [$target];
+            sort($ids);
+            foreach ($ids as $id) {
+                dosing_lock($conn, $id);
+                $locked[] = $id;
+            }
+            $conn->begin_transaction();
+            $cDelta = $validThresholds ? (float)$chlorineDelta : null;
+            $pDelta = $validThresholds ? (float)$phDelta : null;
+            $stmt = $conn->prepare('INSERT INTO controller_dosing_block (tank_id,mode,chlorine_delta,ph_delta)
+                VALUES (?,?,?,?) ON DUPLICATE KEY UPDATE mode=VALUES(mode),
+                chlorine_delta=VALUES(chlorine_delta), ph_delta=VALUES(ph_delta),
+                previous_chlorine=NULL, previous_ph=NULL');
+            $stmt->bind_param('isdd', $target, $mode, $cDelta, $pDelta);
+            if (!$stmt->execute()) {
+                throw new RuntimeException('Falha ao guardar limites.');
+            }
+            $stmt->close();
+            if ($target === 0 && !$conn->query("UPDATE controller_dosing_block
+                SET previous_chlorine=NULL, previous_ph=NULL WHERE tank_id<>0 AND mode='inherit'")) {
+                throw new RuntimeException('Falha ao atualizar as referências dos controladores.');
+            }
+            $conn->commit();
+            if (!log_action($conn, (int)$_SESSION['user_id'], 'DOSING_BLOCK_CONFIG',
+                "tank_id=$target | mode=$mode | chlorine_delta=$chlorineDelta | ph_delta=$phDelta")) {
+                throw new RuntimeException('Configuração gravada, mas falhou o registo de auditoria.');
+            }
+            $message = 'Configuração de bloqueio automático guardada.';
+        } catch (mysqli_sql_exception | RuntimeException $error) {
+            $conn->rollback();
+            error_log('Dosing configuration error: ' . $error->getMessage());
+            $message = 'Erro na configuração de bloqueio: ' . $error->getMessage();
+        } finally {
+            foreach (array_reverse($locked) as $id) {
+                dosing_unlock($conn, $id);
+            }
+        }
+    }
+}
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['config_action'] ?? '') !== 'dosing') {
     $applyToAll = ($_POST['config_action'] ?? '') === 'all';
     $targetTankIds = $applyToAll
         ? array_map('intval', array_column($tanks, 'id'))
@@ -55,10 +124,38 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     } else $message = 'Os mínimos têm de ser inferiores aos máximos e os limiares do modal não podem ser inferiores aos limites normais.';
 }
 $bulkConfig = $tanks ? get_alarm_config($conn, (int)$tanks[0]['id']) : default_alarm_config();
+$dosingRows = dosing_block_rows($conn);
 ?>
 <div class="container py-4">
  <div class="d-flex justify-content-between align-items-start mb-4"><div><h1 class="h3 mb-1">Configuração de alarmes</h1><p class="text-muted mb-0">Limites e comportamento do aviso global por controlador.</p></div><div class="d-flex gap-2"><a href="alarm_history.php" class="btn btn-outline-primary"><i class="fas fa-history me-1"></i>Histórico</a><a href="dashboard.php" class="btn btn-outline-secondary">Voltar ao dashboard</a></div></div>
  <?php if ($message): ?><div class="alert <?= str_contains($message,'guardada') || str_contains($message,'aplicada')?'alert-success':'alert-danger' ?>"><?= htmlspecialchars($message) ?></div><?php endif; ?>
+ <section class="card shadow-sm mb-4">
+  <div class="card-header"><strong>Bloqueio automático por discrepância entre leituras</strong></div>
+  <div class="card-body">
+   <p>Compara leituras válidas consecutivas recolhidas pelo worker. Se a variação absoluta de cloro <strong>ou</strong> pH exceder o limite, envia o bloqueio. O bloqueio mantém-se até Reset manual. Requer firmware com <code>/relay/on</code> e <code>/relay/off</code>.</p>
+   <p class="text-muted small">Desligado por defeito. Defina ambos os limites antes de ativar. A primeira leitura após ativação ou alteração dos limites serve de referência; leituras inválidas interrompem a comparação. Desativar esta opção não desbloqueia uma dosagem já bloqueada nem cancela uma tentativa pendente.</p>
+   <?php foreach (array_merge([['id'=>0,'name'=>'Configuração global']], $tanks) as $dosingTank):
+       $dosingId = (int)$dosingTank['id'];
+       $dosingCfg = $dosingRows[$dosingId] ?? ['mode'=>$dosingId === 0 ? 'off' : 'inherit','chlorine_delta'=>null,'ph_delta'=>null]; ?>
+    <form method="post" class="border rounded p-3 mb-3">
+     <input type="hidden" name="config_action" value="dosing">
+     <input type="hidden" name="tank_id" value="<?= $dosingId ?>">
+     <input type="hidden" name="csrf_token" value="<?= htmlspecialchars($_SESSION['dosing_config_csrf'], ENT_QUOTES, 'UTF-8') ?>">
+     <h2 class="h6"><?= htmlspecialchars($dosingTank['name']) ?></h2>
+     <div class="row g-2 align-items-end">
+      <div class="col-md-4"><label class="form-label">Modo</label><select name="mode" class="form-select">
+       <?php foreach (($dosingId === 0 ? ['off'=>'Desligado','on'=>'Ativado'] : ['inherit'=>'Usar configuração global','off'=>'Desligado','on'=>'Limites próprios']) as $value=>$label): ?>
+        <option value="<?= $value ?>" <?= $dosingCfg['mode'] === $value ? 'selected' : '' ?>><?= $label ?></option>
+       <?php endforeach; ?>
+      </select></div>
+      <div class="col-md-3"><label class="form-label">Variação máxima de cloro (mg/L)</label><input name="chlorine_delta" class="form-control" type="number" step="0.01" min="0.01" value="<?= htmlspecialchars((string)$dosingCfg['chlorine_delta']) ?>"></div>
+      <div class="col-md-3"><label class="form-label">Variação máxima de pH</label><input name="ph_delta" class="form-control" type="number" step="0.01" min="0.01" max="14" value="<?= htmlspecialchars((string)$dosingCfg['ph_delta']) ?>"></div>
+      <div class="col-md-2"><button class="btn btn-primary" type="submit">Guardar</button></div>
+     </div>
+    </form>
+   <?php endforeach; ?>
+  </div>
+ </section>
  <div class="row g-4">
  <?php if (!$tanks): ?><div class="col-12"><div class="alert alert-info">Não existem controladores configurados.</div></div><?php endif; ?>
  <?php if ($tanks): ?>

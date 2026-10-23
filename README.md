@@ -57,6 +57,27 @@ WorkLog CMMS é um sistema de Gestãoo de Manutenção Computadorizado (CMMS) de
 
 ## Uso
 
+### Bloqueio automatico de dosagem
+
+Na pagina **Configuracao de alarmes**, os limites de variacao absoluta de cloro
+(mg/L) e pH podem ser definidos globalmente ou por controlador. Cada controlador
+pode herdar a configuracao global, usar limites proprios ou desativar a deteccao.
+A funcionalidade esta desligada por defeito e exige ambos os limites positivos.
+
+O worker `scripts/fetch_controller_data.php` compara as leituras validas consecutivas
+que recolhe (nao todas as leituras internas do Arduino). Uma variacao **superior**
+ao limite de qualquer parametro envia `/relay/on`. Uma leitura invalida interrompe
+a comparacao desse parametro; a primeira leitura valida estabelece a referencia.
+Falhas de envio ficam pendentes para nova tentativa no ciclo seguinte, com auditoria.
+E necessario executar regularmente este worker e instalar firmware compativel;
+esta protecao depende da rede e nao substitui os interbloqueios locais do equipamento.
+
+Nao ha desbloqueio automatico: o **Reset** manual envia `/relay/off` e limpa a
+referencia de comparacao apenas depois da confirmacao do controlador. Alterar ou
+desativar a configuracao nao remove bloqueios existentes nem tentativas pendentes.
+O setpoint dinamico nao e aplicado enquanto existir bloqueio automatico,
+bloqueio indicado por `digitalIn=1`, ou uma falha na avaliacao da protecao.
+
 1. Faça login com o administrador padrão:
   - Usuário: admin
   - Senha: admin

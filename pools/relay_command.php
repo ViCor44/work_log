@@ -1,6 +1,7 @@
 <?php
 header('Content-Type: application/json; charset=utf-8');
 require_once '../core.php';
+require_once '../api/dosing_block_lib.php';
 
 function relay_command_error($status, $message) {
     http_response_code($status);
@@ -71,24 +72,42 @@ if (filter_var($controllerIp, FILTER_VALIDATE_IP, FILTER_FLAG_IPV4) === false) {
 }
 
 $endpoint = 'http://' . $controllerIp . '/relay/' . $command;
-$curl = curl_init($endpoint);
-if ($curl === false) {
-    relay_command_error(500, 'Não foi possível iniciar o pedido ao controlador.');
+try {
+    ensure_dosing_block_table($conn);
+    dosing_lock($conn, $tankId);
+} catch (mysqli_sql_exception | RuntimeException $error) {
+    error_log('Dosing command lock error: ' . $error->getMessage());
+    relay_command_error(503, 'Não foi possível preparar o comando. Tente novamente.');
 }
+try {
+    $curl = curl_init($endpoint);
+    if ($curl === false) {
+        throw new RuntimeException('Não foi possível iniciar o pedido ao controlador.');
+    }
 
-curl_setopt_array($curl, [
-    CURLOPT_RETURNTRANSFER => true,
-    CURLOPT_CONNECTTIMEOUT => 3,
-    CURLOPT_TIMEOUT => 6,
-    CURLOPT_FOLLOWLOCATION => false,
-]);
+    curl_setopt_array($curl, [
+        CURLOPT_RETURNTRANSFER => true,
+        CURLOPT_CONNECTTIMEOUT => 3,
+        CURLOPT_TIMEOUT => 6,
+        CURLOPT_FOLLOWLOCATION => false,
+    ]);
 
-$remoteResponse = curl_exec($curl);
-$httpCode = (int)curl_getinfo($curl, CURLINFO_HTTP_CODE);
-$curlError = curl_error($curl);
-curl_close($curl);
+    $remoteResponse = curl_exec($curl);
+    $httpCode = (int)curl_getinfo($curl, CURLINFO_HTTP_CODE);
+    $curlError = curl_error($curl);
+    curl_close($curl);
 
-$success = $remoteResponse !== false && $httpCode >= 200 && $httpCode < 300;
+    $acknowledgement = $command === 'on' ? 'Rele ligado' : 'Rele desligado';
+    $success = $remoteResponse !== false && $httpCode === 200 && trim($remoteResponse) === $acknowledgement;
+    if ($success && $command === 'off') {
+        reset_dosing_block($conn, $tankId);
+    }
+} catch (mysqli_sql_exception | RuntimeException $error) {
+    error_log('Dosing command state error: ' . $error->getMessage());
+    dosing_unlock($conn, $tankId);
+    relay_command_error(500, $error->getMessage());
+}
+dosing_unlock($conn, $tankId);
 $userId = (int)$_SESSION['user_id'];
 $operation = $command === 'on' ? 'Bloqueio de dosagem' : 'Reset do bloqueio de dosagem';
 $description = sprintf(

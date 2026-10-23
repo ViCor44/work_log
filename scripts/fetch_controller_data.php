@@ -2,6 +2,7 @@
 // Este script é desenhado para ser executado pelo servidor, não por um utilizador.
 // Incluímos os ficheiros essenciais.
 require_once dirname(__DIR__) . '/core.php';
+require_once dirname(__DIR__) . '/api/dosing_block_lib.php';
 
 // Impede execuções concorrentes deste worker (evita disparo múltiplo do mesmo
 // SMS quando o cron reinicia o script antes de o anterior terminar).
@@ -660,6 +661,7 @@ $tanks_stmt = $conn->query("SELECT id, name, controller_ip FROM tanks WHERE has_
 $pools_with_controllers = $tanks_stmt->fetch_all(MYSQLI_ASSOC);
 
 $settingsReady = ensure_settings_table($conn);
+ensure_dosing_block_table($conn);
 if (!$settingsReady) {
     echo "Aviso: tabela settings indisponivel, setpoint dinamico sera ignorado.\n";
     file_log('AVISO tabela settings indisponivel, setpoint dinamico sera ignorado');
@@ -725,6 +727,15 @@ foreach ($pools_with_controllers as $pool) {
                 // não inicializado para este tanque — COALESCE na query de análise resolve.
                 $cloro_base_sp = float_or_null(get_setting_value($conn, 'dynamic_setpoint_tank_' . $tank_id . '_ctrl_1_base_sp', null));
 
+                $dosingBlocked = true;
+                try {
+                    $dosingBlocked = process_dosing_block($conn, $pool, $data)
+                        || (isset($data['digitalIn']) && is_numeric($data['digitalIn']) && (float)$data['digitalIn'] === 1.0);
+                } catch (mysqli_sql_exception | RuntimeException $dosingError) {
+                    file_log("DOSING_BLOCK_ERR tanque={$pool['name']} id={$tank_id} erro=" . $dosingError->getMessage());
+                    error_log('Dosing protection error: ' . $dosingError->getMessage());
+                }
+
                 // 5. Insere os dados na tabela de histórico.
                 $stmt_insert->bind_param("iddddddssss", $tank_id, $ph, $ph_sp, $cloro, $cloro_sp, $cloro_base_sp, $temp, $cl_estado, $ph_estado, $cl_disturbio, $ph_disturbio);
                 $stmt_insert->execute();
@@ -735,7 +746,7 @@ foreach ($pools_with_controllers as $pool) {
                 $chlorineValue = float_or_null($cloro);
                 $chlorineSetpoint = float_or_null($cloro_sp);
                 $chlorinePumpPercent = float_or_null($cl_estado);
-                if ($settingsReady && $chlorineValue !== null && $chlorineSetpoint !== null) {
+                if (!$dosingBlocked && $settingsReady && $chlorineValue !== null && $chlorineSetpoint !== null) {
                     run_dynamic_setpoint_for_chlorine($conn, $pool, $chlorineValue, $chlorineSetpoint, $chlorinePumpPercent);
                 }
 
