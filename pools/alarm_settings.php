@@ -129,37 +129,33 @@ $dosingRows = dosing_block_rows($conn);
 <div class="container py-4">
  <div class="d-flex justify-content-between align-items-start mb-4"><div><h1 class="h3 mb-1">Configuração de alarmes</h1><p class="text-muted mb-0">Limites e comportamento do aviso global por controlador.</p></div><div class="d-flex gap-2"><a href="alarm_history.php" class="btn btn-outline-primary"><i class="fas fa-history me-1"></i>Histórico</a><a href="dashboard.php" class="btn btn-outline-secondary">Voltar ao dashboard</a></div></div>
  <?php if ($message): ?><div class="alert <?= str_contains($message,'guardada') || str_contains($message,'aplicada')?'alert-success':'alert-danger' ?>"><?= htmlspecialchars($message) ?></div><?php endif; ?>
- <section class="card shadow-sm mb-4">
-  <div class="card-header"><strong>Bloqueio automático por discrepância entre leituras</strong></div>
-  <div class="card-body">
-   <p>Compara leituras válidas consecutivas recolhidas pelo worker. Se a variação absoluta de cloro <strong>ou</strong> pH exceder o limite, envia o bloqueio. O bloqueio mantém-se até Reset manual. Requer firmware com <code>/relay/on</code> e <code>/relay/off</code>.</p>
-   <p class="text-muted small">Desligado por defeito. Defina ambos os limites antes de ativar. A primeira leitura após ativação ou alteração dos limites serve de referência; leituras inválidas interrompem a comparação. Desativar esta opção não desbloqueia uma dosagem já bloqueada nem cancela uma tentativa pendente.</p>
-   <?php foreach (array_merge([['id'=>0,'name'=>'Configuração global']], $tanks) as $dosingTank):
-       $dosingId = (int)$dosingTank['id'];
+ <?php $renderDosingForm = function (int $dosingId) use ($dosingRows) { ?>
+  <div class="card-body border-top">
+   <h2 class="h6">Bloqueio automático por discrepância entre leituras</h2>
+   <p class="text-muted small">Se a variação absoluta de cloro ou pH exceder o limite, bloqueia a dosagem até Reset manual. Desligado por defeito; requer firmware compatível. A primeira leitura válida serve de referência. Desativar não remove bloqueios nem tentativas pendentes.</p>
+   <?php
        $dosingCfg = $dosingRows[$dosingId] ?? ['mode'=>$dosingId === 0 ? 'off' : 'inherit','chlorine_delta'=>null,'ph_delta'=>null]; ?>
-    <form method="post" class="border rounded p-3 mb-3">
+    <form method="post">
      <input type="hidden" name="config_action" value="dosing">
      <input type="hidden" name="tank_id" value="<?= $dosingId ?>">
      <input type="hidden" name="csrf_token" value="<?= htmlspecialchars($_SESSION['dosing_config_csrf'], ENT_QUOTES, 'UTF-8') ?>">
-     <h2 class="h6"><?= htmlspecialchars($dosingTank['name']) ?></h2>
      <div class="row g-2 align-items-end">
-      <div class="col-md-4"><label class="form-label">Modo</label><select name="mode" class="form-select">
+      <div class="col-12"><label class="form-label">Modo</label><select name="mode" class="form-select">
        <?php foreach (($dosingId === 0 ? ['off'=>'Desligado','on'=>'Ativado'] : ['inherit'=>'Usar configuração global','off'=>'Desligado','on'=>'Limites próprios']) as $value=>$label): ?>
         <option value="<?= $value ?>" <?= $dosingCfg['mode'] === $value ? 'selected' : '' ?>><?= $label ?></option>
        <?php endforeach; ?>
       </select></div>
-      <div class="col-md-3"><label class="form-label">Variação máxima de cloro (mg/L)</label><input name="chlorine_delta" class="form-control" type="number" step="0.01" min="0.01" value="<?= htmlspecialchars((string)$dosingCfg['chlorine_delta']) ?>"></div>
-      <div class="col-md-3"><label class="form-label">Variação máxima de pH</label><input name="ph_delta" class="form-control" type="number" step="0.01" min="0.01" max="14" value="<?= htmlspecialchars((string)$dosingCfg['ph_delta']) ?>"></div>
-      <div class="col-md-2"><button class="btn btn-primary" type="submit">Guardar</button></div>
+      <div class="col-6"><label class="form-label">Variação máxima de cloro (mg/L)</label><input name="chlorine_delta" class="form-control" type="number" step="0.01" min="0.01" value="<?= htmlspecialchars((string)$dosingCfg['chlorine_delta']) ?>"></div>
+      <div class="col-6"><label class="form-label">Variação máxima de pH</label><input name="ph_delta" class="form-control" type="number" step="0.01" min="0.01" max="14" value="<?= htmlspecialchars((string)$dosingCfg['ph_delta']) ?>"></div>
+      <div class="col-12 text-end"><button class="btn btn-primary" type="submit">Guardar bloqueio automático</button></div>
      </div>
     </form>
-   <?php endforeach; ?>
   </div>
- </section>
+ <?php }; ?>
  <div class="row g-4">
  <?php if (!$tanks): ?><div class="col-12"><div class="alert alert-info">Não existem controladores configurados.</div></div><?php endif; ?>
  <?php if ($tanks): ?>
-  <div class="col-12"><form method="post" class="card border-primary shadow-sm" onsubmit="return confirm('Esta ação vai substituir a configuração individual de todos os controladores. Continuar?');">
+  <div class="col-12"><div class="card border-primary shadow-sm"><form method="post" onsubmit="return confirm('Esta ação vai substituir a configuração individual dos alarmes de todos os controladores. Continuar?');">
    <input type="hidden" name="config_action" value="all">
    <div class="card-header bg-primary text-white"><strong><i class="fas fa-clone me-2"></i>Aplicar configuração a todos os controladores</strong></div>
    <div class="card-body"><p class="text-muted">Os campos começam com os valores do primeiro controlador da lista. Ao guardar, todos os controladores receberão esta configuração, substituindo os valores individuais existentes.</p><div class="row g-3">
@@ -173,10 +169,12 @@ $dosingRows = dosing_block_rows($conn);
     <div class="col-12 col-lg-6"><label class="form-label">Mostrar modal após alarme ativo durante</label><div class="input-group"><input class="form-control" type="number" min="0" max="1440" name="modal_delay_minutes" value="<?= (int)$bulkConfig['modal_delay_minutes'] ?>"><span class="input-group-text">minutos</span></div></div>
     <div class="col-12 d-flex gap-4"><div class="form-check"><input class="form-check-input" type="checkbox" name="modal_enabled" id="modal-all" <?= $bulkConfig['modal_enabled']?'checked':'' ?>><label class="form-check-label" for="modal-all">Modal global</label></div><div class="form-check"><input class="form-check-input" type="checkbox" name="sound_enabled" id="sound-all" <?= $bulkConfig['sound_enabled']?'checked':'' ?>><label class="form-check-label" for="sound-all">Aviso sonoro</label></div></div>
    </div></div><div class="card-footer text-end"><button type="submit" class="btn btn-primary"><i class="fas fa-clone me-1"></i>Aplicar a todos</button></div>
-  </form></div>
+  </form>
+  <?php $renderDosingForm(0); ?>
+  </div></div>
  <?php endif; ?>
  <?php foreach ($tanks as $tank): $cfg=get_alarm_config($conn,(int)$tank['id']); ?>
-  <div class="col-12 col-xl-6"><form method="post" class="card shadow-sm h-100"><input type="hidden" name="config_action" value="single"><input type="hidden" name="tank_id" value="<?= (int)$tank['id'] ?>">
+  <div class="col-12 col-xl-6"><div class="card shadow-sm h-100"><form method="post"><input type="hidden" name="config_action" value="single"><input type="hidden" name="tank_id" value="<?= (int)$tank['id'] ?>">
    <div class="card-header"><strong><i class="fas fa-swimming-pool me-2"></i><?= htmlspecialchars($tank['name']) ?></strong></div>
    <div class="card-body"><div class="row g-3">
     <div class="col-6"><label class="form-label">Cloro mínimo (mg/L)</label><input class="form-control" type="number" step="0.01" min="0" name="chlorine_min" value="<?= htmlspecialchars($cfg['chlorine_min']) ?>" required></div>
@@ -189,7 +187,9 @@ $dosingRows = dosing_block_rows($conn);
     <div class="col-12"><label class="form-label">Mostrar modal após alarme ativo durante</label><div class="input-group"><input class="form-control" type="number" min="0" max="1440" name="modal_delay_minutes" value="<?= (int)$cfg['modal_delay_minutes'] ?>"><span class="input-group-text">minutos</span></div></div>
     <div class="col-12 d-flex gap-4"><div class="form-check"><input class="form-check-input" type="checkbox" name="modal_enabled" id="modal<?= (int)$tank['id'] ?>" <?= $cfg['modal_enabled']?'checked':'' ?>><label class="form-check-label" for="modal<?= (int)$tank['id'] ?>">Modal global</label></div><div class="form-check"><input class="form-check-input" type="checkbox" name="sound_enabled" id="sound<?= (int)$tank['id'] ?>" <?= $cfg['sound_enabled']?'checked':'' ?>><label class="form-check-label" for="sound<?= (int)$tank['id'] ?>">Aviso sonoro</label></div></div>
    </div></div><div class="card-footer text-end"><button type="submit" class="btn btn-primary"><i class="fas fa-save me-1"></i>Guardar alterações</button></div>
-  </form></div>
+  </form>
+  <?php $renderDosingForm((int)$tank['id']); ?>
+  </div></div>
  <?php endforeach; ?>
  </div>
 </div>
