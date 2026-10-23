@@ -29,6 +29,11 @@ WorkLog CMMS é um sistema de Gestãoo de Manutenção Computadorizado (CMMS) de
 - **Estatísticas e Painel**:
   - Painel com estatísticas e gráficos para análise rápida do desempenho e status do sistema.
 
+- **Logs de atividade**:
+  - São mantidas apenas as 1000 entradas mais recentes na tabela `logs`; as anteriores são eliminadas definitivamente ao gravar uma atividade ou abrir a página de logs.
+  - A listagem carrega apenas uma página de 50 entradas por pedido. Os filtros pesquisam apenas os registos mantidos.
+  - Esta retenção não elimina os ficheiros de diagnóstico dos workers nem outros históricos da aplicação.
+
 ## Instalação
 
 1. Clone o repositório:

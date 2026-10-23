@@ -127,13 +127,9 @@ function log_system_action(mysqli $conn, string $action, string $description): v
     // Espelha sempre no ficheiro de log do worker.
     file_log($action . ' | ' . $description);
 
-    $stmt = $conn->prepare("INSERT INTO logs (user_id, action, description) VALUES (NULL, ?, ?)");
-    if (!$stmt) {
-        return;
+    if (!log_action($conn, null, $action, $description)) {
+        file_log('ERRO: não foi possível gravar o log de atividade ou aplicar a retenção.');
     }
-    $stmt->bind_param("ss", $action, $description);
-    $stmt->execute();
-    $stmt->close();
 }
 
 function send_remote_setpoint(int $ctrl, float $value, string $endpoint): array

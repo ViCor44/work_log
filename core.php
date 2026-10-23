@@ -104,6 +104,35 @@ if (isset($_SESSION['user_id'])) {
     }
 }
 
+function prune_activity_logs($conn) {
+    $lockResult = $conn->query("SELECT GET_LOCK('worklog_activity_log_retention', 10) AS acquired");
+    if (!$lockResult || (int)$lockResult->fetch_assoc()['acquired'] !== 1) {
+        error_log('Failed to acquire activity log retention lock.');
+        return false;
+    }
+
+    try {
+        $result = $conn->query('SELECT COUNT(*) AS total FROM logs');
+        if (!$result) {
+            error_log('Failed to count activity logs: ' . $conn->error);
+            return false;
+        }
+        $excess = (int)$result->fetch_assoc()['total'] - 1000;
+        if ($excess > 0 && !$conn->query(
+            'DELETE FROM logs ORDER BY log_datetime ASC LIMIT ' . $excess
+        )) {
+            error_log('Failed to prune activity logs: ' . $conn->error);
+            return false;
+        }
+        return true;
+    } catch (mysqli_sql_exception $error) {
+        error_log('Failed to enforce activity log retention: ' . $error->getMessage());
+        return false;
+    } finally {
+        $conn->query("SELECT RELEASE_LOCK('worklog_activity_log_retention')");
+    }
+}
+
 function log_action($conn, $user_id, $action, $description) {
     $stmt = $conn->prepare("INSERT INTO logs (user_id, action, description) VALUES (?, ?, ?)");
     if ($stmt) {
@@ -113,7 +142,7 @@ function log_action($conn, $user_id, $action, $description) {
             error_log('Failed to save activity log: ' . $stmt->error);
         }
         $stmt->close();
-        return $success;
+        return $success && prune_activity_logs($conn);
     }
     error_log('Failed to prepare activity log: ' . $conn->error);
     return false;

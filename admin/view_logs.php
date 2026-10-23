@@ -15,6 +15,11 @@ if (!isset($_SESSION['user_type']) || $_SESSION['user_type'] !== 'admin') {
     exit;
 }
 
+if (!prune_activity_logs($conn)) {
+    http_response_code(500);
+    exit('Não foi possível aplicar o limite de 1000 logs. Consulte o registo de erros do servidor.');
+}
+
 require_once '../header.php'; // Usamos ../ para subir um nível de diretoria
 
 // ── Filtros ──────────────────────────────────────────────────────────────
@@ -61,7 +66,9 @@ $perPage = 50;
 $page = isset($_GET['page']) ? max(1, (int)$_GET['page']) : 1;
 
 // Total de registos (com filtros aplicados)
-$countSql = "SELECT COUNT(*) AS n FROM logs l LEFT JOIN users u ON l.user_id = u.id $whereSql";
+$countSql = $q === ''
+    ? "SELECT COUNT(*) AS n FROM logs l $whereSql"
+    : "SELECT COUNT(*) AS n FROM logs l LEFT JOIN users u ON l.user_id = u.id $whereSql";
 $total = 0;
 $stmtC = $conn->prepare($countSql);
 if ($types !== '') { $stmtC->bind_param($types, ...$params); }
@@ -115,6 +122,8 @@ $pageUrl = function (int $p) use ($fromInput, $toInput, $q): string {
             <a href="../redirect_page.php" class="btn btn-secondary">Voltar ao Início</a>
         </div>
     </div>
+
+    <p class="small text-muted">São mantidas apenas as 1000 entradas mais recentes. As anteriores são eliminadas definitivamente. A pesquisa abrange apenas as entradas mantidas.</p>
 
     <form method="get" class="card card-body shadow-sm mb-3">
         <div class="row g-2 align-items-end">
