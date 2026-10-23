@@ -359,7 +359,7 @@ $relayCsrfToken = $isViewer ? '' : $_SESSION['relay_csrf_token'];
                                             <i class="fas fa-power-off me-1"></i>Bloquear Dosagem
                                         </button>
                                         <button type="button" class="btn btn-sm btn-outline-warning relay-command-button" data-tank-id="<?= (int)$pool['id'] ?>" data-command="off" data-csrf-token="<?= htmlspecialchars($relayCsrfToken, ENT_QUOTES, 'UTF-8') ?>" data-pool-name="<?= htmlspecialchars($pool['name'], ENT_QUOTES, 'UTF-8') ?>">
-                                            <i class="fas fa-undo me-1"></i>Reset (desligar)
+                                            <i class="fas fa-undo me-1"></i>Reset
                                         </button>
                                     </div>
                                     <small class="relay-command-status text-secondary" aria-live="polite">Pronto</small>
@@ -487,6 +487,21 @@ $relayCsrfToken = $isViewer ? '' : $_SESSION['relay_csrf_token'];
             </div>
         </div>
 
+    </div>
+</div>
+
+<div class="modal fade" id="relayErrorModal" tabindex="-1" aria-labelledby="relayErrorModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content bg-dark text-light border-secondary">
+            <div class="modal-header border-secondary">
+                <h5 class="modal-title" id="relayErrorModalLabel">Erro no comando de dosagem</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Fechar"></button>
+            </div>
+            <div class="modal-body" id="relayErrorMessage" role="alert"></div>
+            <div class="modal-footer border-secondary">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Fechar</button>
+            </div>
+        </div>
     </div>
 </div>
 
@@ -866,9 +881,9 @@ document.addEventListener('DOMContentLoaded', function() {
                 status.classList.add('text-success');
             } catch (error) {
                 console.error('Falha ao comandar o relé:', error);
-                status.textContent = `Erro: ${error.message}`;
-                status.classList.remove('text-secondary', 'text-success');
-                status.classList.add('text-danger');
+                status.textContent = '';
+                document.getElementById('relayErrorMessage').textContent = `${poolName}: ${error.message}`;
+                bootstrap.Modal.getOrCreateInstance(document.getElementById('relayErrorModal')).show();
             } finally {
                 buttons.forEach(control => { control.disabled = false; });
             }
@@ -1341,9 +1356,15 @@ if (alarmContentEl && alarmContentEl.style.display !== 'none') alarmContentEl.st
     getValueClass('ph', phValue, poolId) === 'text-danger';
 
 const alarmeControlador = (data.alarme == 0); // alarme interno
+const dosagemBloqueada = Number(data.digitalIn) === 1;
 
 let nextState, statusText, cardClasses, badgeClass;
-if (alarmeControlador) {
+if (dosagemBloqueada) {
+    nextState = 'blocked';
+    statusText = 'Dosagem Bloqueada';
+    cardClasses = ['border-danger', 'animate-pulse-red-bs'];
+    badgeClass = 'bg-danger';
+} else if (alarmeControlador) {
     nextState = 'alarm';
     statusText = 'ALARME ATIVO';
     cardClasses = ['border-danger', 'animate-pulse-red-bs'];
