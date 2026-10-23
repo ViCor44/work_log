@@ -362,7 +362,7 @@ $relayCsrfToken = $isViewer ? '' : $_SESSION['relay_csrf_token'];
                                             <i class="fas fa-undo me-1"></i>Reset
                                         </button>
                                     </div>
-                                    <small class="relay-command-status text-secondary" aria-live="polite">Pronto</small>
+                                    <small class="relay-command-status text-secondary" aria-live="polite" hidden></small>
                                 </div>
                             <?php endif; ?>
                         </div>
@@ -857,6 +857,7 @@ document.addEventListener('DOMContentLoaded', function() {
             const buttons = controls.querySelectorAll('.relay-command-button');
             buttons.forEach(control => { control.disabled = true; });
             status.textContent = 'A enviar comando...';
+            status.hidden = false;
             status.classList.remove('text-danger', 'text-success');
             status.classList.add('text-secondary');
 
@@ -882,6 +883,7 @@ document.addEventListener('DOMContentLoaded', function() {
             } catch (error) {
                 console.error('Falha ao comandar o relé:', error);
                 status.textContent = '';
+                status.hidden = true;
                 document.getElementById('relayErrorMessage').textContent = `${poolName}: ${error.message}`;
                 bootstrap.Modal.getOrCreateInstance(document.getElementById('relayErrorModal')).show();
             } finally {
