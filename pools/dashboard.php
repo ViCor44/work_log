@@ -36,6 +36,10 @@ $filters = fetch_all_safe(
 );
 
 $isViewer = isset($_SESSION['user_type']) && $_SESSION['user_type'] === 'viewer';
+if (!$isViewer && empty($_SESSION['relay_csrf_token'])) {
+    $_SESSION['relay_csrf_token'] = bin2hex(random_bytes(32));
+}
+$relayCsrfToken = $isViewer ? '' : $_SESSION['relay_csrf_token'];
 ?>
 
 <style>
@@ -124,6 +128,7 @@ $isViewer = isset($_SESSION['user_type']) && $_SESSION['user_type'] === 'viewer'
     .scada-card.status-alarm .alarm-content { display: block; }
 
     .scada-card a { color: inherit; text-decoration: none; }
+    .relay-controls { border-top: 1px solid var(--scada-border-color); }
 
     @keyframes pulse-red-bs { 
         0%, 100% { box-shadow: 0 0 0 0 rgba(220, 53, 69, 0.7); } 
@@ -312,42 +317,55 @@ $isViewer = isset($_SESSION['user_type']) && $_SESSION['user_type'] === 'viewer'
         <div class="tab-pane fade show active" id="piscinas-pane" role="tabpanel">
             <div class="dashboard-grid" id="dashboard-container-piscinas">
                 <?php foreach ($pools as $pool): ?>
-                    <a href="view_pool_details.php?id=<?= $pool['id'] ?>" class="text-decoration-none">
-                        <div id="card-piscina-<?= $pool['id'] ?>" class="card scada-card h-100 border-secondary shadow-sm" data-type="piscina" data-ip="<?= $pool['controller_ip'] ?>">
+                        <div id="card-piscina-<?= (int)$pool['id'] ?>" class="card scada-card h-100 border-secondary shadow-sm" data-type="piscina" data-ip="<?= htmlspecialchars($pool['controller_ip'], ENT_QUOTES, 'UTF-8') ?>">
+                            <a href="view_pool_details.php?id=<?= (int)$pool['id'] ?>" class="text-decoration-none text-reset">
                             <div class="card-header d-flex justify-content-between align-items-center">
                                 <h5 class="card-title mb-0 fw-bold"><?= htmlspecialchars($pool['name']) ?></h5>
-                                <span id="status-piscina-<?= $pool['id'] ?>" class="badge bg-secondary">Aguardando...</span>
+                                <span id="status-piscina-<?= (int)$pool['id'] ?>" class="badge bg-secondary">Aguardando...</span>
                             </div>
                             <ul class="list-group list-group-flush">
                                 <li class="list-group-item d-flex justify-content-between align-items-center">
                                     <span class="text-white-50"><i class="fas fa-life-ring text-info"></i> Cloro Livre</span>
-                                    <span id="cloro-<?= $pool['id'] ?>" class="font-monospace fw-bold fs-5"><i class="fas fa-spinner fa-spin fa-xs"></i></span>
+                                    <span id="cloro-<?= (int)$pool['id'] ?>" class="font-monospace fw-bold fs-5"><i class="fas fa-spinner fa-spin fa-xs"></i></span>
                                 </li>
                                 <li class="list-group-item d-flex justify-content-between align-items-center">
                                     <span class="text-white-50"><i class="fas fa-tint text-info"></i> pH</span>
-                                    <span id="ph-<?= $pool['id'] ?>" class="font-monospace fw-bold fs-5"><i class="fas fa-spinner fa-spin fa-xs"></i></span>
+                                    <span id="ph-<?= (int)$pool['id'] ?>" class="font-monospace fw-bold fs-5"><i class="fas fa-spinner fa-spin fa-xs"></i></span>
                                 </li>
                                 <li class="list-group-item d-flex justify-content-between align-items-center">
                                     <span class="text-white-50"><i class="fas fa-thermometer-half text-info"></i> Temperatura</span>
-                                    <span id="temp-<?= $pool['id'] ?>" class="font-monospace fw-bold fs-5"><i class="fas fa-spinner fa-spin fa-xs"></i></span>
+                                    <span id="temp-<?= (int)$pool['id'] ?>" class="font-monospace fw-bold fs-5"><i class="fas fa-spinner fa-spin fa-xs"></i></span>
                                 </li>
                             </ul>
                                 <div class="card-footer controller-sp-footer d-flex justify-content-between align-items-center gap-2">
                                     <div class="d-flex gap-2">
-                                        <span id="dynamic-sp-piscina-<?= $pool['id'] ?>" class="badge controller-mode-badge" title="Estado do setpoint dinâmico">SP Dinâmico --</span>
-                                        <span id="high-attendance-piscina-<?= $pool['id'] ?>" class="badge controller-mode-badge" title="Estado do modo de alta afluência">Afluência --</span>
+                                        <span id="dynamic-sp-piscina-<?= (int)$pool['id'] ?>" class="badge controller-mode-badge" title="Estado do setpoint dinâmico">SP Dinâmico --</span>
+                                        <span id="high-attendance-piscina-<?= (int)$pool['id'] ?>" class="badge controller-mode-badge" title="Estado do modo de alta afluência">Afluência --</span>
                                     </div>
                                     <div class="d-flex gap-2 ms-auto">
-                                        <span id="sp-cloro-piscina-<?= $pool['id'] ?>" class="badge controller-sp-badge">Cl --</span>
-                                        <span id="sp-ph-piscina-<?= $pool['id'] ?>" class="badge controller-sp-badge">pH --</span>
+                                        <span id="sp-cloro-piscina-<?= (int)$pool['id'] ?>" class="badge controller-sp-badge">Cl --</span>
+                                        <span id="sp-ph-piscina-<?= (int)$pool['id'] ?>" class="badge controller-sp-badge">pH --</span>
                                     </div>
                                 </div>
                                 <div class="card-body text-center alarm-content">
                                     <img src="../images/rj45.png" style="width:64px;height:64px;" alt="Erro de Comunicação">
                                     <div class="fw-bold mt-2">Erro de Comunicação</div>
                                 </div>
+                            </a>
+                            <?php if (!$isViewer): ?>
+                                <div class="relay-controls p-2">
+                                    <div class="d-flex flex-wrap gap-2">
+                                        <button type="button" class="btn btn-sm btn-success relay-command-button" data-tank-id="<?= (int)$pool['id'] ?>" data-command="on" data-csrf-token="<?= htmlspecialchars($relayCsrfToken, ENT_QUOTES, 'UTF-8') ?>" data-pool-name="<?= htmlspecialchars($pool['name'], ENT_QUOTES, 'UTF-8') ?>">
+                                            <i class="fas fa-power-off me-1"></i>Ligar relé
+                                        </button>
+                                        <button type="button" class="btn btn-sm btn-outline-warning relay-command-button" data-tank-id="<?= (int)$pool['id'] ?>" data-command="off" data-csrf-token="<?= htmlspecialchars($relayCsrfToken, ENT_QUOTES, 'UTF-8') ?>" data-pool-name="<?= htmlspecialchars($pool['name'], ENT_QUOTES, 'UTF-8') ?>">
+                                            <i class="fas fa-undo me-1"></i>Reset (desligar)
+                                        </button>
+                                    </div>
+                                    <small class="relay-command-status text-secondary" aria-live="polite">Pronto</small>
+                                </div>
+                            <?php endif; ?>
                         </div>
-                    </a>
                 <?php endforeach; ?>
             </div>
         </div>
@@ -807,6 +825,55 @@ function openFiltroModal(filterId) {
 // ─────────────────────────────────────────────────────────────────────────────
 
 document.addEventListener('DOMContentLoaded', function() {
+
+    document.querySelectorAll('.relay-command-button').forEach(button => {
+        button.addEventListener('click', async () => {
+            const command = button.dataset.command;
+            const tankId = Number(button.dataset.tankId);
+            const poolName = button.dataset.poolName || 'esta piscina';
+            const commandLabel = command === 'on' ? 'ligar o relé' : 'desligar o relé';
+
+            if (!window.confirm(`Confirma que pretende ${commandLabel} de ${poolName}?`)) {
+                return;
+            }
+
+            const controls = button.closest('.relay-controls');
+            const status = controls.querySelector('.relay-command-status');
+            const buttons = controls.querySelectorAll('.relay-command-button');
+            buttons.forEach(control => { control.disabled = true; });
+            status.textContent = 'A enviar comando...';
+            status.classList.remove('text-danger', 'text-success');
+            status.classList.add('text-secondary');
+
+            try {
+                const response = await fetch('relay_command.php', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    cache: 'no-store',
+                    body: JSON.stringify({
+                        tank_id: tankId,
+                        command,
+                        csrf_token: button.dataset.csrfToken
+                    })
+                });
+                const result = await response.json();
+                if (!response.ok || result.success !== true) {
+                    throw new Error(result.error || `Erro HTTP ${response.status}`);
+                }
+
+                status.textContent = result.message;
+                status.classList.remove('text-secondary', 'text-danger');
+                status.classList.add('text-success');
+            } catch (error) {
+                console.error('Falha ao comandar o relé:', error);
+                status.textContent = `Erro: ${error.message}`;
+                status.classList.remove('text-secondary', 'text-success');
+                status.classList.add('text-danger');
+            } finally {
+                buttons.forEach(control => { control.disabled = false; });
+            }
+        });
+    });
 
     // Comandos de voz específicos deste dashboard. O reconhecimento é feito
     // pelo botão do microfone existente na barra de navegação.
