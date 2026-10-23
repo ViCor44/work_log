@@ -89,18 +89,23 @@ $curlError = curl_error($curl);
 curl_close($curl);
 
 $success = $remoteResponse !== false && $httpCode >= 200 && $httpCode < 300;
+$userId = (int)$_SESSION['user_id'];
+$operation = $command === 'on' ? 'Bloqueio de dosagem' : 'Reset do bloqueio de dosagem';
 $description = sprintf(
-    'Comando de relé %s | piscina_id=%d | piscina=%s | endpoint=%s | http=%d',
+    '%s %s | utilizador_id=%d | piscina_id=%d | piscina=%s | controlador=%s | endpoint=%s | http=%d',
+    $operation,
     $success ? 'SUCESSO' : 'FALHA',
+    $userId,
     $tankId,
     $tank['name'],
+    $controllerIp,
     $endpoint,
     $httpCode
 );
 if ($curlError !== '') {
     $description .= ' | curl_error=' . $curlError;
 }
-log_action($conn, (int)$_SESSION['user_id'], 'RELAY_REMOTE_COMMAND', $description);
+log_action($conn, $userId, $command === 'on' ? 'DOSING_BLOCK' : 'DOSING_BLOCK_RESET', $description);
 
 if (!$success) {
     http_response_code(502);
@@ -108,7 +113,7 @@ if (!$success) {
         'success' => false,
         'error' => $remoteResponse === false
             ? 'Não foi possível comunicar com o controlador.'
-            : 'O controlador não reconheceu o comando do relé.',
+            : 'O controlador não reconheceu o comando de dosagem.',
         'http_status' => $httpCode,
     ]);
     exit;
@@ -117,5 +122,5 @@ if (!$success) {
 echo json_encode([
     'success' => true,
     'command' => $command,
-    'message' => $command === 'on' ? 'Relé ligado.' : 'Relé desligado.',
+    'message' => $command === 'on' ? 'Comando de bloqueio de dosagem aceite.' : 'Comando de reset da dosagem aceite.',
 ]);

@@ -846,7 +846,7 @@ document.addEventListener('DOMContentLoaded', function() {
             const command = button.dataset.command;
             const tankId = Number(button.dataset.tankId);
             const poolName = button.dataset.poolName || 'esta piscina';
-            const commandLabel = command === 'on' ? 'ligar o relé' : 'desligar o relé';
+            const commandLabel = command === 'on' ? 'bloquear a dosagem' : 'remover o bloqueio da dosagem';
 
             if (!window.confirm(`Confirma que pretende ${commandLabel} de ${poolName}?`)) {
                 return;
