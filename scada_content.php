@@ -149,6 +149,9 @@ if ($result) {
         const faultDesc = document.getElementById(`faultDesc-${slaveId}`);
         const measurements = document.getElementById(`measurements-${slaveId}`);
 
+        card.style.opacity = '';
+        card.style.borderTopColor = '';
+        onlineStatus.classList.remove('bg-red-800', 'text-red-400');
         card.classList.remove('border-green-500', 'border-yellow-500', 'border-red-500', 'border-blue-500', 'border-slate-600', 'animate-pulse-red');
         equipmentState.classList.remove('text-green-400', 'text-yellow-400', 'text-red-400', 'text-blue-400');
         onlineStatus.classList.remove('bg-green-800', 'text-green-400');
@@ -221,7 +224,19 @@ if ($result) {
         const faultNum = parseInt(data.faultHex, 16);
         faultDesc.textContent = faultMap[faultNum] || `Código: ${faultNum}`;
     }
-    function handleUpdateError(slaveId) { const card=document.getElementById(`statusCard-${slaveId}`); if(card) { card.style.borderTopColor = '#64748b'; card.style.opacity = '0.7'; const onlineStatus = document.getElementById(`onlineStatus-${slaveId}`); onlineStatus.textContent = 'Offline'; onlineStatus.classList.remove('bg-green-800', 'text-green-400'); onlineStatus.classList.add('bg-red-800', 'text-red-400'); document.getElementById(`equipmentState-${slaveId}`).textContent = "SEM COMUNICAÇÃO"; }}
+    function handleUpdateError(slaveId) {
+        const card = document.getElementById(`statusCard-${slaveId}`);
+        if (!card) return;
+        card.style.borderTopColor = '#64748b';
+        card.style.opacity = '0.7';
+        const status = document.getElementById(`onlineStatus-${slaveId}`);
+        status.textContent = 'Offline';
+        status.classList.remove('bg-green-800', 'text-green-400');
+        status.classList.add('bg-red-800', 'text-red-400');
+        document.getElementById(`equipmentState-${slaveId}`).textContent = 'SEM COMUNICAÇÃO';
+        document.getElementById(`measurements-${slaveId}`).textContent = '- / -';
+        card.querySelectorAll('button').forEach(button => { button.disabled = true; });
+    }
     async function sendCommand(path, slaveId, ipAddress) {
         if (isReadOnlyUser) {
             alert('Perfil em modo monitorização. Não tem permissão para enviar comandos.');
@@ -346,11 +361,28 @@ if ($result) {
         };
         button.addEventListener('click', () => isVoiceListening ? voiceRecognition.stop() : voiceRecognition.start());
     }
-    async function updateStatus(equipment) { try { const response = await fetch(`http://${equipment.ip_address}/api/status/${equipment.slave_id}`); if (!response.ok) throw new Error("Network"); const data = await response.json(); updateCardUI(equipment.slave_id, data); } catch(error) { handleUpdateError(equipment.slave_id); } }
-    
+    async function updateStatus(equipment) {
+        const registered = allEquipmentFromServer.find(item =>
+            String(item.slave_id) === String(equipment.slave_id) && item.ip_address === equipment.ip_address);
+        if (!registered) return;
+        try {
+            const response = await fetch(`api/remote_equipment_status.php?id=${encodeURIComponent(registered.id)}`);
+            if (!response.ok) throw new Error('Sem comunicação');
+            const data = await response.json();
+            updateCardUI(equipment.slave_id, data);
+            if (!onlineEquipments.some(item => item.id === registered.id)) onlineEquipments.push(registered);
+        } catch (error) {
+            handleUpdateError(equipment.slave_id);
+            onlineEquipments = onlineEquipments.filter(item => item.id !== registered.id);
+        }
+        updateVoiceCommandList();
+    }
+
     async function updateAllStatuses() {
-        for (const equipment of onlineEquipments) {
-            await updateStatus(equipment);
+        try {
+            for (const equipment of allEquipmentFromServer) await updateStatus(equipment);
+        } finally {
+            setTimeout(updateAllStatuses, UPDATE_INTERVAL);
         }
     }
 
@@ -379,24 +411,14 @@ if ($result) {
             tabsContainer.addEventListener('click', (e) => { if(e.target.tagName === 'BUTTON') { tabsContainer.querySelectorAll('button').forEach(b => { b.classList.remove('text-blue-500', 'border-blue-500'); b.classList.add('border-transparent', 'hover:text-gray-300', 'hover:border-gray-500'); }); e.target.classList.add('text-blue-500', 'border-blue-500'); contentContainer.querySelectorAll('div[id^="tab-"]').forEach(p => p.classList.add('hidden')); document.querySelector(e.target.dataset.tabTarget).classList.remove('hidden'); } });
             
             for (const equipment of allEquipmentFromServer) {
-                try {
-                    const pingResponse = await fetch(`http://${equipment.ip_address}/ping/${equipment.slave_id}`);
-                    const pingData = await pingResponse.json();
-                    if (pingData.success) {
-                        onlineEquipments.push(equipment);
-                        updateVoiceCommandList();
-                        const categoryName = equipment.category_name || 'Sem Casa de Máquinas';
-                        const categoryId = "tab-" + categoryName.replace(/\s+/g, '-').toLowerCase();
-                        document.getElementById(`grid-${categoryId}`).innerHTML += createSlaveCard(equipment);
-                    }
-                } catch (e) { console.error(`Ping falhou para ${equipment.name}`); }
+                const categoryName = equipment.category_name || 'Sem Casa de Máquinas';
+                const categoryId = 'tab-' + categoryName.replace(/\s+/g, '-').toLowerCase();
+                document.getElementById(`grid-${categoryId}`).innerHTML += createSlaveCard(equipment);
             }
-
+            // Mostrar todos antes da primeira leitura, mesmo que o controlador esteja indisponível.
+            contentContainer.querySelectorAll('button').forEach(button => { button.disabled = true; });
             loadingMsg.style.display = 'none';
-            if (onlineEquipments.length > 0) { 
-                updateAllStatuses(); 
-                setInterval(updateAllStatuses, UPDATE_INTERVAL); 
-            }
+            updateAllStatuses();
         } catch (error) { 
             loadingMsg.textContent = `Erro: ${error.message}`;
             loadingMsg.classList.add('text-red-400');
