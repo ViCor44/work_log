@@ -117,13 +117,13 @@ $pageUrl = function (int $p) use ($fromInput, $toInput, $q): string {
 
 <div class="container mt-4">
     <div class="d-flex justify-content-between align-items-center mb-4">
-        <h1 class="h3 mb-0">Registo de Atividades do Sistema (Logs)</h1>
+        <h1 class="h3 mb-0">Registo de Atividades dos Utilizadores</h1>
         <div>
             <a href="../redirect_page.php" class="btn btn-secondary">Voltar ao Início</a>
         </div>
     </div>
 
-    <p class="small text-muted">São mantidas apenas as 1000 entradas mais recentes. As anteriores são eliminadas definitivamente. A pesquisa abrange apenas as entradas mantidas.</p>
+    <p class="small text-muted">São registadas as ações dos utilizadores; os ciclos automáticos ficam no diagnóstico técnico. São mantidas apenas as 1000 entradas mais recentes. As anteriores são eliminadas definitivamente. A pesquisa abrange apenas as entradas mantidas.</p>
 
     <form method="get" class="card card-body shadow-sm mb-3">
         <div class="row g-2 align-items-end">

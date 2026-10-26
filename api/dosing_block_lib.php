@@ -161,8 +161,10 @@ function process_dosing_block(mysqli $conn, array $pool, array $data): bool
         $accepted = $response !== false && $http === 200 && trim($response) === 'Rele ligado';
         $description = sprintf('Bloqueio automático %s | piscina_id=%d | piscina=%s | controlador=%s | discrepancia=%s | http=%d | erro=%s',
             $accepted ? 'SUCESSO' : 'FALHA', $tankId, $pool['name'], $pool['controller_ip'], $reason, $http, $error);
-        if (!log_action($conn, null, 'DOSING_AUTO_BLOCK', $description)) {
-            throw new RuntimeException('Não foi possível registar a tentativa de bloqueio automático.');
+        if (function_exists('file_log')) {
+            file_log('DOSING_AUTO_BLOCK | ' . $description);
+        } else {
+            error_log('DOSING_AUTO_BLOCK | ' . $description);
         }
         if (!$accepted) {
             throw new RuntimeException('Bloqueio automático não confirmado; será repetido no próximo ciclo.');

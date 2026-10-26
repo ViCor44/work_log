@@ -14,7 +14,7 @@ if ($__lock_fh === false || !flock($__lock_fh, LOCK_EX | LOCK_NB)) {
 
 // ─── Logger para ficheiro ────────────────────────────────────────────────────
 // Escreve TUDO o que este worker faz em logs/fetch_controller_YYYY-MM-DD.log
-// Mantém também os logs em consola (echo) e em DB (log_system_action).
+// Diagnóstico separado do log de atividade: 7 dias, até 2 ficheiros de 5 MiB por dia.
 $GLOBALS['__fetch_log_path'] = null;
 function file_log(string $message): void
 {
@@ -24,9 +24,32 @@ function file_log(string $message): void
             @mkdir($dir, 0775, true);
         }
         $GLOBALS['__fetch_log_path'] = $dir . DIRECTORY_SEPARATOR . 'fetch_controller_' . date('Y-m-d') . '.log';
+        $cutoff = date('Y-m-d', strtotime('-6 days'));
+        foreach (glob($dir . DIRECTORY_SEPARATOR . 'fetch_controller_*.log*') ?: [] as $oldLog) {
+            if (preg_match('/^fetch_controller_(\d{4}-\d{2}-\d{2})\.log(?:\.1)?$/', basename($oldLog), $match)
+                && $match[1] < $cutoff) {
+                @unlink($oldLog);
+            }
+        }
     }
     $line = '[' . date('Y-m-d H:i:s') . '] ' . $message . PHP_EOL . PHP_EOL;
-    @file_put_contents($GLOBALS['__fetch_log_path'], $line, FILE_APPEND | LOCK_EX);
+    $path = $GLOBALS['__fetch_log_path'];
+    $limit = 5 * 1024 * 1024;
+    $line = substr($line, 0, $limit);
+    clearstatcache(true, $path);
+    if (is_file($path) && filesize($path) + strlen($line) > $limit) {
+        // O lock exclusivo do worker protege também a rotação.
+        if (is_file($path . '.1')) {
+            @unlink($path . '.1');
+        }
+        if (!@rename($path, $path . '.1')) {
+            error_log('Não foi possível rodar o log técnico do controlador.');
+            return;
+        }
+    }
+    if (@file_put_contents($path, $line, FILE_APPEND | LOCK_EX) === false) {
+        error_log('Não foi possível escrever o log técnico do controlador.');
+    }
 }
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -125,12 +148,8 @@ function clamp(float $v, float $min, float $max): float
 
 function log_system_action(mysqli $conn, string $action, string $description): void
 {
-    // Espelha sempre no ficheiro de log do worker.
+    // Eventos automáticos pertencem apenas ao diagnóstico técnico.
     file_log($action . ' | ' . $description);
-
-    if (!log_action($conn, null, $action, $description)) {
-        file_log('ERRO: não foi possível gravar o log de atividade ou aplicar a retenção.');
-    }
 }
 
 function send_remote_setpoint(int $ctrl, float $value, string $endpoint): array

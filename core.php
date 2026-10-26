@@ -134,6 +134,11 @@ function prune_activity_logs($conn) {
 }
 
 function log_action($conn, $user_id, $action, $description) {
+    // O log de atividade destina-se apenas a ações atribuídas a utilizadores.
+    // Ignorar automações é intencional e não representa uma falha de gravação.
+    if ($user_id === null || (int)$user_id <= 0) {
+        return true;
+    }
     $stmt = $conn->prepare("INSERT INTO logs (user_id, action, description) VALUES (?, ?, ?)");
     if ($stmt) {
         $stmt->bind_param("iss", $user_id, $action, $description);
